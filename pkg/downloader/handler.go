@@ -35,8 +35,10 @@ func NewHTTPDownloadHandler(timeout time.Duration) *HTTPDownloadHandler {
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
-		// 禁用自动重定向，由 Redirect 中间件处理
-		DisableCompression: false,
+		// 禁用标准库的自动解压，由 HttpCompressionMiddleware 统一管理。
+		// 标准库在用户未设置 Accept-Encoding 时会自动添加 gzip 并解压，
+		// 但这会与中间件的解压逻辑冲突，且无法统计解压字节数和控制解压大小限制。
+		DisableCompression: true,
 	}
 
 	client := &http.Client{
