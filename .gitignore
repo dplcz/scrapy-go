@@ -1,0 +1,33 @@
+
+# Go 编译产物
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go 工作区
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 示例输出文件
+*.json
+!examples/**/*.json
+
+# 编译的二进制文件
+/custom_middleware
+/quotes
+/books_json
