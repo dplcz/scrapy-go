@@ -115,11 +115,11 @@ func (f *RFPDupeFilter) requestFingerprint(request *scrapy_http.Request) string 
 // 在 debug 模式下记录每个重复请求；否则仅记录一次提示。
 func (f *RFPDupeFilter) logDupe(request *scrapy_http.Request) {
 	if f.debug {
-		f.logger.Debug("过滤重复请求",
+		f.logger.Debug("filtered duplicate request",
 			"request", request.String(),
 		)
 	} else if f.logDupes {
-		f.logger.Debug("过滤重复请求（后续重复请求不再显示，设置 DUPEFILTER_DEBUG=true 查看全部）",
+		f.logger.Debug("filtered duplicate request (further duplicates will not be shown, set DUPEFILTER_DEBUG=true to see all)",
 			"request", request.String(),
 		)
 		f.logDupes = false

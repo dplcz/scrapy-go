@@ -151,7 +151,7 @@ func (s *Scraper) ScrapeError(ctx context.Context, err error, request *scrapy_ht
 	}
 
 	// 无 errback，记录错误
-	s.logger.Error("下载失败（无 errback）",
+	s.logger.Error("download failed (no errback)",
 		"request", request.String(),
 		"error", err,
 	)
@@ -179,13 +179,19 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 	var newRequests []*scrapy_http.Request
 
 	for _, output := range outputs {
+		if output.IsRequest() && output.IsItem() {
+			s.logger.Warn("spider output has both Request and Item set, Item will be ignored",
+				"request", output.Request.String(),
+			)
+		}
 		if output.IsRequest() {
 			newRequests = append(newRequests, output.Request)
 		} else if output.IsItem() {
+			s.logger.Debug("scraped item", "item", output.Item)
 			_, err := s.itemProc.ProcessItem(ctx, output.Item, response)
 			if err != nil && !errors.Is(err, scrapy_errors.ErrDropItem) {
 				// Pipeline 处理错误（非 DropItem），记录但不中断
-				s.logger.Error("Pipeline 处理 Item 失败",
+				s.logger.Error("pipeline failed to process item",
 					"error", err,
 				)
 			}
@@ -202,7 +208,7 @@ func (s *Scraper) handleSpiderError(err error, request *scrapy_http.Request, res
 		return
 	}
 
-	s.logger.Error("Spider 回调异常",
+	s.logger.Error("spider callback error",
 		"request", request.String(),
 		"error", err,
 	)

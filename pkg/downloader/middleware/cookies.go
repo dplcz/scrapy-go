@@ -185,7 +185,7 @@ func (m *CookiesMiddleware) setRequestCookies(jar *cookiejar.Jar, request *scrap
 func (m *CookiesMiddleware) debugCookie(request *scrapy_http.Request) {
 	cookieHeader := request.Headers.Get("Cookie")
 	if cookieHeader != "" {
-		m.logger.Debug("发送 Cookie",
+		m.logger.Debug("sending cookies",
 			"request", request.String(),
 			"cookie", cookieHeader,
 		)
@@ -196,7 +196,7 @@ func (m *CookiesMiddleware) debugCookie(request *scrapy_http.Request) {
 func (m *CookiesMiddleware) debugSetCookie(response *scrapy_http.Response) {
 	setCookies := response.Headers.Values("Set-Cookie")
 	for _, sc := range setCookies {
-		m.logger.Debug("接收 Set-Cookie",
+		m.logger.Debug("received Set-Cookie",
 			"response", response.String(),
 			"set-cookie", sc,
 		)

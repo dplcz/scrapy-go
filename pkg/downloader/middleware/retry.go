@@ -117,7 +117,7 @@ func (m *RetryMiddleware) retry(request *scrapy_http.Request, reason string) *sc
 	}
 
 	if retryTimes <= maxRetryTimes {
-		m.logger.Debug("重试请求",
+		m.logger.Debug("retrying request",
 			"request", request.String(),
 			"retry_times", retryTimes,
 			"reason", reason,
@@ -134,7 +134,7 @@ func (m *RetryMiddleware) retry(request *scrapy_http.Request, reason string) *sc
 	}
 
 	m.stats.IncValue("retry/max_reached", 1, 0)
-	m.logger.Error("放弃重试请求",
+	m.logger.Error("gave up retrying request",
 		"request", request.String(),
 		"retry_times", retryTimes,
 		"reason", reason,

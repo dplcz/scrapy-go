@@ -7,6 +7,7 @@ package crawler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"scrapy-go/pkg/downloader"
 	dl_mw "scrapy-go/pkg/downloader/middleware"
 	"scrapy-go/pkg/engine"
+	scrapy_log "scrapy-go/pkg/log"
 	"scrapy-go/pkg/pipeline"
 	"scrapy-go/pkg/scheduler"
 	"scrapy-go/pkg/scraper"
@@ -109,23 +111,7 @@ func (c *Crawler) initDefaults() {
 // 支持的级别：DEBUG、INFO、WARN、ERROR（不区分大小写）。
 func newDefaultLogger(s *settings.Settings) *slog.Logger {
 	levelStr := s.GetString("LOG_LEVEL", "DEBUG")
-	var level slog.Level
-	switch strings.ToUpper(levelStr) {
-	case "DEBUG":
-		level = slog.LevelDebug
-	case "INFO":
-		level = slog.LevelInfo
-	case "WARN", "WARNING":
-		level = slog.LevelWarn
-	case "ERROR":
-		level = slog.LevelError
-	default:
-		level = slog.LevelDebug
-	}
-
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
-	}))
+	return scrapy_log.NewColorLogger(levelStr, nil, false)
 }
 
 // AddPipeline 注册一个自定义 Item Pipeline。
@@ -214,14 +200,14 @@ func (c *Crawler) Run(ctx context.Context, sp spider.Spider) error {
 	go func() {
 		select {
 		case s := <-sigCh:
-			c.Logger.Info("收到系统信号，正在优雅关闭", "signal", s.String())
+			c.Logger.Info("received OS signal, shutting down gracefully", "signal", s.String())
 			cancel()
 		case <-ctx.Done():
 		}
 		signal.Stop(sigCh)
 	}()
 
-	c.Logger.Info("启动爬虫",
+	c.Logger.Info("spider started",
 		"spider", sp.Name(),
 		"concurrent_requests", c.Settings.GetInt("CONCURRENT_REQUESTS", 16),
 	)
@@ -259,6 +245,7 @@ func (c *Crawler) assembleComponents() {
 	for _, entry := range c.userPipelines {
 		c.pipelines.AddPipeline(entry.Pipeline, entry.Name, entry.Priority)
 	}
+	c.logEnabledPipelines()
 
 	// 6. Scraper
 	maxActiveSize := c.Settings.GetInt("SCRAPER_SLOT_MAX_ACTIVE_SIZE", 5000000)
@@ -270,6 +257,13 @@ func (c *Crawler) assembleComponents() {
 
 // MiddlewareFactory 定义内置中间件的工厂函数类型。
 type MiddlewareFactory func(c *Crawler) dl_mw.DownloaderMiddleware
+
+// componentEntry 表示一个启用的组件条目，用于日志打印。
+type componentEntry struct {
+	name     string
+	priority int
+	source   string // "builtin" or "custom"
+}
 
 // builtinMiddlewareFactories 是内置下载器中间件的注册表。
 // key 为中间件名称，与 DOWNLOADER_MIDDLEWARES_BASE 中的名称一一对应。
@@ -350,12 +344,7 @@ func (c *Crawler) buildDownloaderMiddlewares() *dl_mw.Manager {
 	m := dl_mw.NewManager(c.Logger)
 
 	// 收集所有中间件条目（内置 + 自定义），用于排序打印和优先级冲突检测
-	type mwInfo struct {
-		name     string
-		priority int
-		source   string // "内置" 或 "自定义"
-	}
-	var allEntries []mwInfo
+	var allEntries []componentEntry
 
 	// 1. 读取合并后的中间件配置（已过滤掉优先级 < 0 的条目）
 	mwConfig := c.Settings.GetComponentPriorityDictWithBase("DOWNLOADER_MIDDLEWARES")
@@ -366,7 +355,7 @@ func (c *Crawler) buildDownloaderMiddlewares() *dl_mw.Manager {
 			mw := factory(c)
 			if mw != nil {
 				m.AddMiddleware(mw, name, priority)
-				allEntries = append(allEntries, mwInfo{name: name, priority: priority, source: "内置"})
+				allEntries = append(allEntries, componentEntry{name: name, priority: priority, source: "builtin"})
 			}
 		}
 		// 非内置中间件名称在配置中会被忽略，用户自定义中间件通过 AddDownloaderMiddleware 注册
@@ -375,39 +364,30 @@ func (c *Crawler) buildDownloaderMiddlewares() *dl_mw.Manager {
 	// 3. 添加用户通过 AddDownloaderMiddleware 注册的自定义中间件
 	for _, entry := range c.userDLMiddlewares {
 		m.AddMiddleware(entry.Middleware, entry.Name, entry.Priority)
-		allEntries = append(allEntries, mwInfo{name: entry.Name, priority: entry.Priority, source: "自定义"})
+		allEntries = append(allEntries, componentEntry{name: entry.Name, priority: entry.Priority, source: "custom"})
 	}
 
-	// 4. 按优先级排序后统一打印
+	// 4. 按优先级排序
 	sort.Slice(allEntries, func(i, j int) bool {
 		return allEntries[i].priority < allEntries[j].priority
 	})
 
-	// 5. 检测优先级冲突并打印
-	priorityMap := make(map[int][]string) // priority -> 中间件名称列表
+	// 5. 检测优先级冲突
+	priorityMap := make(map[int][]string)
 	for _, entry := range allEntries {
 		priorityMap[entry.priority] = append(priorityMap[entry.priority], entry.name)
 	}
-
-	for _, entry := range allEntries {
-		c.Logger.Debug("启用下载器中间件",
-			"name", entry.name,
-			"priority", entry.priority,
-			"source", entry.source,
-		)
-	}
-
-	// 对优先级相同的中间件发出警告
 	for priority, names := range priorityMap {
 		if len(names) > 1 {
-			c.Logger.Warn("检测到多个下载器中间件具有相同的优先级，执行顺序可能不确定",
+			c.Logger.Warn("multiple downloader middlewares share the same priority, execution order may be non-deterministic",
 				"priority", priority,
 				"middlewares", names,
 			)
 		}
 	}
 
-	c.Logger.Info("下载器中间件链构建完成", "count", m.Count())
+	// 6. 打印启用列表（Scrapy 风格）
+	c.logEnabledComponents("downloader middlewares", allEntries)
 	return m
 }
 
@@ -424,12 +404,7 @@ func (c *Crawler) buildSpiderMiddlewares() *spider_mw.Manager {
 	m := spider_mw.NewManager(c.Logger)
 
 	// 收集所有中间件条目（内置 + 自定义），用于排序打印和优先级冲突检测
-	type mwInfo struct {
-		name     string
-		priority int
-		source   string // "内置" 或 "自定义"
-	}
-	var allEntries []mwInfo
+	var allEntries []componentEntry
 
 	// 1. 读取合并后的中间件配置（已过滤掉优先级 < 0 的条目）
 	// 目前 SPIDER_MIDDLEWARES_BASE 为空，预留给未来内置中间件
@@ -438,10 +413,10 @@ func (c *Crawler) buildSpiderMiddlewares() *spider_mw.Manager {
 	// 2. 添加用户通过 AddSpiderMiddleware 注册的自定义中间件
 	for _, entry := range c.userSpiderMiddlewares {
 		m.AddMiddleware(entry.Middleware, entry.Name, entry.Priority)
-		allEntries = append(allEntries, mwInfo{name: entry.Name, priority: entry.Priority, source: "自定义"})
+		allEntries = append(allEntries, componentEntry{name: entry.Name, priority: entry.Priority, source: "custom"})
 	}
 
-	// 3. 按优先级排序后统一打印
+	// 3. 按优先级排序
 	if len(allEntries) > 0 {
 		sort.Slice(allEntries, func(i, j int) bool {
 			return allEntries[i].priority < allEntries[j].priority
@@ -452,29 +427,59 @@ func (c *Crawler) buildSpiderMiddlewares() *spider_mw.Manager {
 		for _, entry := range allEntries {
 			priorityMap[entry.priority] = append(priorityMap[entry.priority], entry.name)
 		}
-
-		for _, entry := range allEntries {
-			c.Logger.Debug("启用 Spider 中间件",
-				"name", entry.name,
-				"priority", entry.priority,
-				"source", entry.source,
-			)
-		}
-
-		// 对优先级相同的中间件发出警告
 		for priority, names := range priorityMap {
 			if len(names) > 1 {
-				c.Logger.Warn("检测到多个 Spider 中间件具有相同的优先级，执行顺序可能不确定",
+				c.Logger.Warn("multiple spider middlewares share the same priority, execution order may be non-deterministic",
 					"priority", priority,
 					"middlewares", names,
 				)
 			}
 		}
-
-		c.Logger.Info("Spider 中间件链构建完成", "count", m.Count())
 	}
 
+	// 4. 打印启用列表（Scrapy 风格）
+	c.logEnabledComponents("spider middlewares", allEntries)
 	return m
+}
+
+// logEnabledPipelines 打印启用的 Item Pipeline 列表。
+func (c *Crawler) logEnabledPipelines() {
+	var entries []componentEntry
+	for _, entry := range c.userPipelines {
+		entries = append(entries, componentEntry{name: entry.Name, priority: entry.Priority, source: "custom"})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].priority < entries[j].priority
+	})
+
+	c.logEnabledComponents("item pipelines", entries)
+}
+
+// logEnabledComponents 以 Scrapy 风格打印启用的组件列表。
+// 不同优先级的组件使用不同颜色：
+//   - 0~299 (低优先级/先执行): 绿色
+//   - 300~599 (中优先级): 黄色
+//   - 600+ (高优先级/后执行): 品红色
+//
+// 输出格式：
+//
+//	Enabled downloader middlewares:
+//	  DownloadTimeout (300)
+//	  UserAgent (500)
+//	  Retry (550)
+func (c *Crawler) logEnabledComponents(componentName string, entries []componentEntry) {
+	if len(entries) == 0 {
+		c.Logger.Info(fmt.Sprintf("Enabled %s: (none)", componentName))
+		return
+	}
+
+	var lines []string
+	for _, e := range entries {
+		color := scrapy_log.ColorByPriority(e.priority)
+		lines = append(lines, fmt.Sprintf("  %s%s (%d)%s", color, e.name, e.priority, scrapy_log.ColorReset))
+	}
+	c.Logger.Info(fmt.Sprintf("Enabled %s:\n%s", componentName, strings.Join(lines, "\n")))
 }
 
 // getIntSlice 从配置中获取 int 切片。

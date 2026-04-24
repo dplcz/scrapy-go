@@ -132,14 +132,14 @@ func (p *JsonFilePipeline) Close(ctx context.Context) error {
 
 	data, err := json.MarshalIndent(p.items, "", "  ")
 	if err != nil {
-		return fmt.Errorf("序列化 JSON 失败: %w", err)
+		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
 	if err := os.WriteFile(p.Path, data, 0644); err != nil {
-		return fmt.Errorf("写入文件 %s 失败: %w", p.Path, err)
+		return fmt.Errorf("failed to write file %s: %w", p.Path, err)
 	}
 
-	fmt.Printf("\n📁 已将 %d 条数据保存到 %s\n", len(p.items), p.Path)
+	fmt.Printf("\n📁 Saved %d items to %s\n", len(p.items), p.Path)
 	return nil
 }
 
@@ -171,7 +171,7 @@ func (p *CleanPipeline) ProcessItem(ctx context.Context, item any) (any, error) 
 
 	// 验证必填字段
 	if book.Title == "" || book.Author == "" {
-		return nil, fmt.Errorf("drop item: 缺少 title 或 author: %+v", book)
+		return nil, fmt.Errorf("drop item: missing title or author: %+v", book)
 	}
 
 	return book, nil
@@ -199,7 +199,7 @@ func NewBooksSpider(baseURL string) *BooksSpider {
 func (s *BooksSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	var apiResp APIResponse
 	if err := response.JSON(&apiResp); err != nil {
-		return nil, fmt.Errorf("解析 JSON 失败: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
 	var outputs []spider.Output
@@ -239,7 +239,7 @@ func main() {
 	// 1. 启动本地 JSON API 服务器
 	api := newLocalBookAPI()
 	defer api.Close()
-	fmt.Printf("📡 本地 JSON API 已启动: %s/api/books\n\n", api.URL)
+	fmt.Printf("📡 Local JSON API started: %s/api/books\n\n", api.URL)
 
 	// 2. 创建 Spider
 	sp := NewBooksSpider(api.URL)
@@ -256,29 +256,29 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("🚀 开始爬取图书数据...")
+	fmt.Println("🚀 Starting book crawl...")
 	fmt.Println("=" + repeat("=", 59))
 
 	err := c.Run(ctx, sp)
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-		fmt.Printf("❌ 爬取出错: %v\n", err)
+		fmt.Printf("❌ Crawl error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// 6. 读取并展示输出文件内容
 	fmt.Println("=" + repeat("=", 59))
-	fmt.Printf("\n📖 输出文件内容 (%s):\n\n", outputPath)
+	fmt.Printf("\n📖 Output file content (%s):\n\n", outputPath)
 
 	data, err := os.ReadFile(outputPath)
 	if err != nil {
-		fmt.Printf("❌ 读取输出文件失败: %v\n", err)
+		fmt.Printf("❌ Failed to read output file: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Println(string(data))
 
 	// 7. 清理输出文件
 	os.Remove(outputPath)
-	fmt.Println("🧹 已清理输出文件")
+	fmt.Println("🧹 Output file cleaned up")
 }
 
 func repeat(s string, n int) string {

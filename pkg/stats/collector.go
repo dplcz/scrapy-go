@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -196,11 +197,12 @@ func (c *MemoryCollector) dumpStats() {
 	}
 	sort.Strings(keys)
 
-	// 逐行打印每个统计项
-	c.logger.Info("Scrapy stats:")
+	// 构建统计列表，一条日志输出所有统计项
+	var lines []string
 	for _, k := range keys {
-		c.logger.Info(fmt.Sprintf("  %s: %v", k, c.stats[k]))
+		lines = append(lines, fmt.Sprintf("  %s: %v", k, c.stats[k]))
 	}
+	c.logger.Info(fmt.Sprintf("Dumping Scrapy stats:\n%s", strings.Join(lines, "\n")))
 }
 
 // ============================================================================

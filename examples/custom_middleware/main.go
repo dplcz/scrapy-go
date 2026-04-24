@@ -68,7 +68,7 @@ func newLocalArticleAPI() *httptest.Server {
 				w.WriteHeader(http.StatusUnauthorized)
 				json.NewEncoder(w).Encode(map[string]string{
 					"error":   "unauthorized",
-					"message": "缺少有效的 API Token，请在 Authorization 头中携带 Bearer Token",
+					"message": "Missing valid API Token, please include Bearer Token in Authorization header",
 				})
 				return
 			}
@@ -198,7 +198,7 @@ func NewLoggingMiddleware(logger *slog.Logger) *LoggingMiddleware {
 func (m *LoggingMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
 	// 将请求开始时间存入 Meta，供 ProcessResponse 计算耗时
 	request.SetMeta("_logging_start_time", time.Now())
-	m.logger.Info("📤 发送请求",
+	m.logger.Info("📤 sending request",
 		"method", request.Method,
 		"url", request.URL.String(),
 	)
@@ -218,11 +218,11 @@ func (m *LoggingMiddleware) ProcessResponse(ctx context.Context, request *scrapy
 	cached := ""
 	if hit, ok := request.GetMeta("_cache_hit"); ok {
 		if b, ok := hit.(bool); ok && b {
-			cached = " [缓存命中]"
+			cached = " [cache hit]"
 		}
 	}
 
-	m.logger.Info("📥 收到响应"+cached,
+	m.logger.Info("📥 response received"+cached,
 		"status", response.Status,
 		"url", response.URL.String(),
 		"body_size", len(response.Body),
@@ -233,7 +233,7 @@ func (m *LoggingMiddleware) ProcessResponse(ctx context.Context, request *scrapy
 
 // ProcessException 记录请求异常。
 func (m *LoggingMiddleware) ProcessException(ctx context.Context, request *scrapy_http.Request, err error) (*scrapy_http.Response, error) {
-	m.logger.Error("❌ 请求异常",
+	m.logger.Error("❌ request error",
 		"url", request.URL.String(),
 		"error", err.Error(),
 	)
@@ -295,7 +295,7 @@ func (m *CacheMiddleware) ProcessRequest(ctx context.Context, request *scrapy_ht
 		m.hits++
 		m.mu.Unlock()
 
-		m.logger.Debug("🎯 缓存命中", "url", cacheKey)
+		m.logger.Debug("🎯 cache hit", "url", cacheKey)
 
 		// 返回缓存响应的副本（避免并发修改）
 		resp := cached.Copy()
@@ -405,7 +405,7 @@ func NewArticleSpider(baseURL string) *ArticleSpider {
 func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	var apiResp ArticleAPIResponse
 	if err := response.JSON(&apiResp); err != nil {
-		return nil, fmt.Errorf("解析 JSON 失败: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
 	var outputs []spider.Output
@@ -451,10 +451,10 @@ func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.R
 	cached := ""
 	if hit, ok := response.GetMeta("_cache_hit"); ok {
 		if b, ok := hit.(bool); ok && b {
-			cached = " [来自缓存]"
+			cached = " [from cache]"
 		}
 	}
-	fmt.Printf("  📄 获取到文章详情%s: %s\n", cached, response.URL.String())
+	fmt.Printf("  📄 Got article detail%s: %s\n", cached, response.URL.String())
 
 	// 如果这是第一次请求（非缓存命中），再请求一次同一 URL 以演示缓存
 	if cached == "" {
@@ -488,7 +488,7 @@ func main() {
 	// 1. 启动本地测试 API 服务器
 	api := newLocalArticleAPI()
 	defer api.Close()
-	fmt.Printf("📡 本地认证 API 已启动: %s/api/articles\n", api.URL)
+	fmt.Printf("📡 Local auth API started: %s/api/articles\n", api.URL)
 	fmt.Printf("   API Token: %s\n\n", validAPIToken)
 
 	// 2. 创建 Spider
@@ -530,19 +530,19 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("🚀 开始爬取文章数据...")
+	fmt.Println("🚀 Starting article crawl...")
 	fmt.Println("=" + repeat("=", 59))
 
 	err := c.Run(ctx, sp)
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-		fmt.Printf("❌ 爬取出错: %v\n", err)
+		fmt.Printf("❌ Crawl error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// 6. 输出结果
 	fmt.Println()
 	fmt.Println("=" + repeat("=", 59))
-	fmt.Printf("📊 爬取完成！共收集 %d 篇文章：\n\n", len(sp.articles))
+	fmt.Printf("📊 Crawl completed! Collected %d articles:\n\n", len(sp.articles))
 
 	for _, a := range sp.articles {
 		fmt.Printf("  [%d] %s — %s  (%s)\n", a.ID, a.Title, a.Author, a.Tags)
@@ -550,11 +550,11 @@ func main() {
 
 	// 7. 输出缓存统计
 	hits, misses := cacheMW.Stats()
-	fmt.Printf("\n📈 缓存统计: 命中 %d 次, 未命中 %d 次\n", hits, misses)
+	fmt.Printf("\n📈 Cache stats: %d hits, %d misses\n", hits, misses)
 
 	// 8. 输出 Spider 中间件统计
 	items, requests, pages := itemStatsMW.Stats()
-	fmt.Printf("🕷️ Spider 中间件统计: 处理 %d 个页面, 产出 %d 个 Item, %d 个 Request\n", pages, items, requests)
+	fmt.Printf("🕷️ Spider middleware stats: processed %d pages, produced %d items, %d requests\n", pages, items, requests)
 }
 
 func repeat(s string, n int) string {

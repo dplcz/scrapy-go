@@ -148,7 +148,7 @@ func (s *DefaultScheduler) EnqueueRequest(request *scrapy_http.Request) bool {
 	if !request.DontFilter && s.dupeFilter.RequestSeen(request) {
 		s.stats.IncValue("dupefilter/filtered", 1, 0)
 		if s.debug {
-			s.logger.Debug("请求被去重过滤",
+			s.logger.Debug("request filtered by dupefilter",
 				"request", request.String(),
 			)
 		}

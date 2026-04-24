@@ -121,7 +121,7 @@ func (sm *Manager) SendCatchLog(sig Signal, params map[string]any) []error {
 				continue
 			}
 
-			sm.logger.Error("信号处理器错误",
+			sm.logger.Error("signal handler error",
 				"signal", sig.String(),
 				"error", err,
 			)
@@ -149,7 +149,7 @@ func (sm *Manager) SendCatchLogCtx(ctx context.Context, sig Signal, params map[s
 					continue
 				}
 
-				sm.logger.Error("信号处理器错误",
+			sm.logger.Error("signal handler error",
 					"signal", sig.String(),
 					"error", err,
 				)

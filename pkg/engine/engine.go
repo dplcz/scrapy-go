@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	dl_mw "scrapy-go/pkg/downloader/middleware"
 	scrapy_errors "scrapy-go/pkg/errors"
 	scrapy_http "scrapy-go/pkg/http"
+	scrapy_log "scrapy-go/pkg/log"
 	"scrapy-go/pkg/scheduler"
 	"scrapy-go/pkg/scraper"
 	"scrapy-go/pkg/signal"
@@ -162,7 +164,7 @@ func (e *Engine) openSpider(ctx context.Context) error {
 	// 打开统计收集器
 	e.stats.Open()
 
-	e.logger.Info("Spider 已打开", "spider", e.spider.Name())
+	e.logger.Info("spider opened", "spider", e.spider.Name())
 
 	// 发送 spider_opened 信号
 	e.signals.SendCatchLog(signal.SpiderOpened, map[string]any{
@@ -174,23 +176,23 @@ func (e *Engine) openSpider(ctx context.Context) error {
 
 // closeSpider 关闭所有组件。
 func (e *Engine) closeSpider(ctx context.Context, reason string) {
-	e.logger.Info("正在关闭 Spider", "reason", reason)
+	e.logger.Info("closing spider", "reason", reason)
 
 	e.slot.closing.Store(true)
 
 	// 关闭下载器
 	if err := e.downloader.Close(); err != nil {
-		e.logger.Error("关闭下载器失败", "error", err)
+		e.logger.Error("failed to close downloader", "error", err)
 	}
 
 	// 关闭 Scraper
 	if err := e.scraper.Close(ctx); err != nil {
-		e.logger.Error("关闭 Scraper 失败", "error", err)
+		e.logger.Error("failed to close scraper", "error", err)
 	}
 
 	// 关闭调度器
 	if err := e.scheduler.Close(ctx, reason); err != nil {
-		e.logger.Error("关闭调度器失败", "error", err)
+		e.logger.Error("failed to close scheduler", "error", err)
 	}
 
 	// 发送 spider_closed 信号
@@ -205,7 +207,7 @@ func (e *Engine) closeSpider(ctx context.Context, reason string) {
 	// 调用 Spider.Closed
 	e.spider.Closed(reason)
 
-	e.logger.Info("Spider 已关闭", "reason", reason)
+	e.logger.Info("spider closed", "reason", reason)
 }
 
 // run 是主调度循环。
@@ -296,7 +298,7 @@ func (e *Engine) handleSpiderIdle(ctx context.Context) {
 			reason = closeErr.Reason
 		}
 		e.slot.closing.Store(true)
-		e.logger.Info("Spider 空闲，准备关闭", "reason", reason)
+		e.logger.Info("spider idle, closing", "reason", reason)
 		// 通知调度循环检查退出条件
 		e.notifySchedule()
 	}
@@ -336,7 +338,7 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 			return // context 取消，不处理
 		}
 
-		e.logger.Debug("下载失败",
+		e.logger.Debug("download failed",
 			"request", request.String(),
 			"error", err,
 		)
@@ -355,8 +357,8 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 
 	e.stats.IncValue("response_received_count", 1, 0)
 
-	e.logger.Debug("收到响应",
-		"status", resp.Status,
+	e.logger.Debug("response received",
+		"status", fmt.Sprintf("%s%d%s", scrapy_log.ColorByStatusCode(resp.Status), resp.Status, scrapy_log.ColorReset),
 		"url", resp.URL.String(),
 	)
 
@@ -386,11 +388,11 @@ func (e *Engine) consumeStartRequests(ctx context.Context) {
 			e.crawl(output.Request)
 		} else if output.IsItem() {
 			// 初始 Item 直接进入 Pipeline（通过 Scraper）
-			e.logger.Debug("初始 Item", "item", output.Item)
+			e.logger.Debug("start item", "item", output.Item)
 		}
 	}
 
-	e.logger.Debug("初始请求消费完毕")
+	e.logger.Debug("start requests consumed")
 	e.notifySchedule()
 }
 

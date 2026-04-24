@@ -114,7 +114,7 @@ func (m *Manager) Close(ctx context.Context) error {
 			if firstErr == nil {
 				firstErr = err
 			}
-			m.logger.Error("关闭 Pipeline 失败",
+			m.logger.Error("failed to close pipeline",
 				"pipeline", entry.Name,
 				"error", err,
 			)
@@ -148,7 +148,7 @@ func (m *Manager) ProcessItem(ctx context.Context, item any, response any) (any,
 
 			// 其他错误
 			m.stats.IncValue("item_error_count", 1, 0)
-			m.logger.Error("Pipeline 处理 Item 失败",
+			m.logger.Error("pipeline failed to process item",
 				"pipeline", entry.Name,
 				"error", err,
 			)

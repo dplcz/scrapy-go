@@ -40,6 +40,6 @@ Thumbs.db
 !examples/**/*.json
 
 # 编译的二进制文件
-/custom_middleware
-/quotes
-/books_json
+examples/quotes/quotes
+examples/books_json/books_json
+examples/custom_middleware/custom_middleware

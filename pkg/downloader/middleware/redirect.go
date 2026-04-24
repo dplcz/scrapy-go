@@ -64,7 +64,7 @@ func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrap
 	// 解析重定向 URL
 	redirectURL, err := resolveRedirectURL(request.URL, location)
 	if err != nil {
-		m.logger.Warn("无效的重定向 URL",
+		m.logger.Warn("invalid redirect URL",
 			"location", location,
 			"request", request.String(),
 			"error", err,
@@ -89,7 +89,7 @@ func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrap
 	}
 
 	if redirectTimes > m.maxRedirectTimes || (ttl > 0 && redirectTimes > ttl) {
-		m.logger.Debug("达到最大重定向次数，丢弃请求",
+		m.logger.Debug("max redirects reached, dropping request",
 			"request", request.String(),
 		)
 		return nil, scrapy_errors.ErrIgnoreRequest
@@ -123,7 +123,7 @@ func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrap
 	redirectReq.DontFilter = request.DontFilter
 	redirectReq.Priority = request.Priority + m.priorityAdjust
 
-	m.logger.Debug("重定向",
+	m.logger.Debug("redirecting",
 		"status", response.Status,
 		"from", request.URL.String(),
 		"to", redirectURL,

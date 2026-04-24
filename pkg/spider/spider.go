@@ -99,10 +99,10 @@ func (s *Base) Start(ctx context.Context) <-chan Output {
 			)
 			if err != nil {
 				if s.Logger != nil {
-					s.Logger.Error("创建初始请求失败",
-						"url", rawURL,
-						"error", err,
-					)
+				s.Logger.Error("failed to create start request",
+					"url", rawURL,
+					"error", err,
+				)
 				}
 				continue
 			}

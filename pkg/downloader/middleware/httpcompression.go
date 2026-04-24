@@ -115,7 +115,7 @@ func (m *HttpCompressionMiddleware) ProcessResponse(ctx context.Context, request
 	for _, encoding := range decodable {
 		decoded, err := decompress(body, encoding, maxSize)
 		if err != nil {
-			m.logger.Warn("解压响应体失败",
+			m.logger.Warn("failed to decompress response body",
 				"url", response.URL.String(),
 				"encoding", encoding,
 				"error", err,
@@ -128,7 +128,7 @@ func (m *HttpCompressionMiddleware) ProcessResponse(ctx context.Context, request
 	// 检查解压后大小
 	decompressedSize := len(body)
 	if warnSize > 0 && originalSize < warnSize && decompressedSize >= warnSize {
-		m.logger.Warn("响应体解压后大小超过警告阈值",
+		m.logger.Warn("decompressed response body exceeds warning threshold",
 			"url", response.URL.String(),
 			"compressed_size", originalSize,
 			"decompressed_size", decompressedSize,

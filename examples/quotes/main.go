@@ -168,7 +168,7 @@ func main() {
 	// 1. 启动本地测试网站
 	site := newLocalQuotesSite()
 	defer site.Close()
-	fmt.Printf("本地测试网站已启动: %s\n\n", site.URL)
+	fmt.Printf("Local test site started: %s\n\n", site.URL)
 
 	// 2. 创建 Spider
 	sp := NewQuotesSpider(site.URL)
@@ -179,26 +179,26 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Println("开始爬取...")
+	fmt.Println("Starting crawl...")
 	fmt.Println("============================================================")
 
 	err := c.Run(ctx, sp)
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-		fmt.Printf("爬取出错: %v\n", err)
+		fmt.Printf("Crawl error: %v\n", err)
 		os.Exit(1)
 	}
 
 	// 4. 输出结果
 	fmt.Println()
 	fmt.Println("============================================================")
-	fmt.Printf("爬取完成！共收集 %d 条引用：\n\n", len(sp.items))
+	fmt.Printf("Crawl completed! Collected %d quotes:\n\n", len(sp.items))
 
 	for i, item := range sp.items {
 		fmt.Printf("[%d] %s\n", i+1, item["text"])
 		fmt.Printf("    — %s\n", item["author"])
 		if tags, ok := item["tags"].([]string); ok && len(tags) > 0 {
-			fmt.Printf("    标签: %v\n", tags)
+		fmt.Printf("    Tags: %v\n", tags)
 		}
-		fmt.Printf("    来源: %s\n\n", item["url"])
+		fmt.Printf("    Source: %s\n\n", item["url"])
 	}
 }

@@ -238,7 +238,7 @@ func (d *Downloader) slotGC(maxAge time.Duration) {
 		if slot.IsIdle() && slot.LastSeen().Before(cutoff) {
 			slot.Close()
 			delete(d.slots, key)
-			d.logger.Debug("回收空闲 Slot",
+		d.logger.Debug("recycled idle slot",
 				"slot", key,
 			)
 		}

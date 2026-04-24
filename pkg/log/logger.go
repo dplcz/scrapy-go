@@ -73,6 +73,28 @@ func NewJSONLogger(level string, output io.Writer, addSource bool) *slog.Logger 
 	return slog.New(handler)
 }
 
+// NewColorLogger 创建一个带颜色输出的 slog.Logger。
+// 不同日志级别使用不同颜色：
+//   - DEBUG: cyan
+//   - INFO:  green
+//   - WARN:  bold yellow
+//   - ERROR: bold red
+//
+// 当输出目标不是终端时（如重定向到文件），颜色自动禁用。
+func NewColorLogger(level string, output io.Writer, addSource bool) *slog.Logger {
+	if output == nil {
+		output = os.Stderr
+	}
+
+	opts := &slog.HandlerOptions{
+		Level:     ParseLevel(level),
+		AddSource: addSource,
+	}
+
+	handler := NewColorHandler(output, opts)
+	return slog.New(handler)
+}
+
 // ============================================================================
 // 上下文关联
 // ============================================================================
