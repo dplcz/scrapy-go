@@ -7,6 +7,7 @@ package spider
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 
 	scrapy_http "scrapy-go/pkg/http"
 )
@@ -93,6 +94,18 @@ func (s *Base) Start(ctx context.Context) <-chan Output {
 	ch := make(chan Output)
 	go func() {
 		defer close(ch)
+		// panic recovery: 防止初始请求生成中的 panic 导致进程崩溃
+		defer func() {
+			if r := recover(); r != nil {
+				stack := string(debug.Stack())
+				if s.Logger != nil {
+					s.Logger.Error("panic recovered in Spider.Start",
+						"panic", r,
+						"stack", stack,
+					)
+				}
+			}
+		}()
 		for _, rawURL := range s.StartURLs {
 			req, err := scrapy_http.NewRequest(rawURL,
 				scrapy_http.WithDontFilter(true),

@@ -277,6 +277,12 @@ func TestEngineBasicCrawl(t *testing.T) {
 	if responseCount == nil || responseCount == 0 {
 		t.Error("should have received at least 1 response")
 	}
+
+	// 验证 HTTP 状态码统计
+	status200Count := sc.GetValue("downloader/response_status_count/200", 0)
+	if status200Count == nil || status200Count == 0 {
+		t.Error("should have at least 1 response with status 200")
+	}
 }
 
 func TestEngineMultiPageCrawl(t *testing.T) {

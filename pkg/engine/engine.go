@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -311,6 +312,19 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 		e.notifySchedule()
 	}()
 
+	// panic recovery: 防止用户回调/中间件/Pipeline 中的 panic 导致进程崩溃
+	defer func() {
+		if r := recover(); r != nil {
+			stack := string(debug.Stack())
+			panicErr := scrapy_errors.NewPanicError(r, stack)
+			e.logger.Error("panic recovered in downloadAndScrape",
+				"request", request.String(),
+				"error", panicErr,
+			)
+			e.stats.IncValue("spider_exceptions/panic", 1, 0)
+		}
+	}()
+
 	// 通过下载器中间件链下载
 	var resp *scrapy_http.Response
 	var err error
@@ -356,6 +370,7 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 	})
 
 	e.stats.IncValue("response_received_count", 1, 0)
+	e.stats.IncValue(fmt.Sprintf("downloader/response_status_count/%d", resp.Status), 1, 0)
 
 	e.logger.Debug("response received",
 		"status", fmt.Sprintf("%s%d%s", scrapy_log.ColorByStatusCode(resp.Status), resp.Status, scrapy_log.ColorReset),
@@ -378,6 +393,18 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 // consumeStartRequests 消费 Spider 的初始请求。
 func (e *Engine) consumeStartRequests(ctx context.Context) {
 	defer e.startRequestsDone.Store(true)
+
+	// panic recovery: 防止 Spider.Start() 中的 panic 导致进程崩溃
+	defer func() {
+		if r := recover(); r != nil {
+			stack := string(debug.Stack())
+			panicErr := scrapy_errors.NewPanicError(r, stack)
+			e.logger.Error("panic recovered in consumeStartRequests",
+				"error", panicErr,
+			)
+			e.stats.IncValue("spider_exceptions/panic", 1, 0)
+		}
+	}()
 
 	ch := e.spider.Start(ctx)
 	for output := range ch {

@@ -177,6 +177,35 @@ func NewNotConfiguredError(message string) *NotConfiguredError {
 	return &NotConfiguredError{Message: message}
 }
 
+// ErrPanic 表示从 panic 中恢复的错误。
+// 当用户代码（Spider 回调、Pipeline、中间件等）发生 panic 时，
+// 框架会捕获 panic 并将其转换为此错误，避免整个进程崩溃。
+var ErrPanic = errors.New("panic recovered")
+
+// PanicError 是带有 panic 值和堆栈信息的结构化错误。
+// 使用 errors.Is(err, ErrPanic) 可以匹配此错误。
+type PanicError struct {
+	// Value 是 panic 传递的原始值。
+	Value any
+	// Stack 是 panic 发生时的堆栈信息。
+	Stack string
+}
+
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("panic recovered: %v\n%s", e.Value, e.Stack)
+}
+
+// Is 实现 errors.Is 接口，使 PanicError 可以匹配 ErrPanic。
+func (e *PanicError) Is(target error) bool {
+	return target == ErrPanic
+}
+
+// NewPanicError 创建一个 PanicError。
+// value 是 recover() 返回的值，stack 是格式化的堆栈信息。
+func NewPanicError(value any, stack string) *PanicError {
+	return &PanicError{Value: value, Stack: stack}
+}
+
 // ============================================================================
 // 辅助函数
 // ============================================================================

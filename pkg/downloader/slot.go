@@ -2,7 +2,9 @@ package downloader
 
 import (
 	"context"
+	"fmt"
 	"math/rand/v2"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -123,6 +125,13 @@ func (s *Slot) Enqueue(ctx context.Context, request *scrapy_http.Request) (*scra
 // 关键行为：当配置了 delay 时，同一 Slot 内的请求自动串行化出队，
 // 确保两次请求之间至少间隔 delay 时间。
 func (s *Slot) processQueue() {
+	defer func() {
+		if r := recover(); r != nil {
+			// processQueue 是长期运行的 goroutine，恢复后重启
+			_ = debug.Stack() // 记录堆栈信息
+			go s.processQueue()
+		}
+	}()
 	for {
 		select {
 		case <-s.done:
@@ -172,6 +181,16 @@ func (s *Slot) processTask(task *downloadTask) {
 			<-s.transferSem
 			// 移除传输中标记
 			s.RemoveTransferring(task.request)
+		}()
+
+		// panic recovery: 防止下载处理器中的 panic 导致进程崩溃
+		defer func() {
+			if r := recover(); r != nil {
+				stack := string(debug.Stack())
+				task.resultCh <- downloadResult{
+					err: fmt.Errorf("panic in download handler: %v\n%s", r, stack),
+				}
+			}
 		}()
 
 		// 应用超时，确保超时仅覆盖网络传输阶段，
