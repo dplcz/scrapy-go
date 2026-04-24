@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"scrapy-go/pkg/downloader"
-	dl_mw "scrapy-go/pkg/downloader/middleware"
 	scrapy_errors "scrapy-go/pkg/errors"
 	scrapy_http "scrapy-go/pkg/http"
 	scrapy_log "scrapy-go/pkg/log"
@@ -35,7 +34,7 @@ type Engine struct {
 	spider     spider.Spider
 	scheduler  scheduler.Scheduler
 	downloader *downloader.Downloader
-	dlMW       *dl_mw.Manager
+	dlMW       *downloader.MiddlewareManager
 	scraper    *scraper.Scraper
 	signals    *signal.Manager
 	stats      stats.Collector
@@ -59,7 +58,7 @@ func NewEngine(
 	sp spider.Spider,
 	sched scheduler.Scheduler,
 	dl *downloader.Downloader,
-	dlMW *dl_mw.Manager,
+	dlMW *downloader.MiddlewareManager,
 	sc *scraper.Scraper,
 	signals *signal.Manager,
 	statsCollector stats.Collector,

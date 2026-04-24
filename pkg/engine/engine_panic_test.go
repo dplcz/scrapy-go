@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"scrapy-go/pkg/downloader"
-	dl_mw "scrapy-go/pkg/downloader/middleware"
 	scrapy_http "scrapy-go/pkg/http"
 	"scrapy-go/pkg/pipeline"
 	"scrapy-go/pkg/scheduler"
@@ -175,7 +174,7 @@ func buildTestEngineWithPipeline(sp spider.Spider, pm *pipeline.Manager, sc stat
 	sched := scheduler.NewDefaultScheduler(scheduler.WithStats(sc))
 	handler := downloader.NewHTTPDownloadHandler(10 * time.Second)
 	dl := downloader.NewDownloader(s, handler, sm, sc, nil)
-	dlMW := dl_mw.NewManager(nil)
+	dlMW := downloader.NewMiddlewareManager(nil)
 	spMW := spider_mw.NewManager(nil)
 
 	if pm == nil {

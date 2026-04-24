@@ -1,4 +1,4 @@
-package middleware
+package downloader
 
 import (
 	"context"
@@ -8,36 +8,38 @@ import (
 
 	scrapy_errors "scrapy-go/pkg/errors"
 	scrapy_http "scrapy-go/pkg/http"
+
+	"scrapy-go/pkg/downloader/middleware"
 )
 
-// Entry 表示一个带优先级的中间件条目。
-type Entry struct {
-	Middleware DownloaderMiddleware
-	Name      string
-	Priority  int
+// MiddlewareEntry 表示一个带优先级的中间件条目。
+type MiddlewareEntry struct {
+	Middleware middleware.DownloaderMiddleware
+	Name       string
+	Priority   int
 }
 
-// Manager 管理下载器中间件链。
+// MiddlewareManager 管理下载器中间件链。
 // 对应 Scrapy 的 DownloaderMiddlewareManager。
-type Manager struct {
-	middlewares []Entry // 按优先级排序（正序）
-	logger     *slog.Logger
+type MiddlewareManager struct {
+	middlewares []MiddlewareEntry // 按优先级排序（正序）
+	logger      *slog.Logger
 }
 
-// NewManager 创建一个新的中间件管理器。
-func NewManager(logger *slog.Logger) *Manager {
+// NewMiddlewareManager 创建一个新的中间件管理器。
+func NewMiddlewareManager(logger *slog.Logger) *MiddlewareManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Manager{
+	return &MiddlewareManager{
 		logger: logger,
 	}
 }
 
 // AddMiddleware 添加一个中间件。
 // 中间件按优先级排序，优先级数值小的先执行 ProcessRequest。
-func (m *Manager) AddMiddleware(mw DownloaderMiddleware, name string, priority int) {
-	m.middlewares = append(m.middlewares, Entry{
+func (m *MiddlewareManager) AddMiddleware(mw middleware.DownloaderMiddleware, name string, priority int) {
+	m.middlewares = append(m.middlewares, MiddlewareEntry{
 		Middleware: mw,
 		Name:      name,
 		Priority:  priority,
@@ -49,7 +51,7 @@ func (m *Manager) AddMiddleware(mw DownloaderMiddleware, name string, priority i
 }
 
 // Count 返回中间件数量。
-func (m *Manager) Count() int {
+func (m *MiddlewareManager) Count() int {
 	return len(m.middlewares)
 }
 
@@ -64,7 +66,7 @@ func (m *Manager) Count() int {
 //
 // 当中间件返回 NewRequestError 时，该错误会被直接传播给调用方（Engine），
 // 由 Engine 负责将新请求重新调度到 Scheduler。
-func (m *Manager) Download(ctx context.Context, downloadFunc DownloadFunc, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) Download(ctx context.Context, downloadFunc middleware.DownloadFunc, request *scrapy_http.Request) (*scrapy_http.Response, error) {
 	// 1. ProcessRequest 链（正序）
 	result, err := m.processRequest(ctx, request)
 	if err != nil {
@@ -96,7 +98,7 @@ func (m *Manager) Download(ctx context.Context, downloadFunc DownloadFunc, reque
 }
 
 // processRequest 正序调用所有中间件的 ProcessRequest。
-func (m *Manager) processRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) processRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
 	for _, entry := range m.middlewares {
 		resp, err := entry.Middleware.ProcessRequest(ctx, request)
 		if err != nil {
@@ -111,7 +113,7 @@ func (m *Manager) processRequest(ctx context.Context, request *scrapy_http.Reque
 
 // processResponse 逆序调用所有中间件的 ProcessResponse。
 // 当中间件返回 NewRequestError 时，直接传播给调用方。
-func (m *Manager) processResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) processResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
 	for i := len(m.middlewares) - 1; i >= 0; i-- {
 		resp, err := m.middlewares[i].Middleware.ProcessResponse(ctx, request, response)
 		if err != nil {
@@ -124,7 +126,7 @@ func (m *Manager) processResponse(ctx context.Context, request *scrapy_http.Requ
 
 // processException 逆序调用所有中间件的 ProcessException。
 // 当中间件返回 NewRequestError 时，直接传播给调用方。
-func (m *Manager) processException(ctx context.Context, request *scrapy_http.Request, originalErr error) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) processException(ctx context.Context, request *scrapy_http.Request, originalErr error) (*scrapy_http.Response, error) {
 	for i := len(m.middlewares) - 1; i >= 0; i-- {
 		resp, err := m.middlewares[i].Middleware.ProcessException(ctx, request, originalErr)
 		if err != nil {

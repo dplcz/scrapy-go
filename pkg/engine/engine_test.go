@@ -238,7 +238,7 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector,
 	handler := downloader.NewHTTPDownloadHandler(timeout)
 	dl := downloader.NewDownloader(s, handler, sm, sc, nil)
 
-	dlMW := dl_mw.NewManager(nil)
+	dlMW := downloader.NewMiddlewareManager(nil)
 	dlMW.AddMiddleware(dl_mw.NewUserAgentMiddleware("scrapy-go-test/0.1"), "UserAgent", 500)
 
 	spMW := spider_mw.NewManager(nil)
@@ -433,7 +433,7 @@ func TestEngineWithPipeline(t *testing.T) {
 	handler := downloader.NewHTTPDownloadHandler(10 * time.Second)
 	dl := downloader.NewDownloader(s, handler, sm, sc, nil)
 
-	dlMW := dl_mw.NewManager(nil)
+	dlMW := downloader.NewMiddlewareManager(nil)
 	spMW := spider_mw.NewManager(nil)
 
 	// 添加一个收集 Item 的 Pipeline

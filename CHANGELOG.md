@@ -5,6 +5,49 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.2.3] - 2026-04-24
+
+### 修复
+- **NewRequestError 处理** — 在中间件管理器的 `processResponse` 和 `processException` 中添加 `NewRequestError` 的显式检查，确保重试/重定向产生的新请求能正确传播给 Engine 重新调度
+
+### 重构
+- **MiddlewareManager 位置调整** — 将下载器中间件管理器从 `pkg/downloader/middleware/manager.go` 移到 `pkg/downloader/middleware_manager.go`
+  - `middleware.Manager` → `downloader.MiddlewareManager`
+  - `middleware.NewManager()` → `downloader.NewMiddlewareManager()`
+  - `middleware.Entry` → `downloader.MiddlewareEntry`
+  - 更贴近 Scrapy 原版设计：Manager 是 downloader 的编排层，不是中间件本身
+  - Engine 可直接使用 `downloader.MiddlewareManager`，无需 `dl_mw` 包别名
+- **测试迁移** — Manager 相关测试从 `middleware/middleware_test.go` 移到 `downloader/middleware_manager_test.go`
+
+### 变更
+- 更新所有引用文件的导入路径：`engine.go`、`engine_test.go`、`engine_panic_test.go`、`crawler.go`
+- 更新 README 核心组件表格和项目结构描述
+
+---
+
+## [v0.2.2] - 2026-04-24
+
+### 新增
+- **Panic Recovery** — 为所有关键 goroutine 添加 panic 恢复机制
+  - Engine: `downloadAndScrape`、`consumeStartRequests`
+  - Downloader: `processQueue`（自动重启）、下载 goroutine
+  - Spider: `Base.Start()` 内部 goroutine
+- **PanicError 错误类型** — 新增 `ErrPanic` 哨兵错误和 `PanicError` 结构化错误类型，包含 panic 值和堆栈信息
+- **HTTP 状态码统计** — 自动统计每个 HTTP 响应状态码的数量（`downloader/response_status_count/XXX`）
+- **Panic 统计** — 自动递增 `spider_exceptions/panic` 计数器
+
+---
+
+## [v0.2.1] - 2026-04-24
+
+### 新增
+- **日志英文化** — 所有框架日志信息统一改为英文格式，便于国际化和机器解析
+- **彩色日志输出** — 新增 `ColorHandler`（自定义 `slog.Handler`），不同日志级别使用不同 ANSI 颜色，非终端时自动禁用
+- **Scrapy 风格列表日志** — 中间件、Pipeline、统计信息使用 Scrapy 风格的一条日志包含完整列表
+- **Pipeline 启用日志** — 补充 Pipeline 组件的启用状态日志
+
+---
+
 ## [v0.2.0] - 2026-04-24
 
 ### 新增

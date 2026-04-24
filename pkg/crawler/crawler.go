@@ -42,7 +42,7 @@ type Crawler struct {
 	spider     spider.Spider
 	scheduler  scheduler.Scheduler
 	downloader *downloader.Downloader
-	dlMW       *dl_mw.Manager
+	dlMW       *downloader.MiddlewareManager
 	spiderMW   *spider_mw.Manager
 	pipelines  *pipeline.Manager
 	scraper    *scraper.Scraper
@@ -54,7 +54,7 @@ type Crawler struct {
 	userPipelines []pipeline.Entry
 
 	// userDLMiddlewares 存储用户注册的自定义下载器中间件
-	userDLMiddlewares []dl_mw.Entry
+	userDLMiddlewares []downloader.MiddlewareEntry
 
 	// userSpiderMiddlewares 存储用户注册的自定义 Spider 中间件
 	userSpiderMiddlewares []spider_mw.Entry
@@ -139,7 +139,7 @@ func (c *Crawler) AddPipeline(p pipeline.ItemPipeline, name string, priority int
 //	c.AddDownloaderMiddleware(&MyAuthMiddleware{}, "Auth", 450)
 //	c.Run(ctx, mySpider)
 func (c *Crawler) AddDownloaderMiddleware(mw dl_mw.DownloaderMiddleware, name string, priority int) {
-	c.userDLMiddlewares = append(c.userDLMiddlewares, dl_mw.Entry{
+	c.userDLMiddlewares = append(c.userDLMiddlewares, downloader.MiddlewareEntry{
 		Middleware: mw,
 		Name:       name,
 		Priority:   priority,
@@ -340,8 +340,8 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 //
 // 修改内置中间件优先级的方式：
 //   - 在 DOWNLOADER_MIDDLEWARES 中设置新的优先级（如 {"Retry": 100}）
-func (c *Crawler) buildDownloaderMiddlewares() *dl_mw.Manager {
-	m := dl_mw.NewManager(c.Logger)
+func (c *Crawler) buildDownloaderMiddlewares() *downloader.MiddlewareManager {
+	m := downloader.NewMiddlewareManager(c.Logger)
 
 	// 收集所有中间件条目（内置 + 自定义），用于排序打印和优先级冲突检测
 	var allEntries []componentEntry
