@@ -168,12 +168,14 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("DOWNLOADER_MIDDLEWARES_BASE", map[string]int{
-		"DownloadTimeout": 300,
-		"DefaultHeaders":  400,
-		"HttpAuth":        410,
-		"UserAgent":       500,
-		"Retry":           550,
-		"Redirect":        600,
+		"DownloadTimeout":  300,
+		"DefaultHeaders":   400,
+		"HttpAuth":         410,
+		"UserAgent":        500,
+		"Retry":            550,
+		"HttpCompression":  590,
+		"Redirect":         600,
+		"Cookies":          700,
 	}, d)
 	s.Set("DOWNLOADER_MIDDLEWARES", map[string]int{}, d)
 

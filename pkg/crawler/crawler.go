@@ -319,6 +319,21 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		redirectPriorityAdjust := c.Settings.GetInt("REDIRECT_PRIORITY_ADJUST", 2)
 		return dl_mw.NewRedirectMiddleware(maxRedirects, redirectPriorityAdjust, c.Logger)
 	},
+	"HttpCompression": func(c *Crawler) dl_mw.DownloaderMiddleware {
+		if !c.Settings.GetBool("COMPRESSION_ENABLED", true) {
+			return nil
+		}
+		maxSize := c.Settings.GetInt("DOWNLOAD_MAXSIZE", 1024*1024*1024)
+		warnSize := c.Settings.GetInt("DOWNLOAD_WARNSIZE", 32*1024*1024)
+		return dl_mw.NewHttpCompressionMiddleware(maxSize, warnSize, c.Stats, c.Logger)
+	},
+	"Cookies": func(c *Crawler) dl_mw.DownloaderMiddleware {
+		if !c.Settings.GetBool("COOKIES_ENABLED", true) {
+			return nil
+		}
+		debug := c.Settings.GetBool("COOKIES_DEBUG", false)
+		return dl_mw.NewCookiesMiddleware(debug, c.Logger)
+	},
 }
 
 // buildDownloaderMiddlewares 构建下载器中间件链。
