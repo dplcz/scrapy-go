@@ -274,6 +274,13 @@ type MiddlewareFactory func(c *Crawler) dl_mw.DownloaderMiddleware
 // builtinMiddlewareFactories 是内置下载器中间件的注册表。
 // key 为中间件名称，与 DOWNLOADER_MIDDLEWARES_BASE 中的名称一一对应。
 var builtinMiddlewareFactories = map[string]MiddlewareFactory{
+	"DownloadTimeout": func(c *Crawler) dl_mw.DownloaderMiddleware {
+		timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
+		if timeout <= 0 {
+			return nil
+		}
+		return dl_mw.NewDownloadTimeoutMiddleware(timeout, c.Logger)
+	},
 	"DefaultHeaders": func(c *Crawler) dl_mw.DownloaderMiddleware {
 		defaultHeaders := c.Settings.Get("DEFAULT_REQUEST_HEADERS", nil)
 		if headers, ok := defaultHeaders.(http.Header); ok {
@@ -281,6 +288,15 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		}
 		// 没有配置默认请求头，返回 nil 表示跳过
 		return nil
+	},
+	"HttpAuth": func(c *Crawler) dl_mw.DownloaderMiddleware {
+		user := c.Settings.GetString("HTTP_USER", "")
+		pass := c.Settings.GetString("HTTP_PASS", "")
+		if user == "" && pass == "" {
+			return nil
+		}
+		domain := c.Settings.GetString("HTTP_AUTH_DOMAIN", "")
+		return dl_mw.NewHttpAuthMiddleware(user, pass, domain, c.Logger)
 	},
 	"UserAgent": func(c *Crawler) dl_mw.DownloaderMiddleware {
 		userAgent := c.Settings.GetString("USER_AGENT", "scrapy-go/0.1.0")

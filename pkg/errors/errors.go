@@ -122,6 +122,39 @@ func NewStopDownloadError(fail bool) *StopDownloadError {
 	return &StopDownloadError{Fail: fail}
 }
 
+// ErrNewRequest 是一个哨兵错误，表示中间件希望用一个新请求替代当前请求。
+// 使用 errors.Is(err, ErrNewRequest) 可以匹配 NewRequestError。
+var ErrNewRequest = errors.New("new request")
+
+// NewRequestError 表示中间件需要将当前请求替换为一个新请求。
+// 典型场景包括重试（RetryMiddleware）和重定向（RedirectMiddleware）。
+//
+// 当中间件的 ProcessResponse 或 ProcessException 返回此错误时，
+// Manager 会将其传播给 Engine，由 Engine 将新请求重新调度到 Scheduler。
+// 这种方式替代了之前通过 Meta 键（如 "_retry_request"、"_redirect_request"）
+// 传递新请求的 hack 方式，更加类型安全且符合 Go 的错误处理惯例。
+type NewRequestError struct {
+	// Request 是需要重新调度的新请求。
+	Request any // 实际类型为 *http.Request，使用 any 避免循环依赖
+	// Reason 是产生新请求的原因（如 "retry"、"redirect"）。
+	Reason string
+}
+
+func (e *NewRequestError) Error() string {
+	return fmt.Sprintf("new request: %s", e.Reason)
+}
+
+// Is 实现 errors.Is 接口，使 NewRequestError 可以匹配 ErrNewRequest。
+func (e *NewRequestError) Is(target error) bool {
+	return target == ErrNewRequest
+}
+
+// NewNewRequestError 创建一个 NewRequestError。
+// request 参数的实际类型应为 *http.Request。
+func NewNewRequestError(request any, reason string) *NewRequestError {
+	return &NewRequestError{Request: request, Reason: reason}
+}
+
 // NotConfiguredError 是带消息的 NotConfigured 错误。
 type NotConfiguredError struct {
 	Message string

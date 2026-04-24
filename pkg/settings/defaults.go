@@ -81,6 +81,14 @@ func (s *Settings) loadDefaults() {
 	s.Set("COOKIES_DEBUG", false, d)
 
 	// ========================================================================
+	// HTTP 认证
+	// ========================================================================
+
+	s.Set("HTTP_USER", "", d)
+	s.Set("HTTP_PASS", "", d)
+	s.Set("HTTP_AUTH_DOMAIN", "", d)
+
+	// ========================================================================
 	// HTTP 压缩
 	// ========================================================================
 
@@ -160,7 +168,9 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("DOWNLOADER_MIDDLEWARES_BASE", map[string]int{
+		"DownloadTimeout": 300,
 		"DefaultHeaders":  400,
+		"HttpAuth":        410,
 		"UserAgent":       500,
 		"Retry":           550,
 		"Redirect":        600,

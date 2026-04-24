@@ -322,6 +322,15 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 	}
 
 	if err != nil {
+		// 检查是否为 NewRequestError（重试/重定向产生的新请求）
+		var newReqErr *scrapy_errors.NewRequestError
+		if errors.As(err, &newReqErr) {
+			if newReq, ok := newReqErr.Request.(*scrapy_http.Request); ok {
+				e.crawl(newReq)
+			}
+			return
+		}
+
 		// 下载失败
 		if errors.Is(err, context.Canceled) {
 			return // context 取消，不处理
@@ -335,16 +344,6 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 		// 调用 Scraper 的错误处理
 		newReqs, _ := e.scraper.ScrapeError(ctx, err, request)
 		e.scheduleNewRequests(newReqs)
-		return
-	}
-
-	// 检查重试/重定向请求（由中间件设置）
-	if retryReq := e.extractMetaRequest(request, "_retry_request"); retryReq != nil {
-		e.crawl(retryReq)
-		return
-	}
-	if redirectReq := e.extractMetaRequest(request, "_redirect_request"); redirectReq != nil {
-		e.crawl(redirectReq)
 		return
 	}
 
@@ -417,17 +416,6 @@ func (e *Engine) scheduleNewRequests(requests []*scrapy_http.Request) {
 	for _, req := range requests {
 		e.crawl(req)
 	}
-}
-
-// extractMetaRequest 从请求 Meta 中提取并移除一个请求。
-func (e *Engine) extractMetaRequest(request *scrapy_http.Request, key string) *scrapy_http.Request {
-	if v, ok := request.GetMeta(key); ok {
-		if req, ok := v.(*scrapy_http.Request); ok {
-			delete(request.Meta, key)
-			return req
-		}
-	}
-	return nil
 }
 
 // notifySchedule 通知调度循环有新请求。

@@ -15,6 +15,9 @@ import (
 //
 // 对应 Scrapy 的 RedirectMiddleware（优先级 600）。
 //
+// 当需要重定向时，中间件返回 NewRequestError，由 Engine 将新请求重新调度到 Scheduler。
+// 这种方式替代了之前通过 Meta 键传递重定向请求的 hack 方式。
+//
 // 相关配置：
 //   - REDIRECT_ENABLED: 是否启用重定向（默认 true）
 //   - REDIRECT_MAX_TIMES: 最大重定向次数（默认 20）
@@ -38,7 +41,7 @@ func NewRedirectMiddleware(maxRedirectTimes int, priorityAdjust int, logger *slo
 	}
 }
 
-// ProcessResponse 检查响应是否为重定向，如果是则创建新请求跟踪。
+// ProcessResponse 检查响应是否为重定向，如果是则返回 NewRequestError 触发重定向。
 func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
 	// 检查 dont_redirect meta
 	if dontRedirect, ok := request.GetMeta("dont_redirect"); ok {
@@ -126,10 +129,8 @@ func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrap
 		"to", redirectURL,
 	)
 
-	// 将重定向请求存入 Meta，由 Engine 重新调度
-	request.SetMeta("_redirect_request", redirectReq)
-
-	return response, nil
+	// 返回 NewRequestError，由 Manager 传播给 Engine 重新调度
+	return nil, scrapy_errors.NewNewRequestError(redirectReq, fmt.Sprintf("redirect %d", response.Status))
 }
 
 // buildRedirectRequest 构建重定向请求。

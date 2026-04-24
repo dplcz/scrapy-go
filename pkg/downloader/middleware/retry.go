@@ -15,6 +15,9 @@ import (
 //
 // 对应 Scrapy 的 RetryMiddleware（优先级 550）。
 //
+// 当需要重试时，中间件返回 NewRequestError，由 Engine 将新请求重新调度到 Scheduler。
+// 这种方式替代了之前通过 Meta 键传递重试请求的 hack 方式。
+//
 // 相关配置：
 //   - RETRY_ENABLED: 是否启用重试（默认 true）
 //   - RETRY_TIMES: 最大重试次数（默认 2，即总共 3 次请求）
@@ -52,7 +55,7 @@ func NewRetryMiddleware(maxRetryTimes int, retryHTTPCodes []int, priorityAdjust 
 	}
 }
 
-// ProcessResponse 检查响应状态码，如果在重试列表中则重试。
+// ProcessResponse 检查响应状态码，如果在重试列表中则返回 NewRequestError 触发重试。
 func (m *RetryMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
 	// 检查 dont_retry meta
 	if dontRetry, ok := request.GetMeta("dont_retry"); ok {
@@ -66,11 +69,8 @@ func (m *RetryMiddleware) ProcessResponse(ctx context.Context, request *scrapy_h
 		reason := fmt.Sprintf("%d %s", response.Status, statusText(response.Status))
 		retryReq := m.retry(request, reason)
 		if retryReq != nil {
-			// 返回 nil response 和 nil error 不合适，
-			// 我们需要通过特殊方式告诉 Engine 这是一个重试请求。
-			// 将重试请求存入原始请求的 Meta 中，由 Engine 处理。
-			request.SetMeta("_retry_request", retryReq)
-			return response, nil
+			// 返回 NewRequestError，由 Manager 传播给 Engine 重新调度
+			return nil, scrapy_errors.NewNewRequestError(retryReq, "retry")
 		}
 	}
 
@@ -90,12 +90,8 @@ func (m *RetryMiddleware) ProcessException(ctx context.Context, request *scrapy_
 	if scrapy_errors.IsRetryable(err) {
 		retryReq := m.retry(request, err.Error())
 		if retryReq != nil {
-			request.SetMeta("_retry_request", retryReq)
-			// 返回一个空响应表示异常已被处理（将由 Engine 重新调度重试请求）
-			resp, _ := scrapy_http.NewResponse(request.URL.String(), 0,
-				scrapy_http.WithRequest(request),
-			)
-			return resp, nil
+			// 返回 NewRequestError，由 Manager 传播给 Engine 重新调度
+			return nil, scrapy_errors.NewNewRequestError(retryReq, "retry")
 		}
 	}
 

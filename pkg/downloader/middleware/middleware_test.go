@@ -2,9 +2,11 @@ package middleware
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	scrapy_errors "scrapy-go/pkg/errors"
 	scrapy_http "scrapy-go/pkg/http"
@@ -129,6 +131,38 @@ func TestManagerProcessExceptionUnhandled(t *testing.T) {
 	}
 }
 
+func TestManagerNewRequestErrorPropagation(t *testing.T) {
+	m := NewManager(nil)
+
+	// 添加一个返回 NewRequestError 的中间件（模拟重试/重定向）
+	newReq := scrapy_http.MustNewRequest("https://example.com/retry")
+	m.AddMiddleware(&newRequestMW{newReq: newReq}, "newreq", 100)
+
+	downloadFunc := func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+		return scrapy_http.MustNewResponse(req.URL.String(), 500, scrapy_http.WithRequest(req)), nil
+	}
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	_, err := m.Download(context.Background(), downloadFunc, req)
+
+	// NewRequestError 应该被传播给调用方
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
+	}
+
+	var newReqErr *scrapy_errors.NewRequestError
+	if !errors.As(err, &newReqErr) {
+		t.Fatal("should be able to extract NewRequestError")
+	}
+	if extractedReq, ok := newReqErr.Request.(*scrapy_http.Request); ok {
+		if extractedReq.URL.String() != "https://example.com/retry" {
+			t.Errorf("expected retry URL, got %s", extractedReq.URL.String())
+		}
+	} else {
+		t.Fatal("NewRequestError.Request should be *http.Request")
+	}
+}
+
 func TestManagerCount(t *testing.T) {
 	m := NewManager(nil)
 	if m.Count() != 0 {
@@ -223,20 +257,22 @@ func TestRetryMiddlewareHTTPCode(t *testing.T) {
 		scrapy_http.WithRequest(req),
 	)
 
-	result, err := mw.ProcessResponse(context.Background(), req, resp)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("result should not be nil")
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
+
+	// 应返回 NewRequestError
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	// 检查是否创建了重试请求
-	retryReq, ok := req.GetMeta("_retry_request")
-	if !ok {
-		t.Fatal("should have _retry_request in meta")
+	var newReqErr *scrapy_errors.NewRequestError
+	if !errors.As(err, &newReqErr) {
+		t.Fatal("should be able to extract NewRequestError")
 	}
-	rr := retryReq.(*scrapy_http.Request)
+
+	rr, ok := newReqErr.Request.(*scrapy_http.Request)
+	if !ok {
+		t.Fatal("NewRequestError.Request should be *http.Request")
+	}
 	if rr.Priority != -1 {
 		t.Errorf("retry request priority should be -1, got %d", rr.Priority)
 	}
@@ -266,11 +302,6 @@ func TestRetryMiddlewareNonRetryCode(t *testing.T) {
 	if result.Status != 200 {
 		t.Error("non-retry status should pass through")
 	}
-
-	_, hasRetry := req.GetMeta("_retry_request")
-	if hasRetry {
-		t.Error("should not have retry request for 200")
-	}
 }
 
 func TestRetryMiddlewareMaxRetries(t *testing.T) {
@@ -284,11 +315,13 @@ func TestRetryMiddlewareMaxRetries(t *testing.T) {
 		scrapy_http.WithRequest(req),
 	)
 
-	mw.ProcessResponse(context.Background(), req, resp)
-
-	_, hasRetry := req.GetMeta("_retry_request")
-	if hasRetry {
-		t.Error("should not retry when max retries reached")
+	result, err := mw.ProcessResponse(context.Background(), req, resp)
+	// 达到最大重试次数，应正常返回响应（不重试）
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != 500 {
+		t.Errorf("expected status 500 when max retries reached, got %d", result.Status)
 	}
 
 	maxReached := sc.GetValue("retry/max_reached", 0)
@@ -307,7 +340,10 @@ func TestRetryMiddlewareDontRetry(t *testing.T) {
 		scrapy_http.WithRequest(req),
 	)
 
-	result, _ := mw.ProcessResponse(context.Background(), req, resp)
+	result, err := mw.ProcessResponse(context.Background(), req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if result.Status != 500 {
 		t.Error("dont_retry should pass through")
 	}
@@ -319,17 +355,56 @@ func TestRetryMiddlewareException(t *testing.T) {
 
 	req := scrapy_http.MustNewRequest("https://example.com")
 
-	resp, err := mw.ProcessException(context.Background(), req, scrapy_errors.ErrDownloadTimeout)
+	_, err := mw.ProcessException(context.Background(), req, scrapy_errors.ErrDownloadTimeout)
+
+	// 应返回 NewRequestError
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest for retryable exception, got %v", err)
+	}
+
+	var newReqErr *scrapy_errors.NewRequestError
+	if !errors.As(err, &newReqErr) {
+		t.Fatal("should be able to extract NewRequestError")
+	}
+
+	rr, ok := newReqErr.Request.(*scrapy_http.Request)
+	if !ok {
+		t.Fatal("NewRequestError.Request should be *http.Request")
+	}
+	if !rr.DontFilter {
+		t.Error("retry request should have DontFilter=true")
+	}
+}
+
+func TestRetryMiddlewareExceptionNonRetryable(t *testing.T) {
+	mw := NewRetryMiddleware(2, nil, -1, nil, nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+
+	resp, err := mw.ProcessException(context.Background(), req, errors.New("some random error"))
+	// 非可重试异常，应返回 nil, nil（继续传播）
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp == nil {
-		t.Fatal("should return response for retryable exception")
+	if resp != nil {
+		t.Error("non-retryable exception should return nil response")
 	}
+}
 
-	_, hasRetry := req.GetMeta("_retry_request")
-	if !hasRetry {
-		t.Error("should have retry request for retryable exception")
+func TestRetryMiddlewareRequestLevelMaxRetries(t *testing.T) {
+	mw := NewRetryMiddleware(2, []int{500}, -1, nil, nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	req.SetMeta("max_retry_times", 5) // 请求级覆盖
+
+	resp := scrapy_http.MustNewResponse("https://example.com", 500,
+		scrapy_http.WithRequest(req),
+	)
+
+	// 第一次重试应成功
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 }
 
@@ -348,20 +423,22 @@ func TestRedirectMiddleware301(t *testing.T) {
 		}),
 	)
 
-	result, err := mw.ProcessResponse(context.Background(), req, resp)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("result should not be nil")
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
+
+	// 应返回 NewRequestError
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	// 检查重定向请求
-	redirectReq, ok := req.GetMeta("_redirect_request")
-	if !ok {
-		t.Fatal("should have _redirect_request in meta")
+	var newReqErr *scrapy_errors.NewRequestError
+	if !errors.As(err, &newReqErr) {
+		t.Fatal("should be able to extract NewRequestError")
 	}
-	rr := redirectReq.(*scrapy_http.Request)
+
+	rr, ok := newReqErr.Request.(*scrapy_http.Request)
+	if !ok {
+		t.Fatal("NewRequestError.Request should be *http.Request")
+	}
 	if rr.URL.String() != "https://example.com/new" {
 		t.Errorf("redirect URL should be /new, got %s", rr.URL.String())
 	}
@@ -381,13 +458,16 @@ func TestRedirectMiddleware302POST(t *testing.T) {
 		}),
 	)
 
-	mw.ProcessResponse(context.Background(), req, resp)
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
-	redirectReq, ok := req.GetMeta("_redirect_request")
-	if !ok {
-		t.Fatal("should have redirect request")
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
-	rr := redirectReq.(*scrapy_http.Request)
+
+	var newReqErr *scrapy_errors.NewRequestError
+	errors.As(err, &newReqErr)
+	rr := newReqErr.Request.(*scrapy_http.Request)
+
 	// 302 + POST → GET
 	if rr.Method != "GET" {
 		t.Errorf("302 POST should redirect as GET, got %s", rr.Method)
@@ -411,13 +491,16 @@ func TestRedirectMiddleware307(t *testing.T) {
 		}),
 	)
 
-	mw.ProcessResponse(context.Background(), req, resp)
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
-	redirectReq, ok := req.GetMeta("_redirect_request")
-	if !ok {
-		t.Fatal("should have redirect request")
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
-	rr := redirectReq.(*scrapy_http.Request)
+
+	var newReqErr *scrapy_errors.NewRequestError
+	errors.As(err, &newReqErr)
+	rr := newReqErr.Request.(*scrapy_http.Request)
+
 	// 307 保持原方法
 	if rr.Method != "POST" {
 		t.Errorf("307 should preserve method, got %s", rr.Method)
@@ -513,19 +596,194 @@ func TestRedirectMiddlewareCrossDomain(t *testing.T) {
 		}),
 	)
 
-	mw.ProcessResponse(context.Background(), req, resp)
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
-	redirectReq, ok := req.GetMeta("_redirect_request")
-	if !ok {
-		t.Fatal("should have redirect request")
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
-	rr := redirectReq.(*scrapy_http.Request)
+
+	var newReqErr *scrapy_errors.NewRequestError
+	errors.As(err, &newReqErr)
+	rr := newReqErr.Request.(*scrapy_http.Request)
+
 	// 跨域应移除敏感头
 	if rr.Headers.Get("Cookie") != "" {
 		t.Error("Cookie should be removed on cross-domain redirect")
 	}
 	if rr.Headers.Get("Authorization") != "" {
 		t.Error("Authorization should be removed on cross-domain redirect")
+	}
+}
+
+func TestRedirectMiddlewareRedirectHistory(t *testing.T) {
+	mw := NewRedirectMiddleware(20, 2, nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com/page1")
+	resp := scrapy_http.MustNewResponse("https://example.com/page1", 301,
+		scrapy_http.WithRequest(req),
+		scrapy_http.WithResponseHeaders(http.Header{
+			"Location": {"https://example.com/page2"},
+		}),
+	)
+
+	_, err := mw.ProcessResponse(context.Background(), req, resp)
+	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+		t.Fatalf("expected ErrNewRequest, got %v", err)
+	}
+
+	var newReqErr *scrapy_errors.NewRequestError
+	errors.As(err, &newReqErr)
+	rr := newReqErr.Request.(*scrapy_http.Request)
+
+	// 检查重定向历史
+	redirectURLs, ok := rr.GetMeta("redirect_urls")
+	if !ok {
+		t.Fatal("should have redirect_urls in meta")
+	}
+	urls := redirectURLs.([]string)
+	if len(urls) != 1 || urls[0] != "https://example.com/page1" {
+		t.Errorf("unexpected redirect_urls: %v", urls)
+	}
+
+	redirectReasons, ok := rr.GetMeta("redirect_reasons")
+	if !ok {
+		t.Fatal("should have redirect_reasons in meta")
+	}
+	reasons := redirectReasons.([]any)
+	if len(reasons) != 1 || reasons[0] != 301 {
+		t.Errorf("unexpected redirect_reasons: %v", reasons)
+	}
+}
+
+// ============================================================================
+// DownloadTimeout 测试
+// ============================================================================
+
+func TestDownloadTimeoutMiddleware(t *testing.T) {
+	mw := NewDownloadTimeoutMiddleware(30*time.Second, nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	mw.ProcessRequest(context.Background(), req)
+
+	v, ok := req.GetMeta("download_timeout")
+	if !ok {
+		t.Fatal("should set download_timeout in meta")
+	}
+	timeout, ok := v.(time.Duration)
+	if !ok {
+		t.Fatal("download_timeout should be time.Duration")
+	}
+	if timeout != 30*time.Second {
+		t.Errorf("expected 30s timeout, got %v", timeout)
+	}
+}
+
+func TestDownloadTimeoutMiddlewareNoOverride(t *testing.T) {
+	mw := NewDownloadTimeoutMiddleware(30*time.Second, nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	req.SetMeta("download_timeout", 10*time.Second) // 请求级覆盖
+
+	mw.ProcessRequest(context.Background(), req)
+
+	v, _ := req.GetMeta("download_timeout")
+	timeout := v.(time.Duration)
+	if timeout != 10*time.Second {
+		t.Errorf("should not override existing timeout, got %v", timeout)
+	}
+}
+
+func TestDownloadTimeoutMiddlewareZero(t *testing.T) {
+	mw := NewDownloadTimeoutMiddleware(0, nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	mw.ProcessRequest(context.Background(), req)
+
+	_, ok := req.GetMeta("download_timeout")
+	if ok {
+		t.Error("zero timeout should not set meta")
+	}
+}
+
+// ============================================================================
+// HttpAuth 测试
+// ============================================================================
+
+func TestHttpAuthMiddleware(t *testing.T) {
+	mw := NewHttpAuthMiddleware("user", "pass", "", nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	mw.ProcessRequest(context.Background(), req)
+
+	auth := req.Headers.Get("Authorization")
+	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
+	if auth != expected {
+		t.Errorf("expected Authorization=%s, got %s", expected, auth)
+	}
+}
+
+func TestHttpAuthMiddlewareNoOverride(t *testing.T) {
+	mw := NewHttpAuthMiddleware("user", "pass", "", nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com",
+		scrapy_http.WithHeader("Authorization", "Bearer existing-token"),
+	)
+	mw.ProcessRequest(context.Background(), req)
+
+	auth := req.Headers.Get("Authorization")
+	if auth != "Bearer existing-token" {
+		t.Errorf("should not override existing Authorization header, got %s", auth)
+	}
+}
+
+func TestHttpAuthMiddlewareDomainMatch(t *testing.T) {
+	mw := NewHttpAuthMiddleware("user", "pass", "example.com", nil)
+
+	// 匹配域名
+	req1 := scrapy_http.MustNewRequest("https://example.com/page")
+	mw.ProcessRequest(context.Background(), req1)
+	if req1.Headers.Get("Authorization") == "" {
+		t.Error("should set auth for matching domain")
+	}
+
+	// 子域名匹配
+	req2 := scrapy_http.MustNewRequest("https://sub.example.com/page")
+	mw.ProcessRequest(context.Background(), req2)
+	if req2.Headers.Get("Authorization") == "" {
+		t.Error("should set auth for subdomain")
+	}
+
+	// 不匹配域名
+	req3 := scrapy_http.MustNewRequest("https://other.com/page")
+	mw.ProcessRequest(context.Background(), req3)
+	if req3.Headers.Get("Authorization") != "" {
+		t.Error("should not set auth for non-matching domain")
+	}
+}
+
+func TestHttpAuthMiddlewareNoCredentials(t *testing.T) {
+	mw := NewHttpAuthMiddleware("", "", "", nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	mw.ProcessRequest(context.Background(), req)
+
+	if req.Headers.Get("Authorization") != "" {
+		t.Error("should not set auth when no credentials")
+	}
+}
+
+func TestHttpAuthMiddlewareMetaOverride(t *testing.T) {
+	mw := NewHttpAuthMiddleware("global_user", "global_pass", "", nil)
+
+	req := scrapy_http.MustNewRequest("https://example.com")
+	req.SetMeta("http_user", "meta_user")
+	req.SetMeta("http_pass", "meta_pass")
+	mw.ProcessRequest(context.Background(), req)
+
+	auth := req.Headers.Get("Authorization")
+	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("meta_user:meta_pass"))
+	if auth != expected {
+		t.Errorf("expected meta-level auth, got %s", auth)
 	}
 }
 
@@ -539,6 +797,8 @@ func TestInterfaceImplementations(t *testing.T) {
 	var _ DownloaderMiddleware = (*UserAgentMiddleware)(nil)
 	var _ DownloaderMiddleware = (*RetryMiddleware)(nil)
 	var _ DownloaderMiddleware = (*RedirectMiddleware)(nil)
+	var _ DownloaderMiddleware = (*DownloadTimeoutMiddleware)(nil)
+	var _ DownloaderMiddleware = (*HttpAuthMiddleware)(nil)
 }
 
 // ============================================================================
@@ -578,4 +838,14 @@ func (m *exceptionHandlerMW) ProcessException(ctx context.Context, request *scra
 		return scrapy_http.MustNewResponse(request.URL.String(), 504), nil
 	}
 	return nil, nil
+}
+
+// newRequestMW 是一个测试用中间件，在 ProcessResponse 中返回 NewRequestError。
+type newRequestMW struct {
+	BaseDownloaderMiddleware
+	newReq *scrapy_http.Request
+}
+
+func (m *newRequestMW) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+	return nil, scrapy_errors.NewNewRequestError(m.newReq, "test")
 }

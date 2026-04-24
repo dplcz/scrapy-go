@@ -11,6 +11,7 @@ import (
 
 // downloadTask 表示一个排队中的下载任务。
 type downloadTask struct {
+	ctx      context.Context
 	request  *scrapy_http.Request
 	resultCh chan downloadResult
 }
@@ -88,6 +89,7 @@ func NewSlot(
 // 这是外部调用的主要接口。
 func (s *Slot) Enqueue(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
 	task := &downloadTask{
+		ctx:      ctx,
 		request:  request,
 		resultCh: make(chan downloadResult, 1),
 	}
@@ -172,9 +174,18 @@ func (s *Slot) processTask(task *downloadTask) {
 			s.RemoveTransferring(task.request)
 		}()
 
+		// 应用超时，确保超时仅覆盖网络传输阶段，
+		downloadCtx := task.ctx
+		if v, ok := task.request.GetMeta("download_timeout"); ok {
+			if timeout, ok := v.(time.Duration); ok && timeout > 0 {
+				var cancel context.CancelFunc
+				downloadCtx, cancel = context.WithTimeout(downloadCtx, timeout)
+				defer cancel()
+			}
+		}
+
 		// 执行实际下载
-		ctx := context.Background()
-		resp, err := s.downloadFn(ctx, task.request)
+		resp, err := s.downloadFn(downloadCtx, task.request)
 		task.resultCh <- downloadResult{response: resp, err: err}
 	}()
 }
