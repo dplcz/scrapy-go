@@ -10,7 +10,7 @@ import (
 )
 
 func TestDefaultSchedulerBasic(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	s := NewDefaultScheduler(WithStats(sc))
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
@@ -54,7 +54,7 @@ func TestDefaultSchedulerBasic(t *testing.T) {
 }
 
 func TestDefaultSchedulerDupeFilter(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	s := NewDefaultScheduler(WithStats(sc))
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
@@ -85,7 +85,7 @@ func TestDefaultSchedulerDupeFilter(t *testing.T) {
 }
 
 func TestDefaultSchedulerDontFilter(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	s := NewDefaultScheduler(WithStats(sc))
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
@@ -147,7 +147,7 @@ func TestDefaultSchedulerPriorityOrder(t *testing.T) {
 }
 
 func TestDefaultSchedulerStats(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	s := NewDefaultScheduler(WithStats(sc))
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
@@ -189,7 +189,7 @@ func TestDefaultSchedulerStats(t *testing.T) {
 }
 
 func TestDefaultSchedulerConcurrency(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	// 使用 NoDupeFilter 避免去重影响并发测试
 	s := NewDefaultScheduler(
 		WithStats(sc),

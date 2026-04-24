@@ -14,13 +14,13 @@ import (
 // CallbackFunc 定义响应回调函数类型。
 // 使用 any 类型避免与 spider 包的循环依赖，实际类型为：
 //
-//	func(ctx context.Context, response *Response) ([]SpiderOutput, error)
+//	func(ctx context.Context, response *Response) ([]Output, error)
 type CallbackFunc = any
 
 // ErrbackFunc 定义错误回调函数类型。
 // 使用 any 类型避免与 spider 包的循环依赖，实际类型为：
 //
-//	func(ctx context.Context, err error, request *Request) ([]SpiderOutput, error)
+//	func(ctx context.Context, err error, request *Request) ([]Output, error)
 type ErrbackFunc = any
 
 // Request 表示一个 HTTP 请求。

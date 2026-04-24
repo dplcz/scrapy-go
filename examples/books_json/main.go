@@ -183,12 +183,12 @@ func (p *CleanPipeline) ProcessItem(ctx context.Context, item any) (any, error) 
 
 // BooksSpider 从本地 JSON API 爬取图书数据。
 type BooksSpider struct {
-	spider.BaseSpider
+	spider.Base
 }
 
 func NewBooksSpider(baseURL string) *BooksSpider {
 	return &BooksSpider{
-		BaseSpider: spider.BaseSpider{
+		Base: spider.Base{
 			SpiderName: "books",
 			StartURLs:  []string{baseURL + "/api/books?page=1"},
 		},
@@ -196,19 +196,19 @@ func NewBooksSpider(baseURL string) *BooksSpider {
 }
 
 // Parse 解析 JSON API 响应，提取图书数据和下一页链接。
-func (s *BooksSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+func (s *BooksSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	var apiResp APIResponse
 	if err := response.JSON(&apiResp); err != nil {
 		return nil, fmt.Errorf("解析 JSON 失败: %w", err)
 	}
 
-	var outputs []spider.SpiderOutput
+	var outputs []spider.Output
 
 	// 提取每本书作为 Item
 	for i := range apiResp.Books {
 		book := apiResp.Books[i]
 		book.PageURL = response.URL.String()
-		outputs = append(outputs, spider.SpiderOutput{Item: &book})
+		outputs = append(outputs, spider.Output{Item: &book})
 	}
 
 	// 如果有下一页，生成新请求
@@ -216,15 +216,15 @@ func (s *BooksSpider) Parse(ctx context.Context, response *scrapy_http.Response)
 		nextURL, err := response.URLJoin(apiResp.NextPage)
 		if err == nil {
 			req, _ := scrapy_http.NewRequest(nextURL)
-			outputs = append(outputs, spider.SpiderOutput{Request: req})
+			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
 
 	return outputs, nil
 }
 
-func (s *BooksSpider) CustomSettings() *spider.SpiderSettings {
-	return &spider.SpiderSettings{
+func (s *BooksSpider) CustomSettings() *spider.Settings {
+	return &spider.Settings{
 		ConcurrentRequests: spider.IntPtr(1), // JSON API 按顺序爬取
 		DownloadDelay:      spider.DurationPtr(time.Second * 10),
 		LogLevel:           spider.StringPtr("DEBUG"),

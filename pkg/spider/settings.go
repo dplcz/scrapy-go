@@ -1,24 +1,24 @@
 // Package spider 定义了 scrapy-go 框架的 Spider 配置结构体。
 //
-// SpiderSettings 提供类型安全的 Spider 级别配置，
+// Settings 提供类型安全的 Spider 级别配置，
 // 替代原有的 map[string]any 方式，避免字符串 key 拼写错误和类型不匹配。
 package spider
 
 import "time"
 
-// SpiderSettings 定义 Spider 级别的个性化配置。
+// Settings 定义 Spider 级别的个性化配置。
 // 所有字段均为指针类型，nil 表示不覆盖框架默认值。
 //
 // 用法：
 //
-//	func (s *MySpider) CustomSettings() *SpiderSettings {
-//	    return &SpiderSettings{
+//	func (s *MySpider) CustomSettings() *Settings {
+//	    return &Settings{
 //	        ConcurrentRequests: IntPtr(4),
 //	        DownloadDelay:      DurationPtr(time.Second),
 //	        LogLevel:           StringPtr("INFO"),
 //	    }
 //	}
-type SpiderSettings struct {
+type Settings struct {
 	// ========================================================================
 	// 并发控制
 	// ========================================================================
@@ -112,9 +112,9 @@ type SpiderSettings struct {
 	Extra map[string]any `json:"extra,omitempty"`
 }
 
-// ToMap 将 SpiderSettings 转换为 map[string]any。
+// ToMap 将 Settings 转换为 map[string]any。
 // 仅包含非 nil（已设置）的字段，nil 字段不会出现在结果中。
-func (ss *SpiderSettings) ToMap() map[string]any {
+func (ss *Settings) ToMap() map[string]any {
 	if ss == nil {
 		return nil
 	}

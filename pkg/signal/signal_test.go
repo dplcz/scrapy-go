@@ -8,8 +8,8 @@ import (
 	scrapy_errors "scrapy-go/pkg/errors"
 )
 
-func TestSignalManagerConnect(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerConnect(t *testing.T) {
+	sm := NewManager(nil)
 
 	called := false
 	sm.Connect(func(params map[string]any) error {
@@ -30,8 +30,8 @@ func TestSignalManagerConnect(t *testing.T) {
 	}
 }
 
-func TestSignalManagerDisconnect(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerDisconnect(t *testing.T) {
+	sm := NewManager(nil)
 
 	id := sm.Connect(func(params map[string]any) error {
 		return nil
@@ -47,8 +47,8 @@ func TestSignalManagerDisconnect(t *testing.T) {
 	}
 }
 
-func TestSignalManagerDisconnectAll(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerDisconnectAll(t *testing.T) {
+	sm := NewManager(nil)
 
 	sm.Connect(func(params map[string]any) error { return nil }, SpiderOpened)
 	sm.Connect(func(params map[string]any) error { return nil }, SpiderOpened)
@@ -64,8 +64,8 @@ func TestSignalManagerDisconnectAll(t *testing.T) {
 	}
 }
 
-func TestSignalManagerSend(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerSend(t *testing.T) {
+	sm := NewManager(nil)
 
 	var order []int
 	sm.Connect(func(params map[string]any) error {
@@ -90,8 +90,8 @@ func TestSignalManagerSend(t *testing.T) {
 	}
 }
 
-func TestSignalManagerSendWithParams(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerSendWithParams(t *testing.T) {
+	sm := NewManager(nil)
 
 	var receivedParams map[string]any
 	sm.Connect(func(params map[string]any) error {
@@ -112,8 +112,8 @@ func TestSignalManagerSendWithParams(t *testing.T) {
 	}
 }
 
-func TestSignalManagerSendCatchLog(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerSendCatchLog(t *testing.T) {
+	sm := NewManager(nil)
 
 	// 处理器返回普通错误
 	sm.Connect(func(params map[string]any) error {
@@ -126,8 +126,8 @@ func TestSignalManagerSendCatchLog(t *testing.T) {
 	}
 }
 
-func TestSignalManagerDontCloseSpider(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerDontCloseSpider(t *testing.T) {
+	sm := NewManager(nil)
 
 	sm.Connect(func(params map[string]any) error {
 		return scrapy_errors.ErrDontCloseSpider
@@ -139,8 +139,8 @@ func TestSignalManagerDontCloseSpider(t *testing.T) {
 	}
 }
 
-func TestSignalManagerCloseSpider(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerCloseSpider(t *testing.T) {
+	sm := NewManager(nil)
 
 	sm.Connect(func(params map[string]any) error {
 		return scrapy_errors.NewCloseSpiderError("item_count_exceeded")
@@ -156,8 +156,8 @@ func TestSignalManagerCloseSpider(t *testing.T) {
 	}
 }
 
-func TestSignalManagerSendCatchLogCtx(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerSendCatchLogCtx(t *testing.T) {
+	sm := NewManager(nil)
 
 	callCount := 0
 	sm.Connect(func(params map[string]any) error {
@@ -190,8 +190,8 @@ func TestSignalManagerSendCatchLogCtx(t *testing.T) {
 	}
 }
 
-func TestSignalManagerConcurrency(t *testing.T) {
-	sm := NewSignalManager(nil)
+func TestManagerConcurrency(t *testing.T) {
+	sm := NewManager(nil)
 
 	var mu sync.Mutex
 	callCount := 0

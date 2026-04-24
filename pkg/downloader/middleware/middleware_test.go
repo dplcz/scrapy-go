@@ -253,7 +253,7 @@ func TestUserAgentMiddlewareEmpty(t *testing.T) {
 // ============================================================================
 
 func TestRetryMiddlewareHTTPCode(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewRetryMiddleware(2, []int{500, 502, 503}, -1, sc, nil)
 
 	req := scrapy_http.MustNewRequest("https://example.com")
@@ -309,7 +309,7 @@ func TestRetryMiddlewareNonRetryCode(t *testing.T) {
 }
 
 func TestRetryMiddlewareMaxRetries(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewRetryMiddleware(2, []int{500}, -1, sc, nil)
 
 	req := scrapy_http.MustNewRequest("https://example.com")
@@ -354,7 +354,7 @@ func TestRetryMiddlewareDontRetry(t *testing.T) {
 }
 
 func TestRetryMiddlewareException(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewRetryMiddleware(2, nil, -1, sc, nil)
 
 	req := scrapy_http.MustNewRequest("https://example.com")
@@ -1210,7 +1210,7 @@ func TestHttpCompressionMiddlewareEmptyBody(t *testing.T) {
 }
 
 func TestHttpCompressionMiddlewareStats(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, sc, nil)
 
 	originalBody := []byte("test body for stats")

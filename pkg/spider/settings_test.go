@@ -5,23 +5,23 @@ import (
 	"time"
 )
 
-func TestSpiderSettingsToMapNil(t *testing.T) {
-	var ss *SpiderSettings
+func TestSettingsToMapNil(t *testing.T) {
+	var ss *Settings
 	if m := ss.ToMap(); m != nil {
-		t.Errorf("nil SpiderSettings.ToMap() should return nil, got %v", m)
+		t.Errorf("nil Settings.ToMap() should return nil, got %v", m)
 	}
 }
 
-func TestSpiderSettingsToMapEmpty(t *testing.T) {
-	ss := &SpiderSettings{}
+func TestSettingsToMapEmpty(t *testing.T) {
+	ss := &Settings{}
 	m := ss.ToMap()
 	if len(m) != 0 {
-		t.Errorf("empty SpiderSettings.ToMap() should return empty map, got %v", m)
+		t.Errorf("empty Settings.ToMap() should return empty map, got %v", m)
 	}
 }
 
-func TestSpiderSettingsToMapConcurrency(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapConcurrency(t *testing.T) {
+	ss := &Settings{
 		ConcurrentRequests:          IntPtr(4),
 		ConcurrentRequestsPerDomain: IntPtr(2),
 		ConcurrentItems:             IntPtr(50),
@@ -33,8 +33,8 @@ func TestSpiderSettingsToMapConcurrency(t *testing.T) {
 	assertMapInt(t, m, "CONCURRENT_ITEMS", 50)
 }
 
-func TestSpiderSettingsToMapDownload(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapDownload(t *testing.T) {
+	ss := &Settings{
 		DownloadDelay:          DurationPtr(2 * time.Second),
 		DownloadTimeout:        DurationPtr(30 * time.Second),
 		RandomizeDownloadDelay: BoolPtr(false),
@@ -52,8 +52,8 @@ func TestSpiderSettingsToMapDownload(t *testing.T) {
 	}
 }
 
-func TestSpiderSettingsToMapRetry(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapRetry(t *testing.T) {
+	ss := &Settings{
 		RetryEnabled:   BoolPtr(false),
 		RetryTimes:     IntPtr(5),
 		RetryHTTPCodes: []int{500, 502},
@@ -70,8 +70,8 @@ func TestSpiderSettingsToMapRetry(t *testing.T) {
 	}
 }
 
-func TestSpiderSettingsToMapRedirect(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapRedirect(t *testing.T) {
+	ss := &Settings{
 		RedirectEnabled:  BoolPtr(true),
 		RedirectMaxTimes: IntPtr(10),
 	}
@@ -83,8 +83,8 @@ func TestSpiderSettingsToMapRedirect(t *testing.T) {
 	assertMapInt(t, m, "REDIRECT_MAX_TIMES", 10)
 }
 
-func TestSpiderSettingsToMapLogAndScheduler(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapLogAndScheduler(t *testing.T) {
+	ss := &Settings{
 		LogLevel:       StringPtr("WARN"),
 		SchedulerDebug: BoolPtr(true),
 		StatsDump:      BoolPtr(false),
@@ -104,8 +104,8 @@ func TestSpiderSettingsToMapLogAndScheduler(t *testing.T) {
 	assertMapInt(t, m, "DEPTH_LIMIT", 3)
 }
 
-func TestSpiderSettingsToMapUserAgent(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapUserAgent(t *testing.T) {
+	ss := &Settings{
 		UserAgent: StringPtr("my-bot/1.0"),
 	}
 	m := ss.ToMap()
@@ -115,8 +115,8 @@ func TestSpiderSettingsToMapUserAgent(t *testing.T) {
 	}
 }
 
-func TestSpiderSettingsToMapExtra(t *testing.T) {
-	ss := &SpiderSettings{
+func TestSettingsToMapExtra(t *testing.T) {
+	ss := &Settings{
 		ConcurrentRequests: IntPtr(8),
 		Extra: map[string]any{
 			"CUSTOM_KEY":    "custom_value",
@@ -134,9 +134,9 @@ func TestSpiderSettingsToMapExtra(t *testing.T) {
 	}
 }
 
-func TestSpiderSettingsOnlySetFieldsInMap(t *testing.T) {
+func TestSettingsOnlySetFieldsInMap(t *testing.T) {
 	// 只设置一个字段，确认其他字段不出现在 map 中
-	ss := &SpiderSettings{
+	ss := &Settings{
 		LogLevel: StringPtr("ERROR"),
 	}
 	m := ss.ToMap()

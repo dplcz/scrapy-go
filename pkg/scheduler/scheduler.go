@@ -58,7 +58,7 @@ type DefaultScheduler struct {
 	mu         sync.Mutex
 	dupeFilter DupeFilter
 	pq         *PriorityQueue
-	stats      stats.StatsCollector
+	stats      stats.Collector
 	logger     *slog.Logger
 	debug      bool // 是否输出调试日志
 }
@@ -74,7 +74,7 @@ func WithDupeFilter(df DupeFilter) DefaultSchedulerOption {
 }
 
 // WithStats 设置统计收集器。
-func WithStats(sc stats.StatsCollector) DefaultSchedulerOption {
+func WithStats(sc stats.Collector) DefaultSchedulerOption {
 	return func(s *DefaultScheduler) {
 		s.stats = sc
 	}
@@ -109,7 +109,7 @@ func NewDefaultScheduler(opts ...DefaultSchedulerOption) *DefaultScheduler {
 		s.dupeFilter = NewRFPDupeFilter(nil, false)
 	}
 	if s.stats == nil {
-		s.stats = stats.NewDummyStatsCollector()
+		s.stats = stats.NewDummyCollector()
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()

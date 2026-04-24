@@ -107,22 +107,22 @@ func newRetryTestSite() *httptest.Server {
 
 // quotesSpider 是一个简单的测试爬虫，爬取本地测试网站的引用。
 type quotesSpider struct {
-	spider.BaseSpider
+	spider.Base
 	items []map[string]string
 	mu    sync.Mutex
 }
 
 func newQuotesSpider(baseURL string) *quotesSpider {
 	return &quotesSpider{
-		BaseSpider: spider.BaseSpider{
+		Base: spider.Base{
 			SpiderName: "quotes",
 			StartURLs:  []string{baseURL + "/"},
 		},
 	}
 }
 
-func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
-	var outputs []spider.SpiderOutput
+func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+	var outputs []spider.Output
 
 	// 简单的文本解析（不使用 HTML 解析器，保持测试简单）
 	body := response.Text()
@@ -138,7 +138,7 @@ func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response
 			s.mu.Lock()
 			s.items = append(s.items, item)
 			s.mu.Unlock()
-			outputs = append(outputs, spider.SpiderOutput{Item: item})
+			outputs = append(outputs, spider.Output{Item: item})
 		}
 	}
 
@@ -147,7 +147,7 @@ func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response
 		absURL, err := response.URLJoin(nextURL)
 		if err == nil {
 			req, _ := scrapy_http.NewRequest(absURL)
-			outputs = append(outputs, spider.SpiderOutput{Request: req})
+			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
 
@@ -156,22 +156,22 @@ func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response
 
 // singlePageSpider 只爬取一个页面的简单爬虫。
 type singlePageSpider struct {
-	spider.BaseSpider
+	spider.Base
 	parseCalled atomic.Bool
 }
 
 func newSinglePageSpider(url string) *singlePageSpider {
 	return &singlePageSpider{
-		BaseSpider: spider.BaseSpider{
+		Base: spider.Base{
 			SpiderName: "single",
 			StartURLs:  []string{url},
 		},
 	}
 }
 
-func (s *singlePageSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+func (s *singlePageSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	s.parseCalled.Store(true)
-	return []spider.SpiderOutput{
+	return []spider.Output{
 		{Item: map[string]any{"url": response.URL.String(), "status": response.Status}},
 	}, nil
 }
@@ -214,7 +214,7 @@ func extractNextPage(body string) string {
 }
 
 // buildTestEngine 构建一个用于测试的完整 Engine。
-func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.StatsCollector, sm *signal.SignalManager) *Engine {
+func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector, sm *signal.Manager) *Engine {
 	if s == nil {
 		s = settings.New()
 		s.Set("CONCURRENT_REQUESTS", 4, settings.PriorityProject)
@@ -224,10 +224,10 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.StatsColle
 		s.Set("RANDOMIZE_DOWNLOAD_DELAY", false, settings.PriorityProject)
 	}
 	if sc == nil {
-		sc = stats.NewMemoryStatsCollector(false, nil)
+		sc = stats.NewMemoryCollector(false, nil)
 	}
 	if sm == nil {
-		sm = signal.NewSignalManager(nil)
+		sm = signal.NewManager(nil)
 	}
 
 	sched := scheduler.NewDefaultScheduler(
@@ -257,7 +257,7 @@ func TestEngineBasicCrawl(t *testing.T) {
 	defer site.Close()
 
 	sp := newSinglePageSpider(site.URL + "/")
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	eng := buildTestEngine(sp, nil, sc, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -284,7 +284,7 @@ func TestEngineMultiPageCrawl(t *testing.T) {
 	defer site.Close()
 
 	sp := newQuotesSpider(site.URL)
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	eng := buildTestEngine(sp, nil, sc, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -362,7 +362,7 @@ func TestEngineSignals(t *testing.T) {
 	defer site.Close()
 
 	sp := newSinglePageSpider(site.URL + "/")
-	sm := signal.NewSignalManager(nil)
+	sm := signal.NewManager(nil)
 
 	var engineStarted, engineStopped, spiderOpened, spiderClosed atomic.Bool
 
@@ -412,8 +412,8 @@ func TestEngineWithPipeline(t *testing.T) {
 	defer site.Close()
 
 	sp := newSinglePageSpider(site.URL + "/")
-	sc := stats.NewMemoryStatsCollector(false, nil)
-	sm := signal.NewSignalManager(nil)
+	sc := stats.NewMemoryCollector(false, nil)
+	sm := signal.NewManager(nil)
 
 	sched := scheduler.NewDefaultScheduler(scheduler.WithStats(sc))
 

@@ -384,8 +384,8 @@ func TestDownloaderBasic(t *testing.T) {
 	s.Set("DOWNLOAD_TIMEOUT", 10, settings.PriorityDefault)
 	s.Set("RANDOMIZE_DOWNLOAD_DELAY", false, settings.PriorityDefault)
 
-	sc := stats.NewMemoryStatsCollector(false, nil)
-	sm := signal.NewSignalManager(nil)
+	sc := stats.NewMemoryCollector(false, nil)
+	sm := signal.NewManager(nil)
 	handler := NewHTTPDownloadHandler(10 * time.Second)
 
 	d := NewDownloader(s, handler, sm, sc, nil)
@@ -459,7 +459,7 @@ func TestDownloaderSignals(t *testing.T) {
 	s.Set("DOWNLOAD_TIMEOUT", 10, settings.PriorityDefault)
 	s.Set("RANDOMIZE_DOWNLOAD_DELAY", false, settings.PriorityDefault)
 
-	sm := signal.NewSignalManager(nil)
+	sm := signal.NewManager(nil)
 	handler := NewHTTPDownloadHandler(10 * time.Second)
 	d := NewDownloader(s, handler, sm, nil, nil)
 	defer d.Close()

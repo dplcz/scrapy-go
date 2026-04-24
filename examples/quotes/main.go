@@ -2,6 +2,7 @@
 //
 // 本示例创建一个本地 HTTP 服务器模拟 quotes 网站，
 // 然后使用 scrapy-go 框架爬取所有引用数据。
+// 使用 CSS 选择器（goquery）解析 HTML 内容。
 //
 // 运行方式：go run examples/quotes/main.go
 package main
@@ -97,48 +98,53 @@ func newLocalQuotesSite() *httptest.Server {
 // ============================================================================
 
 // QuotesSpider 爬取本地 quotes 网站的引用数据。
+// 使用 CSS 选择器解析 HTML 内容。
 type QuotesSpider struct {
-	spider.BaseSpider
+	spider.Base
 	mu    sync.Mutex
-	items []map[string]string
+	items []map[string]any
 }
 
 // NewQuotesSpider 创建一个新的 QuotesSpider。
 func NewQuotesSpider(baseURL string) *QuotesSpider {
 	return &QuotesSpider{
-		BaseSpider: spider.BaseSpider{
+		Base: spider.Base{
 			SpiderName: "quotes",
 			StartURLs:  []string{baseURL + "/"},
 		},
 	}
 }
 
-// Parse 解析响应，提取引用数据和下一页链接。
-func (s *QuotesSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
-	var outputs []spider.SpiderOutput
-	body := response.Text()
+// Parse 解析响应，使用 CSS 选择器提取引用数据和下一页链接。
+func (s *QuotesSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+	var outputs []spider.Output
 
-	// 简单的文本解析提取引用
-	// 在实际项目中应使用 goquery 等 HTML 解析库
-	quotes := extractQuotes(body)
+	// 使用 CSS 选择器提取每条引用
+	quotes := response.CSS("div.quote")
 	for _, q := range quotes {
-		item := map[string]string{
-			"text":   q.text,
-			"author": q.author,
+		text := q.CSS("span.text::text").Get("")
+		author := q.XPath(`./span[contains(@class,"author")]/text()`).Get("")
+		tags := q.CSS("a.tag::text").GetAll()
+
+		item := map[string]any{
+			"text":   text,
+			"author": author,
+			"tags":   tags,
 			"url":    response.URL.String(),
 		}
 		s.mu.Lock()
 		s.items = append(s.items, item)
 		s.mu.Unlock()
-		outputs = append(outputs, spider.SpiderOutput{Item: item})
+		outputs = append(outputs, spider.Output{Item: item})
 	}
 
-	// 提取下一页链接
-	if nextURL := extractNextPageURL(body); nextURL != "" {
+	// 使用 CSS 选择器提取下一页链接
+	nextURL := response.CSSAttr("li.next a", "href").Get("")
+	if nextURL != "" {
 		absURL, err := response.URLJoin(nextURL)
 		if err == nil {
 			req, _ := scrapy_http.NewRequest(absURL)
-			outputs = append(outputs, spider.SpiderOutput{Request: req})
+			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
 
@@ -146,81 +152,12 @@ func (s *QuotesSpider) Parse(ctx context.Context, response *scrapy_http.Response
 }
 
 // CustomSettings 返回 Spider 级别的配置。
-func (s *QuotesSpider) CustomSettings() *spider.SpiderSettings {
-	return &spider.SpiderSettings{
+func (s *QuotesSpider) CustomSettings() *spider.Settings {
+	return &spider.Settings{
 		ConcurrentRequests: spider.IntPtr(2),
 		DownloadDelay:      spider.DurationPtr(0),
 		LogLevel:           spider.StringPtr("DEBUG"),
 	}
-}
-
-// ============================================================================
-// 简单的 HTML 解析辅助函数
-// ============================================================================
-
-type quote struct {
-	text   string
-	author string
-}
-
-func extractQuotes(body string) []quote {
-	var quotes []quote
-	pos := 0
-	for {
-		// 查找 <span class="text">
-		textStart := indexOf(body, `<span class="text">`, pos)
-		if textStart == -1 {
-			break
-		}
-		textStart += len(`<span class="text">`)
-		textEnd := indexOf(body, `</span>`, textStart)
-		if textEnd == -1 {
-			break
-		}
-		text := body[textStart:textEnd]
-
-		// 查找 <span class="author">
-		authorStart := indexOf(body, `<span class="author">`, textEnd)
-		if authorStart == -1 {
-			break
-		}
-		authorStart += len(`<span class="author">`)
-		authorEnd := indexOf(body, `</span>`, authorStart)
-		if authorEnd == -1 {
-			break
-		}
-		author := body[authorStart:authorEnd]
-
-		quotes = append(quotes, quote{text: text, author: author})
-		pos = authorEnd
-	}
-	return quotes
-}
-
-func extractNextPageURL(body string) string {
-	marker := `<li class="next"><a href="`
-	idx := indexOf(body, marker, 0)
-	if idx == -1 {
-		return ""
-	}
-	start := idx + len(marker)
-	end := indexOf(body, `"`, start)
-	if end == -1 {
-		return ""
-	}
-	return body[start:end]
-}
-
-func indexOf(s, substr string, start int) int {
-	if start >= len(s) {
-		return -1
-	}
-	for i := start; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }
 
 // ============================================================================
@@ -237,14 +174,13 @@ func main() {
 	sp := NewQuotesSpider(site.URL)
 
 	// 3. 创建 Crawler 并运行
-	// 使用 NewDefault 一行创建，日志级别由 Spider 的 CustomSettings 中的 LOG_LEVEL 控制
 	c := crawler.NewDefault()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	fmt.Println("开始爬取...")
-	fmt.Println("=" + repeat("=", 59))
+	fmt.Println("============================================================")
 
 	err := c.Run(ctx, sp)
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
@@ -254,20 +190,15 @@ func main() {
 
 	// 4. 输出结果
 	fmt.Println()
-	fmt.Println("=" + repeat("=", 59))
+	fmt.Println("============================================================")
 	fmt.Printf("爬取完成！共收集 %d 条引用：\n\n", len(sp.items))
 
 	for i, item := range sp.items {
 		fmt.Printf("[%d] %s\n", i+1, item["text"])
 		fmt.Printf("    — %s\n", item["author"])
+		if tags, ok := item["tags"].([]string); ok && len(tags) > 0 {
+			fmt.Printf("    标签: %v\n", tags)
+		}
 		fmt.Printf("    来源: %s\n\n", item["url"])
 	}
-}
-
-func repeat(s string, n int) string {
-	result := ""
-	for i := 0; i < n; i++ {
-		result += s
-	}
-	return result
 }

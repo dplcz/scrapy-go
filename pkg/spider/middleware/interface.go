@@ -20,14 +20,14 @@ type SpiderMiddleware interface {
 	// 返回 error 表示跳过 Spider 回调，直接进入 ProcessSpiderException 链。
 	ProcessSpiderInput(ctx context.Context, response *scrapy_http.Response) error
 
-	// ProcessSpiderOutput 在 Spider 回调产出结果后调用（逆序）。
+	// ProcessOutput 在 Spider 回调产出结果后调用（逆序）。
 	// 可以过滤、修改或添加新的输出项。
-	ProcessSpiderOutput(ctx context.Context, response *scrapy_http.Response, result []spider.SpiderOutput) ([]spider.SpiderOutput, error)
+	ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error)
 
 	// ProcessSpiderException 在 Spider 回调抛出异常时调用（逆序）。
 	// 返回 (nil, nil) 继续异常传播。
 	// 返回 (outputs, nil) 用输出替代异常。
-	ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.SpiderOutput, error)
+	ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.Output, error)
 }
 
 // BaseSpiderMiddleware 提供默认的空实现。
@@ -38,10 +38,10 @@ func (b *BaseSpiderMiddleware) ProcessSpiderInput(ctx context.Context, response 
 	return nil
 }
 
-func (b *BaseSpiderMiddleware) ProcessSpiderOutput(ctx context.Context, response *scrapy_http.Response, result []spider.SpiderOutput) ([]spider.SpiderOutput, error) {
+func (b *BaseSpiderMiddleware) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
 	return result, nil
 }
 
-func (b *BaseSpiderMiddleware) ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.SpiderOutput, error) {
+func (b *BaseSpiderMiddleware) ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.Output, error) {
 	return nil, nil
 }

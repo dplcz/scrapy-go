@@ -10,14 +10,14 @@ import (
 )
 
 // ============================================================================
-// SignalManager 实现
+// Manager 实现
 // ============================================================================
 
-// SignalManager 管理信号的注册和分发。
-// 对应 Scrapy 的 scrapy.signalmanager.SignalManager。
+// Manager 管理信号的注册和分发。
+// 对应 Scrapy 的 scrapy.signalmanager.Manager。
 //
 // 线程安全，所有操作通过 RWMutex 保护。
-type SignalManager struct {
+type Manager struct {
 	mu       sync.RWMutex
 	handlers map[Signal][]handlerEntry
 	logger   *slog.Logger
@@ -42,12 +42,12 @@ func getNextHandlerID() uint64 {
 	return nextHandlerID
 }
 
-// NewSignalManager 创建一个新的信号管理器。
-func NewSignalManager(logger *slog.Logger) *SignalManager {
+// NewManager 创建一个新的信号管理器。
+func NewManager(logger *slog.Logger) *Manager {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &SignalManager{
+	return &Manager{
 		handlers: make(map[Signal][]handlerEntry),
 		logger:   logger,
 	}
@@ -55,7 +55,7 @@ func NewSignalManager(logger *slog.Logger) *SignalManager {
 
 // Connect 注册一个信号处理器。
 // 返回一个处理器 ID，可用于后续 Disconnect。
-func (sm *SignalManager) Connect(handler Handler, sig Signal) uint64 {
+func (sm *Manager) Connect(handler Handler, sig Signal) uint64 {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -68,7 +68,7 @@ func (sm *SignalManager) Connect(handler Handler, sig Signal) uint64 {
 }
 
 // Disconnect 通过处理器 ID 移除一个信号处理器。
-func (sm *SignalManager) Disconnect(id uint64, sig Signal) {
+func (sm *Manager) Disconnect(id uint64, sig Signal) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (sm *SignalManager) Disconnect(id uint64, sig Signal) {
 }
 
 // DisconnectAll 移除指定信号的所有处理器。
-func (sm *SignalManager) DisconnectAll(sig Signal) {
+func (sm *Manager) DisconnectAll(sig Signal) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	delete(sm.handlers, sig)
@@ -92,7 +92,7 @@ func (sm *SignalManager) DisconnectAll(sig Signal) {
 // 返回所有处理器的返回值（包括错误）。
 //
 // 注意：即使某个处理器返回错误，后续处理器仍会被调用。
-func (sm *SignalManager) Send(sig Signal, params map[string]any) []error {
+func (sm *Manager) Send(sig Signal, params map[string]any) []error {
 	handlers := sm.getHandlers(sig)
 
 	var errs []error
@@ -108,7 +108,7 @@ func (sm *SignalManager) Send(sig Signal, params map[string]any) []error {
 // 返回所有处理器的错误。
 //
 // 这是最常用的信号发送方法，对应 Scrapy 的 send_catch_log。
-func (sm *SignalManager) SendCatchLog(sig Signal, params map[string]any) []error {
+func (sm *Manager) SendCatchLog(sig Signal, params map[string]any) []error {
 	handlers := sm.getHandlers(sig)
 
 	var errs []error
@@ -132,7 +132,7 @@ func (sm *SignalManager) SendCatchLog(sig Signal, params map[string]any) []error
 }
 
 // SendCatchLogCtx 带 context 的信号发送，支持取消。
-func (sm *SignalManager) SendCatchLogCtx(ctx context.Context, sig Signal, params map[string]any) []error {
+func (sm *Manager) SendCatchLogCtx(ctx context.Context, sig Signal, params map[string]any) []error {
 	handlers := sm.getHandlers(sig)
 
 	var errs []error
@@ -161,14 +161,14 @@ func (sm *SignalManager) SendCatchLogCtx(ctx context.Context, sig Signal, params
 }
 
 // HasHandlers 检查指定信号是否有已注册的处理器。
-func (sm *SignalManager) HasHandlers(sig Signal) bool {
+func (sm *Manager) HasHandlers(sig Signal) bool {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return len(sm.handlers[sig]) > 0
 }
 
 // HandlerCount 返回指定信号的处理器数量。
-func (sm *SignalManager) HandlerCount(sig Signal) int {
+func (sm *Manager) HandlerCount(sig Signal) int {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 	return len(sm.handlers[sig])
@@ -179,7 +179,7 @@ func (sm *SignalManager) HandlerCount(sig Signal) int {
 // ============================================================================
 
 // getHandlers 获取指定信号的处理器快照（线程安全）。
-func (sm *SignalManager) getHandlers(sig Signal) []handlerEntry {
+func (sm *Manager) getHandlers(sig Signal) []handlerEntry {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 

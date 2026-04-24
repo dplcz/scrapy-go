@@ -36,11 +36,11 @@ type ItemPipeline interface {
 }
 
 // ============================================================================
-// PipelineEntry
+// Entry
 // ============================================================================
 
-// PipelineEntry 表示一个带优先级的 Pipeline 条目。
-type PipelineEntry struct {
+// Entry 表示一个带优先级的 Pipeline 条目。
+type Entry struct {
 	Pipeline ItemPipeline
 	Name     string
 	Priority int
@@ -53,19 +53,19 @@ type PipelineEntry struct {
 // Manager 管理 Item Pipeline 链。
 // 对应 Scrapy 的 ItemPipelineManager。
 type Manager struct {
-	pipelines []PipelineEntry // 按优先级排序
-	signals   *signal.SignalManager
-	stats     stats.StatsCollector
+	pipelines []Entry // 按优先级排序
+	signals   *signal.Manager
+	stats     stats.Collector
 	logger    *slog.Logger
 }
 
 // NewManager 创建一个新的 Pipeline 管理器。
-func NewManager(signals *signal.SignalManager, sc stats.StatsCollector, logger *slog.Logger) *Manager {
+func NewManager(signals *signal.Manager, sc stats.Collector, logger *slog.Logger) *Manager {
 	if signals == nil {
-		signals = signal.NewSignalManager(nil)
+		signals = signal.NewManager(nil)
 	}
 	if sc == nil {
-		sc = stats.NewDummyStatsCollector()
+		sc = stats.NewDummyCollector()
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -80,7 +80,7 @@ func NewManager(signals *signal.SignalManager, sc stats.StatsCollector, logger *
 // AddPipeline 添加一个 Pipeline。
 // Pipeline 按优先级排序，优先级数值小的先执行。
 func (m *Manager) AddPipeline(p ItemPipeline, name string, priority int) {
-	m.pipelines = append(m.pipelines, PipelineEntry{
+	m.pipelines = append(m.pipelines, Entry{
 		Pipeline: p,
 		Name:     name,
 		Priority: priority,

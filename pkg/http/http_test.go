@@ -326,3 +326,85 @@ func TestResponseGetMeta(t *testing.T) {
 		t.Error("should return nil for response without request")
 	}
 }
+
+// ============================================================================
+// Response HTML 选择器测试
+// ============================================================================
+
+const testHTMLBody = `<!DOCTYPE html>
+<html><head><title>Test</title></head>
+<body>
+<h1 class="title">Page Title</h1>
+<div class="item"><span class="name">Item A</span></div>
+<div class="item"><span class="name">Item B</span></div>
+<a href="/next">Next</a>
+</body></html>`
+
+func TestResponseCSS(t *testing.T) {
+	resp := MustNewResponse("https://example.com", 200,
+		WithResponseBody([]byte(testHTMLBody)),
+	)
+
+	items := resp.CSS("div.item")
+	if items.Len() != 2 {
+		t.Errorf("expected 2 items, got %d", items.Len())
+	}
+
+	title := resp.CSS("h1.title::text").Get("")
+	if title != "Page Title" {
+		t.Errorf("expected 'Page Title', got %q", title)
+	}
+}
+
+func TestResponseCSSAttr(t *testing.T) {
+	resp := MustNewResponse("https://example.com", 200,
+		WithResponseBody([]byte(testHTMLBody)),
+	)
+
+	href := resp.CSSAttr("a", "href").Get("")
+	if href != "/next" {
+		t.Errorf("expected '/next', got %q", href)
+	}
+}
+
+func TestResponseXPath(t *testing.T) {
+	resp := MustNewResponse("https://example.com", 200,
+		WithResponseBody([]byte(testHTMLBody)),
+	)
+
+	items := resp.XPath("//div[@class='item']")
+	if items.Len() != 2 {
+		t.Errorf("expected 2 items, got %d", items.Len())
+	}
+
+	title := resp.XPath("//h1[@class='title']/text()").Get("")
+	if title != "Page Title" {
+		t.Errorf("expected 'Page Title', got %q", title)
+	}
+}
+
+func TestResponseSelector(t *testing.T) {
+	resp := MustNewResponse("https://example.com", 200,
+		WithResponseBody([]byte(testHTMLBody)),
+	)
+
+	sel := resp.Selector()
+	if sel == nil {
+		t.Fatal("Selector should not be nil")
+	}
+
+	names := sel.CSS("span.name::text").GetAll()
+	if len(names) != 2 {
+		t.Errorf("expected 2 names, got %d", len(names))
+	}
+}
+
+func TestResponseCSSEmptyBody(t *testing.T) {
+	resp := MustNewResponse("https://example.com", 200)
+
+	// 空 body 不应 panic
+	items := resp.CSS("div.item")
+	if items.Len() != 0 {
+		t.Errorf("expected 0 items for empty body, got %d", items.Len())
+	}
+}

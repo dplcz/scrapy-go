@@ -34,8 +34,8 @@ type Engine struct {
 	downloader *downloader.Downloader
 	dlMW       *dl_mw.Manager
 	scraper    *scraper.Scraper
-	signals    *signal.SignalManager
-	stats      stats.StatsCollector
+	signals    *signal.Manager
+	stats      stats.Collector
 	logger     *slog.Logger
 
 	running    atomic.Bool
@@ -58,15 +58,15 @@ func NewEngine(
 	dl *downloader.Downloader,
 	dlMW *dl_mw.Manager,
 	sc *scraper.Scraper,
-	signals *signal.SignalManager,
-	statsCollector stats.StatsCollector,
+	signals *signal.Manager,
+	statsCollector stats.Collector,
 	logger *slog.Logger,
 ) *Engine {
 	if signals == nil {
-		signals = signal.NewSignalManager(nil)
+		signals = signal.NewManager(nil)
 	}
 	if statsCollector == nil {
-		statsCollector = stats.NewDummyStatsCollector()
+		statsCollector = stats.NewDummyCollector()
 	}
 	if logger == nil {
 		logger = slog.Default()

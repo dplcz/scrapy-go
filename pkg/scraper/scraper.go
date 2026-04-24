@@ -26,8 +26,8 @@ type Scraper struct {
 	spiderMW  *spider_mw.Manager
 	itemProc  *pipeline.Manager
 	spiderRef spider.Spider
-	signals   *signal.SignalManager
-	stats     stats.StatsCollector
+	signals   *signal.Manager
+	stats     stats.Collector
 	logger    *slog.Logger
 
 	// maxActiveSize 控制活跃响应的最大总大小（字节），用于回退机制。
@@ -40,8 +40,8 @@ func NewScraper(
 	spiderMW *spider_mw.Manager,
 	itemProc *pipeline.Manager,
 	spiderRef spider.Spider,
-	signals *signal.SignalManager,
-	sc stats.StatsCollector,
+	signals *signal.Manager,
+	sc stats.Collector,
 	logger *slog.Logger,
 	maxActiveSize int,
 ) *Scraper {
@@ -52,10 +52,10 @@ func NewScraper(
 		itemProc = pipeline.NewManager(nil, nil, nil)
 	}
 	if signals == nil {
-		signals = signal.NewSignalManager(nil)
+		signals = signal.NewManager(nil)
 	}
 	if sc == nil {
-		sc = stats.NewDummyStatsCollector()
+		sc = stats.NewDummyCollector()
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -95,7 +95,7 @@ func (s *Scraper) NeedsBackout() bool {
 // 处理流程：
 //  1. 通过 Spider 中间件链的 ProcessSpiderInput
 //  2. 调用 Spider 回调（Request.Callback 或 Spider.Parse）
-//  3. 通过 Spider 中间件链的 ProcessSpiderOutput
+//  3. 通过 Spider 中间件链的 ProcessOutput
 //  4. 分发结果：Request 返回给 Engine，Item 进入 Pipeline
 //
 // 返回值：
@@ -116,7 +116,7 @@ func (s *Scraper) Scrape(ctx context.Context, response *scrapy_http.Response, re
 	callbackFn := s.resolveCallback(request)
 
 	// 通过 Spider 中间件链处理
-	outputs, err := s.spiderMW.ScrapeResponse(ctx, func(ctx context.Context, resp *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+	outputs, err := s.spiderMW.ScrapeResponse(ctx, func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
 		return callbackFn(ctx, resp)
 	}, response)
 
@@ -175,7 +175,7 @@ func (s *Scraper) resolveCallback(request *scrapy_http.Request) spider.CallbackF
 
 // processOutputs 分发 Spider 输出。
 // 将 Request 收集返回给 Engine，将 Item 发送到 Pipeline。
-func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.SpiderOutput, response any) ([]*scrapy_http.Request, error) {
+func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, response any) ([]*scrapy_http.Request, error) {
 	var newRequests []*scrapy_http.Request
 
 	for _, output := range outputs {

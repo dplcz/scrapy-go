@@ -10,8 +10,8 @@ import (
 	scrapy_http "scrapy-go/pkg/http"
 )
 
-// MiddlewareEntry 表示一个带优先级的中间件条目。
-type MiddlewareEntry struct {
+// Entry 表示一个带优先级的中间件条目。
+type Entry struct {
 	Middleware DownloaderMiddleware
 	Name      string
 	Priority  int
@@ -20,7 +20,7 @@ type MiddlewareEntry struct {
 // Manager 管理下载器中间件链。
 // 对应 Scrapy 的 DownloaderMiddlewareManager。
 type Manager struct {
-	middlewares []MiddlewareEntry // 按优先级排序（正序）
+	middlewares []Entry // 按优先级排序（正序）
 	logger     *slog.Logger
 }
 
@@ -37,7 +37,7 @@ func NewManager(logger *slog.Logger) *Manager {
 // AddMiddleware 添加一个中间件。
 // 中间件按优先级排序，优先级数值小的先执行 ProcessRequest。
 func (m *Manager) AddMiddleware(mw DownloaderMiddleware, name string, priority int) {
-	m.middlewares = append(m.middlewares, MiddlewareEntry{
+	m.middlewares = append(m.middlewares, Entry{
 		Middleware: mw,
 		Name:      name,
 		Priority:  priority,

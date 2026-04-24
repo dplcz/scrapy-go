@@ -15,7 +15,7 @@ import (
 
 func TestScraperBasic(t *testing.T) {
 	sp := &testSpider{}
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	s := NewScraper(nil, nil, sp, nil, sc, nil, 0)
 	s.Open(context.Background())
 	defer s.Close(context.Background())
@@ -47,8 +47,8 @@ func TestScraperWithCallback(t *testing.T) {
 	defer s.Close(context.Background())
 
 	// 设置自定义回调
-	customCallback := spider.CallbackFunc(func(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
-		return []spider.SpiderOutput{
+	customCallback := spider.CallbackFunc(func(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+		return []spider.Output{
 			{Item: map[string]any{"custom": true}},
 		}, nil
 	})
@@ -71,7 +71,7 @@ func TestScraperWithCallback(t *testing.T) {
 
 func TestScraperCallbackError(t *testing.T) {
 	sp := &errorSpider{}
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	s := NewScraper(nil, nil, sp, nil, sc, nil, 0)
 	s.Open(context.Background())
 	defer s.Close(context.Background())
@@ -140,7 +140,7 @@ func TestScraperWithSpiderMiddleware(t *testing.T) {
 
 func TestScraperWithPipeline(t *testing.T) {
 	sp := &testSpider{}
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	pm := pipeline.NewManager(nil, sc, nil)
 	pm.AddPipeline(&countPipeline{}, "count", 100)
 
@@ -196,9 +196,9 @@ func TestScraperScrapeErrorWithErrback(t *testing.T) {
 	defer s.Close(context.Background())
 
 	errbackCalled := false
-	errback := spider.ErrbackFunc(func(ctx context.Context, err error, request *scrapy_http.Request) ([]spider.SpiderOutput, error) {
+	errback := spider.ErrbackFunc(func(ctx context.Context, err error, request *scrapy_http.Request) ([]spider.Output, error) {
 		errbackCalled = true
-		return []spider.SpiderOutput{
+		return []spider.Output{
 			{Request: scrapy_http.MustNewRequest("https://example.com/retry")},
 		}, nil
 	})
@@ -224,35 +224,35 @@ func TestScraperScrapeErrorWithErrback(t *testing.T) {
 // ============================================================================
 
 type testSpider struct {
-	spider.BaseSpider
+	spider.Base
 }
 
 func (s *testSpider) Name() string { return "test" }
 
-func (s *testSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
-	return []spider.SpiderOutput{
+func (s *testSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+	return []spider.Output{
 		{Item: map[string]any{"url": response.URL.String()}},
 		{Request: scrapy_http.MustNewRequest("https://example.com/next")},
 	}, nil
 }
 
 type errorSpider struct {
-	spider.BaseSpider
+	spider.Base
 }
 
 func (s *errorSpider) Name() string { return "error" }
 
-func (s *errorSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+func (s *errorSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	return nil, errors.New("parse error")
 }
 
 type closeSpiderSpider struct {
-	spider.BaseSpider
+	spider.Base
 }
 
 func (s *closeSpiderSpider) Name() string { return "close" }
 
-func (s *closeSpiderSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+func (s *closeSpiderSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	return nil, scrapy_errors.NewCloseSpiderError("item_count_exceeded")
 }
 
@@ -261,8 +261,8 @@ type filterItemMW struct {
 	spider_mw.BaseSpiderMiddleware
 }
 
-func (m *filterItemMW) ProcessSpiderOutput(ctx context.Context, response *scrapy_http.Response, result []spider.SpiderOutput) ([]spider.SpiderOutput, error) {
-	var filtered []spider.SpiderOutput
+func (m *filterItemMW) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
+	var filtered []spider.Output
 	for _, output := range result {
 		if output.IsRequest() {
 			filtered = append(filtered, output)

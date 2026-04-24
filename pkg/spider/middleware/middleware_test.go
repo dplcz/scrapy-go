@@ -12,8 +12,8 @@ import (
 func TestManagerScrapeResponseNormal(t *testing.T) {
 	m := NewManager(nil)
 
-	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.SpiderOutput, error) {
-		return []spider.SpiderOutput{
+	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
+		return []spider.Output{
 			{Item: map[string]any{"title": "test"}},
 		}, nil
 	}
@@ -38,7 +38,7 @@ func TestManagerProcessSpiderInputOrder(t *testing.T) {
 	m.AddMiddleware(&inputTrackingMW{name: "mw1", order: &order}, "mw1", 100)
 	m.AddMiddleware(&inputTrackingMW{name: "mw2", order: &order}, "mw2", 200)
 
-	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
 		order = append(order, "callback")
 		return nil, nil
 	}
@@ -59,21 +59,21 @@ func TestManagerProcessSpiderInputOrder(t *testing.T) {
 	}
 }
 
-func TestManagerProcessSpiderOutputOrder(t *testing.T) {
+func TestManagerProcessOutputOrder(t *testing.T) {
 	m := NewManager(nil)
 
 	var order []string
 	m.AddMiddleware(&outputTrackingMW{name: "mw1", order: &order}, "mw1", 100)
 	m.AddMiddleware(&outputTrackingMW{name: "mw2", order: &order}, "mw2", 200)
 
-	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.SpiderOutput, error) {
-		return []spider.SpiderOutput{{Item: "test"}}, nil
+	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
+		return []spider.Output{{Item: "test"}}, nil
 	}
 
 	resp := scrapy_http.MustNewResponse("https://example.com", 200)
 	m.ScrapeResponse(context.Background(), scrapeFunc, resp)
 
-	// ProcessSpiderOutput: 逆序 (200 → 100)
+	// ProcessOutput: 逆序 (200 → 100)
 	expected := []string{"mw2:output", "mw1:output"}
 	if len(order) != len(expected) {
 		t.Fatalf("expected %d calls, got %d: %v", len(expected), len(order), order)
@@ -92,7 +92,7 @@ func TestManagerProcessSpiderInputError(t *testing.T) {
 	m.AddMiddleware(&errorInputMW{err: testErr}, "error_mw", 100)
 
 	callbackCalled := false
-	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
 		callbackCalled = true
 		return nil, nil
 	}
@@ -115,7 +115,7 @@ func TestManagerProcessSpiderException(t *testing.T) {
 	m.AddMiddleware(&exceptionRecoveryMW{}, "recovery", 100)
 
 	callbackErr := errors.New("callback error")
-	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+	scrapeFunc := func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
 		return nil, callbackErr
 	}
 
@@ -170,7 +170,7 @@ type outputTrackingMW struct {
 	order *[]string
 }
 
-func (m *outputTrackingMW) ProcessSpiderOutput(ctx context.Context, response *scrapy_http.Response, result []spider.SpiderOutput) ([]spider.SpiderOutput, error) {
+func (m *outputTrackingMW) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
 	*m.order = append(*m.order, m.name+":output")
 	return result, nil
 }
@@ -188,8 +188,8 @@ type exceptionRecoveryMW struct {
 	BaseSpiderMiddleware
 }
 
-func (m *exceptionRecoveryMW) ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.SpiderOutput, error) {
-	return []spider.SpiderOutput{
+func (m *exceptionRecoveryMW) ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.Output, error) {
+	return []spider.Output{
 		{Item: map[string]any{"recovered": true, "error": err.Error()}},
 	}, nil
 }

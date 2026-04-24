@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestMemoryStatsCollector(t *testing.T) {
-	c := NewMemoryStatsCollector(false, nil)
+func TestMemoryCollector(t *testing.T) {
+	c := NewMemoryCollector(false, nil)
 
 	// 测试 SetValue / GetValue
 	c.SetValue("key1", "value1")
@@ -76,8 +76,8 @@ func TestMemoryStatsCollector(t *testing.T) {
 	}
 }
 
-func TestMemoryStatsCollectorConcurrency(t *testing.T) {
-	c := NewMemoryStatsCollector(false, nil)
+func TestMemoryCollectorConcurrency(t *testing.T) {
+	c := NewMemoryCollector(false, nil)
 
 	var wg sync.WaitGroup
 	n := 1000
@@ -98,8 +98,8 @@ func TestMemoryStatsCollectorConcurrency(t *testing.T) {
 	}
 }
 
-func TestDummyStatsCollector(t *testing.T) {
-	c := NewDummyStatsCollector()
+func TestDummyCollector(t *testing.T) {
+	c := NewDummyCollector()
 
 	// 所有操作都是空操作
 	c.SetValue("key", "value")

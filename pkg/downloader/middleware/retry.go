@@ -28,14 +28,14 @@ type RetryMiddleware struct {
 	maxRetryTimes  int
 	retryHTTPCodes map[int]struct{}
 	priorityAdjust int
-	stats          stats.StatsCollector
+	stats          stats.Collector
 	logger         *slog.Logger
 }
 
 // NewRetryMiddleware 创建一个 Retry 中间件。
-func NewRetryMiddleware(maxRetryTimes int, retryHTTPCodes []int, priorityAdjust int, sc stats.StatsCollector, logger *slog.Logger) *RetryMiddleware {
+func NewRetryMiddleware(maxRetryTimes int, retryHTTPCodes []int, priorityAdjust int, sc stats.Collector, logger *slog.Logger) *RetryMiddleware {
 	if sc == nil {
-		sc = stats.NewDummyStatsCollector()
+		sc = stats.NewDummyCollector()
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -144,7 +144,7 @@ func (m *RetryMiddleware) retry(request *scrapy_http.Request, reason string) *sc
 
 // GetRetryRequest 是一个公共辅助函数，可在 Spider 回调中手动触发重试。
 // 对应 Scrapy 的 get_retry_request 函数。
-func GetRetryRequest(request *scrapy_http.Request, reason string, maxRetryTimes int, priorityAdjust int, sc stats.StatsCollector, logger *slog.Logger) *scrapy_http.Request {
+func GetRetryRequest(request *scrapy_http.Request, reason string, maxRetryTimes int, priorityAdjust int, sc stats.Collector, logger *slog.Logger) *scrapy_http.Request {
 	m := &RetryMiddleware{
 		maxRetryTimes:  maxRetryTimes,
 		priorityAdjust: priorityAdjust,

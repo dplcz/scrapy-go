@@ -10,7 +10,7 @@ import (
 )
 
 func TestManagerProcessItemNormal(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	m := NewManager(nil, sc, nil)
 
 	m.AddPipeline(&uppercasePipeline{}, "uppercase", 100)
@@ -50,7 +50,7 @@ func TestManagerProcessItemChain(t *testing.T) {
 }
 
 func TestManagerProcessItemDrop(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	m := NewManager(nil, sc, nil)
 
 	m.AddPipeline(&dropPipeline{}, "drop", 100)
@@ -68,7 +68,7 @@ func TestManagerProcessItemDrop(t *testing.T) {
 }
 
 func TestManagerProcessItemError(t *testing.T) {
-	sc := stats.NewMemoryStatsCollector(false, nil)
+	sc := stats.NewMemoryCollector(false, nil)
 	m := NewManager(nil, sc, nil)
 
 	testErr := errors.New("pipeline error")

@@ -339,7 +339,7 @@ func (m *CacheMiddleware) Stats() (hits, misses int) {
 // ============================================================================
 
 // ItemStatsMiddleware 统计 Spider 回调产出的 Item 和 Request 数量。
-// 它在 ProcessSpiderOutput 中遍历所有输出项进行计数，
+// 它在 ProcessOutput 中遍历所有输出项进行计数，
 // 并在 ProcessSpiderInput 中记录每个响应的处理。
 //
 // 建议优先级：100（尽早拦截输入，尽晚拦截输出，确保统计完整）
@@ -359,8 +359,8 @@ func (m *ItemStatsMiddleware) ProcessSpiderInput(ctx context.Context, response *
 	return nil
 }
 
-// ProcessSpiderOutput 统计产出的 Item 和 Request 数量。
-func (m *ItemStatsMiddleware) ProcessSpiderOutput(ctx context.Context, response *scrapy_http.Response, result []spider.SpiderOutput) ([]spider.SpiderOutput, error) {
+// ProcessOutput 统计产出的 Item 和 Request 数量。
+func (m *ItemStatsMiddleware) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
 	m.mu.Lock()
 	for _, output := range result {
 		if output.IsItem() {
@@ -385,14 +385,14 @@ func (m *ItemStatsMiddleware) Stats() (items, requests, pages int) {
 // ============================================================================
 
 type ArticleSpider struct {
-	spider.BaseSpider
+	spider.Base
 	mu       sync.Mutex
 	articles []Article
 }
 
 func NewArticleSpider(baseURL string) *ArticleSpider {
 	return &ArticleSpider{
-		BaseSpider: spider.BaseSpider{
+		Base: spider.Base{
 			SpiderName: "articles",
 			StartURLs: []string{
 				baseURL + "/api/articles?page=1",
@@ -402,20 +402,20 @@ func NewArticleSpider(baseURL string) *ArticleSpider {
 }
 
 // Parse 解析文章列表 API 响应。
-func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	var apiResp ArticleAPIResponse
 	if err := response.JSON(&apiResp); err != nil {
 		return nil, fmt.Errorf("解析 JSON 失败: %w", err)
 	}
 
-	var outputs []spider.SpiderOutput
+	var outputs []spider.Output
 
 	// 提取文章数据
 	for _, article := range apiResp.Articles {
 		s.mu.Lock()
 		s.articles = append(s.articles, article)
 		s.mu.Unlock()
-		outputs = append(outputs, spider.SpiderOutput{Item: article})
+		outputs = append(outputs, spider.Output{Item: article})
 	}
 
 	// 对第一页的第一篇文章，请求详情页（用于演示缓存中间件）
@@ -429,7 +429,7 @@ func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Respons
 			scrapy_http.WithCallback(cb),
 		)
 		if err == nil {
-			outputs = append(outputs, spider.SpiderOutput{Request: req})
+			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
 
@@ -438,7 +438,7 @@ func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Respons
 		nextURL, err := response.URLJoin(apiResp.NextPage)
 		if err == nil {
 			req, _ := scrapy_http.NewRequest(nextURL)
-			outputs = append(outputs, spider.SpiderOutput{Request: req})
+			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
 
@@ -447,7 +447,7 @@ func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Respons
 
 // ParseDetail 解析文章详情页响应。
 // 第一次调用时会再次请求同一 URL（跳过去重），第二次将命中缓存。
-func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.Response) ([]spider.SpiderOutput, error) {
+func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
 	cached := ""
 	if hit, ok := response.GetMeta("_cache_hit"); ok {
 		if b, ok := hit.(bool); ok && b {
@@ -464,7 +464,7 @@ func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.R
 			scrapy_http.WithDontFilter(true), // 跳过去重，确保请求能发出
 		)
 		if err == nil {
-			return []spider.SpiderOutput{{Request: req}}, nil
+			return []spider.Output{{Request: req}}, nil
 		}
 	}
 
@@ -472,8 +472,8 @@ func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.R
 }
 
 // CustomSettings 返回 Spider 级别的配置。
-func (s *ArticleSpider) CustomSettings() *spider.SpiderSettings {
-	return &spider.SpiderSettings{
+func (s *ArticleSpider) CustomSettings() *spider.Settings {
+	return &spider.Settings{
 		ConcurrentRequests: spider.IntPtr(2),
 		DownloadDelay:      spider.DurationPtr(0),
 		LogLevel:           spider.StringPtr("WARN"),
@@ -520,7 +520,7 @@ func main() {
 	//
 	// Spider 中间件执行顺序：
 	//   ProcessSpiderInput（正序）: ItemStats(100)
-	//   ProcessSpiderOutput（逆序）: ItemStats(100)
+	//   ProcessOutput（逆序）: ItemStats(100)
 	//
 	// ItemStatsMiddleware 统计 Spider 回调产出的 Item 和 Request 数量
 	itemStatsMW := &ItemStatsMiddleware{}

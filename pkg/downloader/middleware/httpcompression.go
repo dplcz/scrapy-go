@@ -35,7 +35,7 @@ type HttpCompressionMiddleware struct {
 
 	maxSize  int // 解压后最大允许大小（字节）
 	warnSize int // 解压后大小警告阈值（字节）
-	stats    stats.StatsCollector
+	stats    stats.Collector
 	logger   *slog.Logger
 }
 
@@ -43,9 +43,9 @@ type HttpCompressionMiddleware struct {
 var acceptedEncodings = []string{"gzip", "deflate"}
 
 // NewHttpCompressionMiddleware 创建一个 HttpCompression 中间件。
-func NewHttpCompressionMiddleware(maxSize, warnSize int, sc stats.StatsCollector, logger *slog.Logger) *HttpCompressionMiddleware {
+func NewHttpCompressionMiddleware(maxSize, warnSize int, sc stats.Collector, logger *slog.Logger) *HttpCompressionMiddleware {
 	if sc == nil {
-		sc = stats.NewDummyStatsCollector()
+		sc = stats.NewDummyCollector()
 	}
 	if logger == nil {
 		logger = slog.Default()

@@ -40,8 +40,8 @@ type Downloader struct {
 	domainConcurrency int
 	randomizeDelay    bool
 	downloadDelay     time.Duration
-	signals           *signal.SignalManager
-	stats             stats.StatsCollector
+	signals           *signal.Manager
+	stats             stats.Collector
 	logger            *slog.Logger
 
 	gcTicker *time.Ticker
@@ -49,16 +49,16 @@ type Downloader struct {
 }
 
 // NewDownloader 创建一个新的下载器。
-func NewDownloader(s *settings.Settings, handler DownloadHandler, signals *signal.SignalManager, sc stats.StatsCollector, logger *slog.Logger) *Downloader {
+func NewDownloader(s *settings.Settings, handler DownloadHandler, signals *signal.Manager, sc stats.Collector, logger *slog.Logger) *Downloader {
 	if handler == nil {
 		timeout := s.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
 		handler = NewHTTPDownloadHandler(timeout)
 	}
 	if signals == nil {
-		signals = signal.NewSignalManager(nil)
+		signals = signal.NewManager(nil)
 	}
 	if sc == nil {
-		sc = stats.NewDummyStatsCollector()
+		sc = stats.NewDummyCollector()
 	}
 	if logger == nil {
 		logger = slog.Default()

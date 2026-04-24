@@ -32,8 +32,8 @@ import (
 // Crawler 是顶层编排器，组装所有组件并启动爬虫。
 type Crawler struct {
 	Settings *settings.Settings
-	Stats    stats.StatsCollector
-	Signals  *sig.SignalManager
+	Stats    stats.Collector
+	Signals  *sig.Manager
 	Logger   *slog.Logger
 
 	engine     *engine.Engine
@@ -49,13 +49,13 @@ type Crawler struct {
 	customLogger bool
 
 	// userPipelines 存储用户注册的自定义 Pipeline
-	userPipelines []pipeline.PipelineEntry
+	userPipelines []pipeline.Entry
 
 	// userDLMiddlewares 存储用户注册的自定义下载器中间件
-	userDLMiddlewares []dl_mw.MiddlewareEntry
+	userDLMiddlewares []dl_mw.Entry
 
 	// userSpiderMiddlewares 存储用户注册的自定义 Spider 中间件
-	userSpiderMiddlewares []spider_mw.MiddlewareEntry
+	userSpiderMiddlewares []spider_mw.Entry
 }
 
 // New 创建一个新的 Crawler，可通过 Option 自定义各组件。
@@ -95,10 +95,10 @@ func (c *Crawler) initDefaults() {
 		c.Logger = newDefaultLogger(c.Settings)
 	}
 	if c.Signals == nil {
-		c.Signals = sig.NewSignalManager(c.Logger)
+		c.Signals = sig.NewManager(c.Logger)
 	}
 	if c.Stats == nil {
-		c.Stats = stats.NewMemoryStatsCollector(
+		c.Stats = stats.NewMemoryCollector(
 			c.Settings.GetBool("STATS_DUMP", true),
 			c.Logger,
 		)
@@ -137,7 +137,7 @@ func newDefaultLogger(s *settings.Settings) *slog.Logger {
 //	c.AddPipeline(&JsonFilePipeline{Path: "output.json"}, "JsonFile", 300)
 //	c.Run(ctx, mySpider)
 func (c *Crawler) AddPipeline(p pipeline.ItemPipeline, name string, priority int) {
-	c.userPipelines = append(c.userPipelines, pipeline.PipelineEntry{
+	c.userPipelines = append(c.userPipelines, pipeline.Entry{
 		Pipeline: p,
 		Name:     name,
 		Priority: priority,
@@ -153,7 +153,7 @@ func (c *Crawler) AddPipeline(p pipeline.ItemPipeline, name string, priority int
 //	c.AddDownloaderMiddleware(&MyAuthMiddleware{}, "Auth", 450)
 //	c.Run(ctx, mySpider)
 func (c *Crawler) AddDownloaderMiddleware(mw dl_mw.DownloaderMiddleware, name string, priority int) {
-	c.userDLMiddlewares = append(c.userDLMiddlewares, dl_mw.MiddlewareEntry{
+	c.userDLMiddlewares = append(c.userDLMiddlewares, dl_mw.Entry{
 		Middleware: mw,
 		Name:       name,
 		Priority:   priority,
@@ -172,7 +172,7 @@ func (c *Crawler) AddDownloaderMiddleware(mw dl_mw.DownloaderMiddleware, name st
 //	c.AddSpiderMiddleware(&MyFilterMiddleware{}, "Filter", 500)
 //	c.Run(ctx, mySpider)
 func (c *Crawler) AddSpiderMiddleware(mw spider_mw.SpiderMiddleware, name string, priority int) {
-	c.userSpiderMiddlewares = append(c.userSpiderMiddlewares, spider_mw.MiddlewareEntry{
+	c.userSpiderMiddlewares = append(c.userSpiderMiddlewares, spider_mw.Entry{
 		Middleware: mw,
 		Name:       name,
 		Priority:   priority,
@@ -194,8 +194,8 @@ func (c *Crawler) Run(ctx context.Context, sp spider.Spider) error {
 	// Spider 配置可能覆盖了 LOG_LEVEL，重建受影响的组件
 	if !c.customLogger {
 		c.Logger = newDefaultLogger(c.Settings)
-		c.Signals = sig.NewSignalManager(c.Logger)
-		c.Stats = stats.NewMemoryStatsCollector(
+		c.Signals = sig.NewManager(c.Logger)
+		c.Stats = stats.NewMemoryCollector(
 			c.Settings.GetBool("STATS_DUMP", true),
 			c.Logger,
 		)
@@ -513,14 +513,14 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithStats 设置统计收集器。
-func WithStats(sc stats.StatsCollector) Option {
+func WithStats(sc stats.Collector) Option {
 	return func(c *Crawler) {
 		c.Stats = sc
 	}
 }
 
 // WithSignals 设置信号管理器。
-func WithSignals(sm *sig.SignalManager) Option {
+func WithSignals(sm *sig.Manager) Option {
 	return func(c *Crawler) {
 		c.Signals = sm
 	}

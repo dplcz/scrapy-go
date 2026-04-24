@@ -7,10 +7,10 @@ import (
 	scrapy_http "scrapy-go/pkg/http"
 )
 
-func TestSpiderOutput(t *testing.T) {
+func TestOutput(t *testing.T) {
 	// Request 输出
 	req := scrapy_http.MustNewRequest("https://example.com")
-	reqOutput := SpiderOutput{Request: req}
+	reqOutput := Output{Request: req}
 	if !reqOutput.IsRequest() {
 		t.Error("should be request")
 	}
@@ -19,7 +19,7 @@ func TestSpiderOutput(t *testing.T) {
 	}
 
 	// Item 输出
-	itemOutput := SpiderOutput{Item: map[string]any{"name": "test"}}
+	itemOutput := Output{Item: map[string]any{"name": "test"}}
 	if itemOutput.IsRequest() {
 		t.Error("should not be request")
 	}
@@ -28,21 +28,21 @@ func TestSpiderOutput(t *testing.T) {
 	}
 
 	// 空输出
-	emptyOutput := SpiderOutput{}
+	emptyOutput := Output{}
 	if emptyOutput.IsRequest() || emptyOutput.IsItem() {
 		t.Error("empty output should be neither request nor item")
 	}
 }
 
-func TestBaseSpiderName(t *testing.T) {
-	s := &BaseSpider{SpiderName: "test_spider"}
+func TestBaseName(t *testing.T) {
+	s := &Base{SpiderName: "test_spider"}
 	if s.Name() != "test_spider" {
 		t.Errorf("expected 'test_spider', got '%s'", s.Name())
 	}
 }
 
-func TestBaseSpiderStart(t *testing.T) {
-	s := &BaseSpider{
+func TestBaseStart(t *testing.T) {
+	s := &Base{
 		SpiderName: "test",
 		StartURLs:  []string{"https://example.com/1", "https://example.com/2"},
 	}
@@ -50,7 +50,7 @@ func TestBaseSpiderStart(t *testing.T) {
 	ctx := context.Background()
 	ch := s.Start(ctx)
 
-	var outputs []SpiderOutput
+	var outputs []Output
 	for output := range ch {
 		outputs = append(outputs, output)
 	}
@@ -74,8 +74,8 @@ func TestBaseSpiderStart(t *testing.T) {
 	}
 }
 
-func TestBaseSpiderStartWithInvalidURL(t *testing.T) {
-	s := &BaseSpider{
+func TestBaseStartWithInvalidURL(t *testing.T) {
+	s := &Base{
 		SpiderName: "test",
 		StartURLs:  []string{"://invalid", "https://example.com/valid"},
 	}
@@ -83,7 +83,7 @@ func TestBaseSpiderStartWithInvalidURL(t *testing.T) {
 	ctx := context.Background()
 	ch := s.Start(ctx)
 
-	var outputs []SpiderOutput
+	var outputs []Output
 	for output := range ch {
 		outputs = append(outputs, output)
 	}
@@ -97,8 +97,8 @@ func TestBaseSpiderStartWithInvalidURL(t *testing.T) {
 	}
 }
 
-func TestBaseSpiderStartCancellation(t *testing.T) {
-	s := &BaseSpider{
+func TestBaseStartCancellation(t *testing.T) {
+	s := &Base{
 		SpiderName: "test",
 		StartURLs:  []string{"https://example.com/1", "https://example.com/2", "https://example.com/3"},
 	}
@@ -122,8 +122,8 @@ func TestBaseSpiderStartCancellation(t *testing.T) {
 	}
 }
 
-func TestBaseSpiderParse(t *testing.T) {
-	s := &BaseSpider{SpiderName: "test"}
+func TestBaseParse(t *testing.T) {
+	s := &Base{SpiderName: "test"}
 
 	resp := scrapy_http.MustNewResponse("https://example.com", 200)
 	outputs, err := s.Parse(context.Background(), resp)
@@ -135,27 +135,27 @@ func TestBaseSpiderParse(t *testing.T) {
 	}
 }
 
-func TestBaseSpiderCustomSettings(t *testing.T) {
-	s := &BaseSpider{SpiderName: "test"}
+func TestBaseCustomSettings(t *testing.T) {
+	s := &Base{SpiderName: "test"}
 	if s.CustomSettings() != nil {
 		t.Error("default CustomSettings should return nil")
 	}
 }
 
-func TestBaseSpiderClosed(t *testing.T) {
-	s := &BaseSpider{SpiderName: "test"}
+func TestBaseClosed(t *testing.T) {
+	s := &Base{SpiderName: "test"}
 	// 不应 panic
 	s.Closed("finished")
 }
 
 func TestSpiderInterface(t *testing.T) {
-	var _ Spider = (*BaseSpider)(nil)
+	var _ Spider = (*Base)(nil)
 }
 
 // TestCustomSpider 测试自定义 Spider 实现
 func TestCustomSpider(t *testing.T) {
 	s := &testSpider{
-		BaseSpider: BaseSpider{
+		Base: Base{
 			SpiderName: "quotes",
 			StartURLs:  []string{"https://quotes.toscrape.com"},
 		},
@@ -183,17 +183,17 @@ func TestCustomSpider(t *testing.T) {
 
 // testSpider 是一个自定义 Spider 实现
 type testSpider struct {
-	BaseSpider
+	Base
 }
 
-func (s *testSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]SpiderOutput, error) {
-	return []SpiderOutput{
+func (s *testSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]Output, error) {
+	return []Output{
 		{Item: map[string]any{"url": response.URL.String(), "body_len": len(response.Body)}},
 	}, nil
 }
 
-func (s *testSpider) CustomSettings() *SpiderSettings {
-	return &SpiderSettings{
+func (s *testSpider) CustomSettings() *Settings {
+	return &Settings{
 		DownloadDelay: DurationPtr(1),
 	}
 }

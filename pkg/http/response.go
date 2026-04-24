@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+
+	"scrapy-go/pkg/selector"
 )
 
 // Response 表示一个 HTTP 响应。
@@ -214,4 +216,55 @@ func (r *Response) GetCbKwargs() map[string]any {
 		return nil
 	}
 	return r.Request.CbKwargs
+}
+
+// ============================================================================
+// HTML 选择器方法
+// ============================================================================
+
+// Selector 返回响应体的 Selector，用于 CSS 和 XPath 查询。
+// 对应 Scrapy Response 的 selector 属性。
+//
+// 用法：
+//
+//	sel := response.Selector()
+//	titles := sel.CSS("h1.title").GetAll()
+func (r *Response) Selector() *selector.Selector {
+	return selector.NewFromBytes(r.Body)
+}
+
+// CSS 使用 CSS 选择器查询响应体，返回匹配的 List。
+// 这是 response.Selector().CSS(query) 的快捷方式。
+//
+// 对应 Scrapy Response 的 css() 方法。
+//
+// 用法：
+//
+//	quotes := response.CSS("div.quote")
+//	texts := response.CSS("span.text::text").GetAll()
+func (r *Response) CSS(query string) selector.List {
+	return r.Selector().CSS(query)
+}
+
+// CSSAttr 使用 CSS 选择器查询并提取指定属性值。
+// 这是 Scrapy 中 css("a::attr(href)") 的 Go 等价实现。
+//
+// 用法：
+//
+//	links := response.CSSAttr("a", "href").GetAll()
+func (r *Response) CSSAttr(query, attr string) selector.List {
+	return r.Selector().CSSAttr(query, attr)
+}
+
+// XPath 使用 XPath 表达式查询响应体，返回匹配的 List。
+// 这是 response.Selector().XPath(expr) 的快捷方式。
+//
+// 对应 Scrapy Response 的 xpath() 方法。
+//
+// 用法：
+//
+//	quotes := response.XPath("//div[@class='quote']")
+//	texts := response.XPath("//span[@class='text']/text()").GetAll()
+func (r *Response) XPath(expr string) selector.List {
+	return r.Selector().XPath(expr)
 }
