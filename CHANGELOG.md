@@ -5,6 +5,71 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.3.0-alpha.4] - 2026-04-27
+
+### 新增
+
+#### CrawlerRunner 多爬虫调度器（P2-010）
+
+对应 Scrapy Python 版本的 `CrawlerRunner` / `AsyncCrawlerRunner`，实现了多 Crawler 的并发/顺序调度与统一生命周期管理。
+
+- **`Runner` 类型** — 新增 `pkg/crawler/runner.go`，封装多爬虫调度逻辑
+  - `NewRunner(opts ...RunnerOption) *Runner` — 构造器
+  - `WithRunnerLogger(logger)` / `WithOSSignalHandling(enabled)` — 可选配置
+- **单爬虫异步调度**
+  - `Runner.Crawl(ctx, c, sp) <-chan error` — 异步启动单个 Crawler，返回完成通知 channel
+- **多爬虫并发/顺序调度**
+  - `Runner.StartConcurrent(ctx, jobs...)` — 并发启动多个 Spider，阻塞直到全部完成
+  - `Runner.StartSequentially(ctx, jobs...)` — 按 jobs 顺序依次启动，前一个完成后再启动下一个
+  - `Job` / `NewJob(c, sp)` — 描述 Crawler + Spider 绑定的爬取任务
+- **跨爬虫 Signal 传播**
+  - `Runner.ConnectSignal(sig, handler)` — 为所有当前/未来加入的 Crawler 注册同一个信号处理器
+  - 通过 Crawler 内部的 `beforeStart` 钩子在组件组装完成、Engine 启动之前注册，保证 `EngineStarted`/`SpiderOpened` 等早期信号能被捕获
+- **生命周期控制**
+  - `Runner.Stop()` — 请求所有正在运行的 Crawler 优雅停止（立即返回）
+  - `Runner.Wait()` — 阻塞等待所有 Crawler 完成（对应 Scrapy 的 `join`）
+  - `Runner.Close()` — 停止所有 Crawler 并等待完成，之后不再接受新的 Crawler
+  - `Runner.Crawlers()` / `Runner.BootstrapFailed()` — 状态查询
+- **OS 信号处理**
+  - 默认监听 SIGINT/SIGTERM，两阶段处理：第一次优雅关闭，第二次强制退出（exit code 130）
+  - 通过 `WithOSSignalHandling(false)` 关闭内置信号处理（适合测试或外部统一管理信号）
+
+#### Crawler 新增 API
+
+- **`Crawler.Crawl(ctx, sp)`** — 与 `Run` 并列的爬取入口，**不安装 OS 信号处理器**，供 Runner 等上层编排器调用
+- **`Crawler.Stop()`** — 请求优雅停止当前运行的爬虫，多次调用安全
+- **`Crawler.Spider()`** — 返回关联的 Spider 实例
+- **`Crawler.IsCrawling()`** — 查询爬虫是否正在运行
+- **单次运行约束** — Crawler 实例只能运行一次，通过 `atomic.Bool.CompareAndSwap` 保护
+
+### 变更
+
+- `Crawler.Run` 逻辑抽取到内部 `crawl` 方法，`Run` 与 `Crawl` 共享核心路径（前者安装 OS 信号处理器，后者不安装）
+- 新增内部 `Crawler.onBeforeStart(hook)` 钩子机制（非导出），供 Runner 在组件重建后注入跨爬虫信号处理器
+- 修复 Crawler 在 OS 信号到达时 `signal.Notify` 的 cleanup 时机，改用 `defer signal.Stop` 避免 channel 泄漏
+
+### 质量
+
+- 新增 `pkg/crawler/runner_test.go` — 26 个单元测试，覆盖 Job/Option/Crawler 管理/Crawl/StartConcurrent/StartSequentially/ConnectSignal/Stop/Wait/Close/并发安全压力测试
+- 新增 `tests/integration/runner_test.go` — 5 个端到端集成测试
+  - `TestRunner_E2E_ConcurrentMultipleSpiders` — 5 个 Spider 并发耗时验证
+  - `TestRunner_E2E_ConcurrentFiveOrMoreSpiders` — 8 个 Spider 并发（对应全局成功指标）
+  - `TestRunner_E2E_SequentialOrder` — 顺序执行正确性验证
+  - `TestRunner_E2E_CrossCrawlerSignalPropagation` — 跨爬虫 Signal 传播验证
+  - `TestRunner_E2E_StopGracefullyInterruptsAllCrawlers` — 优雅停止验证
+- 测试总数：442 个
+- `pkg/crawler` 包 runner.go 行级覆盖率：约 80%（installSignalHandler 中的真实信号分支难以稳定单测，已通过启用/禁用两种路径覆盖）
+- 竞态检测：`go test ./... -race` 全部通过
+- `go vet`：全部通过
+
+### Phase 2 Sprint 5 进度
+
+- ✅ P2-004 内置扩展（上一版已完成）
+- ✅ P2-005 Spider 内置中间件（上一版已完成）
+- ✅ **P2-010 CrawlerRunner 多爬虫调度器（本版）**
+
+---
+
 ## [v0.3.0-alpha.3] - 2026-04-27
 
 ### 新增
