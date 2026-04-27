@@ -194,6 +194,15 @@ func main() {
 | 📚 **books_json** | JSON API + Pipeline 数据处理 | `go run examples/books_json/main.go` |
 | 🔧 **custom_middleware** | 认证/日志/缓存中间件 | `go run examples/custom_middleware/main.go` |
 
+此外，`examples/template/` 目录提供了对齐 Scrapy CLI 模板的 Go 代码模板，可直接复制到项目中使用：
+
+| 模板 | 对齐 Scrapy | 路径 | 说明 |
+|------|-------------|------|------|
+| 📋 **settings** | `settings.py.tmpl` | `examples/template/project/settings.go` | 项目配置模板，包含所有常用配置项及注释 |
+| 📦 **pipelines** | `pipelines.py.tmpl` | `examples/template/project/pipelines.go` | Item Pipeline 接口实现模板 |
+| 🔌 **middlewares** | `middlewares.py.tmpl` | `examples/template/project/middlewares.go` | 下载器中间件 + Spider 中间件实现模板 |
+| 🕷️ **basic** | `spiders/basic.tmpl` | `examples/template/spiders/basic/main.go` | 基础爬虫模板，可直接运行 |
+
 ---
 
 ## ⚙️ 配置说明
@@ -527,7 +536,10 @@ scrapy-go/
 ├── 📂 examples/                    # 示例代码
 │   ├── quotes/                     # 基础爬取示例
 │   ├── books_json/                 # Pipeline + JSON API 示例
-│   └── custom_middleware/          # 自定义中间件示例
+│   ├── custom_middleware/          # 自定义中间件示例
+│   └── template/                   # 代码模板（对齐 Scrapy CLI 模板）
+│       ├── project/                # 项目级模板（settings/pipelines/middlewares）
+│       └── spiders/                # 爬虫模板（basic）
 ├── 📂 internal/
 │   └── utils/                      # 内部工具（指纹计算、URL 规范化）
 ├── 📂 pkg/
