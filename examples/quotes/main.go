@@ -14,9 +14,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/crawler"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
@@ -32,6 +33,7 @@ func newLocalQuotesSite() *httptest.Server {
 			http.NotFound(w, r)
 			return
 		}
+		time.Sleep(2 * time.Second)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<!DOCTYPE html>
 <html><head><title>Quotes to Scrape</title></head>
@@ -47,11 +49,11 @@ func newLocalQuotesSite() *httptest.Server {
   <span class="author">J.K. Rowling</span>
   <div class="tags"><a class="tag">abilities</a><a class="tag">choices</a></div>
 </div>
-<nav><ul class="pager"><li class="next"><a href="/page/2">Next →</a></li></ul></nav>
 </body></html>`)
 	})
 
 	mux.HandleFunc("/page/2", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<!DOCTYPE html>
 <html><head><title>Quotes to Scrape - Page 2</title></head>
@@ -67,11 +69,11 @@ func newLocalQuotesSite() *httptest.Server {
   <span class="author">Jane Austen</span>
   <div class="tags"><a class="tag">books</a><a class="tag">humor</a></div>
 </div>
-<nav><ul class="pager"><li class="next"><a href="/page/3">Next →</a></li></ul></nav>
 </body></html>`)
 	})
 
 	mux.HandleFunc("/page/3", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, `<!DOCTYPE html>
 <html><head><title>Quotes to Scrape - Page 3</title></head>
@@ -110,13 +112,18 @@ func NewQuotesSpider(baseURL string) *QuotesSpider {
 	return &QuotesSpider{
 		Base: spider.Base{
 			SpiderName: "quotes",
-			StartURLs:  []string{baseURL + "/"},
+			// 一次性产出 3 个独立的起始 URL（非链式），用于验证并发控制
+			StartURLs: []string{
+				baseURL + "/",
+				baseURL + "/page/2",
+				baseURL + "/page/3",
+			},
 		},
 	}
 }
 
 // Parse 解析响应，使用 CSS 选择器提取引用数据和下一页链接。
-func (s *QuotesSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *QuotesSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var outputs []spider.Output
 
 	// 使用 CSS 选择器提取每条引用
@@ -138,23 +145,14 @@ func (s *QuotesSpider) Parse(ctx context.Context, response *scrapy_http.Response
 		outputs = append(outputs, spider.Output{Item: item})
 	}
 
-	// 使用 CSS 选择器提取下一页链接
-	nextURL := response.CSSAttr("li.next a", "href").Get("")
-	if nextURL != "" {
-		absURL, err := response.URLJoin(nextURL)
-		if err == nil {
-			req, _ := scrapy_http.NewRequest(absURL)
-			outputs = append(outputs, spider.Output{Request: req})
-		}
-	}
-
+	// 不再跟踪下一页链接，3 个页面独立爬取
 	return outputs, nil
 }
 
 // CustomSettings 返回 Spider 级别的配置。
 func (s *QuotesSpider) CustomSettings() *spider.Settings {
 	return &spider.Settings{
-		ConcurrentRequests: spider.IntPtr(2),
+		ConcurrentRequests: spider.IntPtr(3),
 		DownloadDelay:      spider.DurationPtr(0),
 		LogLevel:           spider.StringPtr("DEBUG"),
 	}
@@ -182,7 +180,10 @@ func main() {
 	fmt.Println("Starting crawl...")
 	fmt.Println("============================================================")
 
+	start := time.Now()
 	err := c.Run(ctx, sp)
+	elapsed := time.Since(start)
+
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
 		fmt.Printf("Crawl error: %v\n", err)
 		os.Exit(1)
@@ -191,13 +192,13 @@ func main() {
 	// 4. 输出结果
 	fmt.Println()
 	fmt.Println("============================================================")
-	fmt.Printf("Crawl completed! Collected %d quotes:\n\n", len(sp.items))
+	fmt.Printf("Crawl completed! Collected %d quotes in %v:\n\n", len(sp.items), elapsed)
 
 	for i, item := range sp.items {
 		fmt.Printf("[%d] %s\n", i+1, item["text"])
 		fmt.Printf("    — %s\n", item["author"])
 		if tags, ok := item["tags"].([]string); ok && len(tags) > 0 {
-		fmt.Printf("    Tags: %v\n", tags)
+			fmt.Printf("    Tags: %v\n", tags)
 		}
 		fmt.Printf("    Source: %s\n\n", item["url"])
 	}
