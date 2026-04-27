@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/crawler"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/spider"
@@ -222,7 +222,7 @@ type htmlSpider struct {
 	items []map[string]string
 }
 
-func (s *htmlSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *htmlSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var outputs []spider.Output
 
 	// 使用 CSS 选择器提取数据
@@ -246,7 +246,7 @@ func (s *htmlSpider) Parse(ctx context.Context, response *scrapy_http.Response) 
 			absURL, err := response.URLJoin(detailURL)
 			if err == nil {
 				cb := spider.CallbackFunc(s.ParseDetail)
-				req, _ := scrapy_http.NewRequest(absURL, scrapy_http.WithCallback(cb))
+				req, _ := shttp.NewRequest(absURL, shttp.WithCallback(cb))
 				outputs = append(outputs, spider.Output{Request: req})
 			}
 		}
@@ -257,7 +257,7 @@ func (s *htmlSpider) Parse(ctx context.Context, response *scrapy_http.Response) 
 	if nextURL != "" {
 		absURL, err := response.URLJoin(nextURL)
 		if err == nil {
-			req, _ := scrapy_http.NewRequest(absURL)
+			req, _ := shttp.NewRequest(absURL)
 			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
@@ -265,7 +265,7 @@ func (s *htmlSpider) Parse(ctx context.Context, response *scrapy_http.Response) 
 	return outputs, nil
 }
 
-func (s *htmlSpider) ParseDetail(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *htmlSpider) ParseDetail(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	title := response.CSS("h1.detail-title::text").Get("")
 	desc := response.CSS("p.description::text").Get("")
 
@@ -364,7 +364,7 @@ type xpathSpider struct {
 	items []map[string]string
 }
 
-func (s *xpathSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *xpathSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var outputs []spider.Output
 
 	// 使用 XPath 选择器提取数据
@@ -444,21 +444,21 @@ type cookieSpider struct {
 	dashboardData string
 }
 
-func (s *cookieSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *cookieSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	// 登录页面 → 服务器设置 Cookie → 跟踪到 dashboard
 	nextURL := response.CSSAttr("a", "href").Get("")
 	if nextURL != "" {
 		absURL, err := response.URLJoin(nextURL)
 		if err == nil {
 			cb := spider.CallbackFunc(s.ParseDashboard)
-			req, _ := scrapy_http.NewRequest(absURL, scrapy_http.WithCallback(cb))
+			req, _ := shttp.NewRequest(absURL, shttp.WithCallback(cb))
 			return []spider.Output{{Request: req}}, nil
 		}
 	}
 	return nil, nil
 }
 
-func (s *cookieSpider) ParseDashboard(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *cookieSpider) ParseDashboard(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	title := response.CSS("h1.dashboard-title::text").Get("")
 	data := response.CSS("div.data::text").Get("")
 
@@ -526,7 +526,7 @@ type gzipSpider struct {
 	data string
 }
 
-func (s *gzipSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *gzipSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	title := response.CSS("h1.compressed::text").Get("")
 	data := response.CSS("div.data::text").Get("")
 
@@ -593,7 +593,7 @@ type redirectSpider struct {
 	content string
 }
 
-func (s *redirectSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *redirectSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	title := response.CSS("h1.redirected::text").Get("")
 	content := response.CSS("div.content::text").Get("")
 
@@ -763,7 +763,7 @@ type jsonSpider struct {
 	items []map[string]string
 }
 
-func (s *jsonSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *jsonSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var data struct {
 		Items    []map[string]string `json:"items"`
 		NextPage string              `json:"next_page"`
