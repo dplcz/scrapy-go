@@ -24,10 +24,10 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/crawler"
-	dl_mw "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/spider"
-	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 )
 
 // ============================================================================
@@ -157,8 +157,8 @@ func newLocalArticleAPI() *httptest.Server {
 //
 // 建议优先级：450（在 DefaultHeaders(400) 之后，UserAgent(500) 之前）
 type AuthMiddleware struct {
-	dl_mw.BaseDownloaderMiddleware // 嵌入基础实现，只需覆盖 ProcessRequest
-	token                          string
+	dmiddle.BaseDownloaderMiddleware // 嵌入基础实现，只需覆盖 ProcessRequest
+	token                            string
 }
 
 func NewAuthMiddleware(token string) *AuthMiddleware {
@@ -166,7 +166,7 @@ func NewAuthMiddleware(token string) *AuthMiddleware {
 }
 
 // ProcessRequest 在请求发送前注入 Authorization 头。
-func (m *AuthMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *AuthMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	if m.token != "" {
 		request.Headers.Set("Authorization", "Bearer "+m.token)
 	}
@@ -183,7 +183,7 @@ func (m *AuthMiddleware) ProcessRequest(ctx context.Context, request *scrapy_htt
 //
 // 建议优先级：50（最外层，最先接触请求、最后接触响应）
 type LoggingMiddleware struct {
-	dl_mw.BaseDownloaderMiddleware
+	dmiddle.BaseDownloaderMiddleware
 	logger *slog.Logger
 }
 
@@ -195,7 +195,7 @@ func NewLoggingMiddleware(logger *slog.Logger) *LoggingMiddleware {
 }
 
 // ProcessRequest 记录请求开始时间。
-func (m *LoggingMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *LoggingMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 将请求开始时间存入 Meta，供 ProcessResponse 计算耗时
 	request.SetMeta("_logging_start_time", time.Now())
 	m.logger.Info("📤 sending request",
@@ -206,7 +206,7 @@ func (m *LoggingMiddleware) ProcessRequest(ctx context.Context, request *scrapy_
 }
 
 // ProcessResponse 记录响应信息和耗时。
-func (m *LoggingMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *LoggingMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	elapsed := "unknown"
 	if startTime, ok := request.GetMeta("_logging_start_time"); ok {
 		if t, ok := startTime.(time.Time); ok {
@@ -232,7 +232,7 @@ func (m *LoggingMiddleware) ProcessResponse(ctx context.Context, request *scrapy
 }
 
 // ProcessException 记录请求异常。
-func (m *LoggingMiddleware) ProcessException(ctx context.Context, request *scrapy_http.Request, err error) (*scrapy_http.Response, error) {
+func (m *LoggingMiddleware) ProcessException(ctx context.Context, request *shttp.Request, err error) (*shttp.Response, error) {
 	m.logger.Error("❌ request error",
 		"url", request.URL.String(),
 		"error", err.Error(),
@@ -252,9 +252,9 @@ func (m *LoggingMiddleware) ProcessException(ctx context.Context, request *scrap
 //
 // 建议优先级：900（在所有其他中间件之后，最接近下载器）
 type CacheMiddleware struct {
-	dl_mw.BaseDownloaderMiddleware
+	dmiddle.BaseDownloaderMiddleware
 	mu     sync.RWMutex
-	cache  map[string]*scrapy_http.Response
+	cache  map[string]*shttp.Response
 	hits   int
 	misses int
 	logger *slog.Logger
@@ -265,13 +265,13 @@ func NewCacheMiddleware(logger *slog.Logger) *CacheMiddleware {
 		logger = slog.Default()
 	}
 	return &CacheMiddleware{
-		cache:  make(map[string]*scrapy_http.Response),
+		cache:  make(map[string]*shttp.Response),
 		logger: logger,
 	}
 }
 
 // ProcessRequest 检查缓存，如果命中则直接返回缓存的响应（短路）。
-func (m *CacheMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *CacheMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 只缓存 GET 请求
 	if request.Method != "GET" {
 		return nil, nil
@@ -312,7 +312,7 @@ func (m *CacheMiddleware) ProcessRequest(ctx context.Context, request *scrapy_ht
 }
 
 // ProcessResponse 将响应存入缓存。
-func (m *CacheMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *CacheMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	// 只缓存 GET 请求的成功响应
 	if request.Method != "GET" || response.Status != 200 {
 		return response, nil
@@ -344,7 +344,7 @@ func (m *CacheMiddleware) Stats() (hits, misses int) {
 //
 // 建议优先级：100（尽早拦截输入，尽晚拦截输出，确保统计完整）
 type ItemStatsMiddleware struct {
-	spider_mw.BaseSpiderMiddleware
+	smiddle.BaseSpiderMiddleware
 	mu           sync.Mutex
 	itemCount    int
 	requestCount int
@@ -352,7 +352,7 @@ type ItemStatsMiddleware struct {
 }
 
 // ProcessSpiderInput 记录响应处理次数。
-func (m *ItemStatsMiddleware) ProcessSpiderInput(ctx context.Context, response *scrapy_http.Response) error {
+func (m *ItemStatsMiddleware) ProcessSpiderInput(ctx context.Context, response *shttp.Response) error {
 	m.mu.Lock()
 	m.pageCount++
 	m.mu.Unlock()
@@ -360,7 +360,7 @@ func (m *ItemStatsMiddleware) ProcessSpiderInput(ctx context.Context, response *
 }
 
 // ProcessOutput 统计产出的 Item 和 Request 数量。
-func (m *ItemStatsMiddleware) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
+func (m *ItemStatsMiddleware) ProcessOutput(ctx context.Context, response *shttp.Response, result []spider.Output) ([]spider.Output, error) {
 	m.mu.Lock()
 	for _, output := range result {
 		if output.IsItem() {
@@ -402,7 +402,7 @@ func NewArticleSpider(baseURL string) *ArticleSpider {
 }
 
 // Parse 解析文章列表 API 响应。
-func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *ArticleSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var apiResp ArticleAPIResponse
 	if err := response.JSON(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
@@ -425,8 +425,8 @@ func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Respons
 			fmt.Sprintf("/api/article/%d", apiResp.Articles[0].ID)
 		// 显式转换为 spider.CallbackFunc，确保 Scraper 中的类型断言能成功
 		cb := spider.CallbackFunc(s.ParseDetail)
-		req, err := scrapy_http.NewRequest(detailURL,
-			scrapy_http.WithCallback(cb),
+		req, err := shttp.NewRequest(detailURL,
+			shttp.WithCallback(cb),
 		)
 		if err == nil {
 			outputs = append(outputs, spider.Output{Request: req})
@@ -437,7 +437,7 @@ func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Respons
 	if apiResp.NextPage != "" {
 		nextURL, err := response.URLJoin(apiResp.NextPage)
 		if err == nil {
-			req, _ := scrapy_http.NewRequest(nextURL)
+			req, _ := shttp.NewRequest(nextURL)
 			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
@@ -447,7 +447,7 @@ func (s *ArticleSpider) Parse(ctx context.Context, response *scrapy_http.Respons
 
 // ParseDetail 解析文章详情页响应。
 // 第一次调用时会再次请求同一 URL（跳过去重），第二次将命中缓存。
-func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *ArticleSpider) ParseDetail(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	cached := ""
 	if hit, ok := response.GetMeta("_cache_hit"); ok {
 		if b, ok := hit.(bool); ok && b {
@@ -459,9 +459,9 @@ func (s *ArticleSpider) ParseDetail(ctx context.Context, response *scrapy_http.R
 	// 如果这是第一次请求（非缓存命中），再请求一次同一 URL 以演示缓存
 	if cached == "" {
 		cb := spider.CallbackFunc(s.ParseDetail)
-		req, err := scrapy_http.NewRequest(response.URL.String(),
-			scrapy_http.WithCallback(cb),
-			scrapy_http.WithDontFilter(true), // 跳过去重，确保请求能发出
+		req, err := shttp.NewRequest(response.URL.String(),
+			shttp.WithCallback(cb),
+			shttp.WithDontFilter(true), // 跳过去重，确保请求能发出
 		)
 		if err == nil {
 			return []spider.Output{{Request: req}}, nil

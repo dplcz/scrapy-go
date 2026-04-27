@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/crawler"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
@@ -196,7 +196,7 @@ func NewBooksSpider(baseURL string) *BooksSpider {
 }
 
 // Parse 解析 JSON API 响应，提取图书数据和下一页链接。
-func (s *BooksSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *BooksSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var apiResp APIResponse
 	if err := response.JSON(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
@@ -215,7 +215,7 @@ func (s *BooksSpider) Parse(ctx context.Context, response *scrapy_http.Response)
 	if apiResp.NextPage != "" {
 		nextURL, err := response.URLJoin(apiResp.NextPage)
 		if err == nil {
-			req, _ := scrapy_http.NewRequest(nextURL)
+			req, _ := shttp.NewRequest(nextURL)
 			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
