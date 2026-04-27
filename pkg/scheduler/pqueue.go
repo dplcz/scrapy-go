@@ -3,7 +3,7 @@ package scheduler
 import (
 	"container/heap"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // ============================================================================

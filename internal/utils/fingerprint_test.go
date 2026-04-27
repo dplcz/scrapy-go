@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestRequestFingerprint(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestOutput(t *testing.T) {

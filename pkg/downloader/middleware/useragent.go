@@ -3,7 +3,7 @@ package middleware
 import (
 	"context"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // UserAgentMiddleware 为请求设置 User-Agent 请求头。

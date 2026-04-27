@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // downloadTask 表示一个排队中的下载任务。

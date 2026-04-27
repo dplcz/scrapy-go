@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	"scrapy-go/pkg/stats"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 func TestManagerProcessItemNormal(t *testing.T) {

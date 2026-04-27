@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DefaultHeadersMiddleware 为请求设置默认请求头。

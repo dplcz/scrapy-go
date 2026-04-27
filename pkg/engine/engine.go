@@ -10,15 +10,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"scrapy-go/pkg/downloader"
-	scrapy_errors "scrapy-go/pkg/errors"
-	scrapy_http "scrapy-go/pkg/http"
-	scrapy_log "scrapy-go/pkg/log"
-	"scrapy-go/pkg/scheduler"
-	"scrapy-go/pkg/scraper"
-	"scrapy-go/pkg/signal"
-	"scrapy-go/pkg/spider"
-	"scrapy-go/pkg/stats"
+	"github.com/dplcz/scrapy-go/pkg/downloader"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	scrapy_log "github.com/dplcz/scrapy-go/pkg/log"
+	"github.com/dplcz/scrapy-go/pkg/scheduler"
+	"github.com/dplcz/scrapy-go/pkg/scraper"
+	"github.com/dplcz/scrapy-go/pkg/signal"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 const (

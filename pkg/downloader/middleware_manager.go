@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"sort"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 
-	"scrapy-go/pkg/downloader/middleware"
+	"github.com/dplcz/scrapy-go/pkg/downloader/middleware"
 )
 
 // MiddlewareEntry 表示一个带优先级的中间件条目。

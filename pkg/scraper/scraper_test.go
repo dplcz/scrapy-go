@@ -5,12 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/pipeline"
-	"scrapy-go/pkg/spider"
-	spider_mw "scrapy-go/pkg/spider/middleware"
-	"scrapy-go/pkg/stats"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/pipeline"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 func TestScraperBasic(t *testing.T) {

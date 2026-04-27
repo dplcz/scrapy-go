@@ -11,9 +11,9 @@ import (
 	"log/slog"
 	"sort"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	"scrapy-go/pkg/signal"
-	"scrapy-go/pkg/stats"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	"github.com/dplcz/scrapy-go/pkg/signal"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // ============================================================================

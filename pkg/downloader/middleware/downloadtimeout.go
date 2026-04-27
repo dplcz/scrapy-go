@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DownloadTimeoutMiddleware 为每个请求设置下载超时。

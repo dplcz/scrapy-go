@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/settings"
-	"scrapy-go/pkg/signal"
-	"scrapy-go/pkg/stats"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/settings"
+	"github.com/dplcz/scrapy-go/pkg/signal"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // dummyDownloadFn 是测试用的空下载函数。

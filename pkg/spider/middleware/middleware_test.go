@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/spider"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
 func TestManagerScrapeResponseNormal(t *testing.T) {

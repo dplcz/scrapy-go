@@ -9,8 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/scheduler"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/scheduler"
 )
 
 // Slot 追踪 Engine 中正在处理的请求。

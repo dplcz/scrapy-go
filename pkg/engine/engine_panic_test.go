@@ -9,16 +9,16 @@ import (
 	"testing"
 	"time"
 
-	"scrapy-go/pkg/downloader"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/pipeline"
-	"scrapy-go/pkg/scheduler"
-	"scrapy-go/pkg/scraper"
-	"scrapy-go/pkg/settings"
-	"scrapy-go/pkg/signal"
-	"scrapy-go/pkg/spider"
-	spider_mw "scrapy-go/pkg/spider/middleware"
-	"scrapy-go/pkg/stats"
+	"github.com/dplcz/scrapy-go/pkg/downloader"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/pipeline"
+	"github.com/dplcz/scrapy-go/pkg/scheduler"
+	"github.com/dplcz/scrapy-go/pkg/scraper"
+	"github.com/dplcz/scrapy-go/pkg/settings"
+	"github.com/dplcz/scrapy-go/pkg/signal"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // ============================================================================

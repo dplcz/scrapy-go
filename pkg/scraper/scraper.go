@@ -11,13 +11,13 @@ import (
 	"log/slog"
 	"sync/atomic"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/pipeline"
-	"scrapy-go/pkg/signal"
-	"scrapy-go/pkg/spider"
-	spider_mw "scrapy-go/pkg/spider/middleware"
-	"scrapy-go/pkg/stats"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/pipeline"
+	"github.com/dplcz/scrapy-go/pkg/signal"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // Scraper 处理下载的响应，调用 Spider 回调，分发结果。

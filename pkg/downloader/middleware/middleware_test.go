@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/stats"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // ============================================================================

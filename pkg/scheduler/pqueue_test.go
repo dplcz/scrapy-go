@@ -3,7 +3,7 @@ package scheduler
 import (
 	"testing"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestPriorityQueueBasic(t *testing.T) {

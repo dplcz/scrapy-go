@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // CookiesMiddleware 管理 HTTP Cookie，支持多会话隔离。

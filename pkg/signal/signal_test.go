@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	scrapy_errors "scrapy-go/pkg/errors"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
 )
 
 func TestManagerConnect(t *testing.T) {

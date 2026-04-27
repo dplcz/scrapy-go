@@ -1,4 +1,4 @@
-module scrapy-go
+module github.com/dplcz/scrapy-go
 
 go 1.25.1
 

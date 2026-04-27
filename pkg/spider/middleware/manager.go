@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sort"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/spider"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
 // Entry 表示一个带优先级的 Spider 中间件条目。

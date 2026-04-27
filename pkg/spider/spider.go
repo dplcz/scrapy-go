@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"runtime/debug"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // Output 表示 Spider 回调的输出，可以是 Request 或 Item。

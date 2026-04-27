@@ -23,11 +23,11 @@ import (
 	"sync"
 	"time"
 
-	"scrapy-go/pkg/crawler"
-	dl_mw "scrapy-go/pkg/downloader/middleware"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/spider"
-	spider_mw "scrapy-go/pkg/spider/middleware"
+	"github.com/dplcz/scrapy-go/pkg/crawler"
+	dl_mw "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 )
 
 // ============================================================================

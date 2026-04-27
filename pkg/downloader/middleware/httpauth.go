@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // HttpAuthMiddleware 为请求设置 HTTP Basic Authentication 头。

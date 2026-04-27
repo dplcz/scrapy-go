@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"scrapy-go/pkg/selector"
+	"github.com/dplcz/scrapy-go/pkg/selector"
 )
 
 // Response 表示一个 HTTP 响应。

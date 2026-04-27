@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"scrapy-go/pkg/crawler"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/pipeline"
-	"scrapy-go/pkg/settings"
-	"scrapy-go/pkg/spider"
+	"github.com/dplcz/scrapy-go/pkg/crawler"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/pipeline"
+	"github.com/dplcz/scrapy-go/pkg/settings"
+	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
 // ============================================================================

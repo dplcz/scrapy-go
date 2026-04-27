@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/stats"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 func TestDefaultSchedulerBasic(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"sync"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/stats"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // ============================================================================

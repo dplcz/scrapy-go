@@ -10,8 +10,8 @@ import (
 	"log/slog"
 	"strings"
 
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/stats"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // HttpCompressionMiddleware 处理 HTTP 压缩响应的自动解压。

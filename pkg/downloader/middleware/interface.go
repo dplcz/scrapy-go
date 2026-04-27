@@ -8,7 +8,7 @@ package middleware
 import (
 	"context"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DownloaderMiddleware 定义下载器中间件接口。

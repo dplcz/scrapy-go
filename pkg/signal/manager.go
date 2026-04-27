@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
-	scrapy_errors "scrapy-go/pkg/errors"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
 )
 
 // ============================================================================

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DownloadHandler 定义下载处理器接口。

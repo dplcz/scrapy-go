@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/url"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // RedirectMiddleware 处理 HTTP 重定向。

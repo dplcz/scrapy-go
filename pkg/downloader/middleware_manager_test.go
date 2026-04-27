@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	scrapy_errors "scrapy-go/pkg/errors"
-	"scrapy-go/pkg/downloader/middleware"
-	scrapy_http "scrapy-go/pkg/http"
+	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	"github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // ============================================================================

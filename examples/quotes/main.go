@@ -15,9 +15,9 @@ import (
 	"os"
 	"sync"
 
-	"scrapy-go/pkg/crawler"
-	scrapy_http "scrapy-go/pkg/http"
-	"scrapy-go/pkg/spider"
+	"github.com/dplcz/scrapy-go/pkg/crawler"
+	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
 // ============================================================================
