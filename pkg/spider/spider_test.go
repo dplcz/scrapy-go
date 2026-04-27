@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestOutput(t *testing.T) {
 	// Request 输出
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	reqOutput := Output{Request: req}
 	if !reqOutput.IsRequest() {
 		t.Error("should be request")
@@ -125,7 +125,7 @@ func TestBaseStartCancellation(t *testing.T) {
 func TestBaseParse(t *testing.T) {
 	s := &Base{SpiderName: "test"}
 
-	resp := scrapy_http.MustNewResponse("https://example.com", 200)
+	resp := shttp.MustNewResponse("https://example.com", 200)
 	outputs, err := s.Parse(context.Background(), resp)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -165,8 +165,8 @@ func TestCustomSpider(t *testing.T) {
 		t.Errorf("expected 'quotes', got '%s'", s.Name())
 	}
 
-	resp := scrapy_http.MustNewResponse("https://quotes.toscrape.com", 200,
-		scrapy_http.WithResponseBody([]byte(`<html><body>Hello</body></html>`)),
+	resp := shttp.MustNewResponse("https://quotes.toscrape.com", 200,
+		shttp.WithResponseBody([]byte(`<html><body>Hello</body></html>`)),
 	)
 
 	outputs, err := s.Parse(context.Background(), resp)
@@ -186,7 +186,7 @@ type testSpider struct {
 	Base
 }
 
-func (s *testSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]Output, error) {
+func (s *testSpider) Parse(ctx context.Context, response *shttp.Response) ([]Output, error) {
 	return []Output{
 		{Item: map[string]any{"url": response.URL.String(), "body_len": len(response.Body)}},
 	}, nil

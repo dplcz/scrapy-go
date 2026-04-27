@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 )
 
@@ -17,7 +17,7 @@ import (
 // 对应 Scrapy 的 _Slot 类。
 type Slot struct {
 	mu          sync.Mutex
-	inprogress  map[*scrapy_http.Request]struct{}
+	inprogress  map[*shttp.Request]struct{}
 	scheduler   scheduler.Scheduler
 	closeIfIdle bool
 	closing     atomic.Bool
@@ -26,21 +26,21 @@ type Slot struct {
 // NewSlot 创建一个新的 Engine Slot。
 func NewSlot(sched scheduler.Scheduler, closeIfIdle bool) *Slot {
 	return &Slot{
-		inprogress:  make(map[*scrapy_http.Request]struct{}),
+		inprogress:  make(map[*shttp.Request]struct{}),
 		scheduler:   sched,
 		closeIfIdle: closeIfIdle,
 	}
 }
 
 // AddRequest 将请求添加到进行中集合。
-func (s *Slot) AddRequest(request *scrapy_http.Request) {
+func (s *Slot) AddRequest(request *shttp.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.inprogress[request] = struct{}{}
 }
 
 // RemoveRequest 从进行中集合移除请求。
-func (s *Slot) RemoveRequest(request *scrapy_http.Request) {
+func (s *Slot) RemoveRequest(request *shttp.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.inprogress, request)

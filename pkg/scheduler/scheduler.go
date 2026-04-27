@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"sync"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -31,11 +31,11 @@ type Scheduler interface {
 	// EnqueueRequest 将请求入队。
 	// 返回 true 表示请求成功入队，false 表示请求被过滤（如去重）。
 	// 当返回 false 时，Engine 会发出 request_dropped 信号。
-	EnqueueRequest(request *scrapy_http.Request) bool
+	EnqueueRequest(request *shttp.Request) bool
 
 	// NextRequest 返回下一个待处理的请求。
 	// 返回 nil 表示当前没有可用的请求。
-	NextRequest() *scrapy_http.Request
+	NextRequest() *shttp.Request
 
 	// HasPendingRequests 返回是否有待处理的请求。
 	HasPendingRequests() bool
@@ -140,7 +140,7 @@ func (s *DefaultScheduler) Close(ctx context.Context, reason string) error {
 //  1. 如果请求未设置 DontFilter，通过 DupeFilter 检查是否重复
 //  2. 如果是重复请求，记录统计并返回 false
 //  3. 否则将请求推入优先级队列，记录统计并返回 true
-func (s *DefaultScheduler) EnqueueRequest(request *scrapy_http.Request) bool {
+func (s *DefaultScheduler) EnqueueRequest(request *shttp.Request) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -166,7 +166,7 @@ func (s *DefaultScheduler) EnqueueRequest(request *scrapy_http.Request) bool {
 // NextRequest 返回下一个待处理的请求。
 // 按优先级顺序返回，高优先级的请求先出队。
 // 如果队列为空，返回 nil。
-func (s *DefaultScheduler) NextRequest() *scrapy_http.Request {
+func (s *DefaultScheduler) NextRequest() *shttp.Request {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

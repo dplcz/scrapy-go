@@ -2,7 +2,6 @@
 //
 // Crawler 负责组装所有组件（Engine、Scheduler、Downloader、Scraper 等），
 // 提供简洁的 API 供用户启动爬虫。
-// 对应 Scrapy Python 版本中 scrapy.crawler 模块的功能。
 package crawler
 
 import (
@@ -18,16 +17,16 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
-	dl_mw "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
 	"github.com/dplcz/scrapy-go/pkg/engine"
-	scrapy_log "github.com/dplcz/scrapy-go/pkg/log"
+	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	sig "github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
-	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -43,7 +42,7 @@ type Crawler struct {
 	scheduler  scheduler.Scheduler
 	downloader *downloader.Downloader
 	dlMW       *downloader.MiddlewareManager
-	spiderMW   *spider_mw.Manager
+	spiderMW   *smiddle.Manager
 	pipelines  *pipeline.Manager
 	scraper    *scraper.Scraper
 
@@ -57,7 +56,7 @@ type Crawler struct {
 	userDLMiddlewares []downloader.MiddlewareEntry
 
 	// userSpiderMiddlewares 存储用户注册的自定义 Spider 中间件
-	userSpiderMiddlewares []spider_mw.Entry
+	userSpiderMiddlewares []smiddle.Entry
 }
 
 // New 创建一个新的 Crawler，可通过 Option 自定义各组件。
@@ -111,7 +110,7 @@ func (c *Crawler) initDefaults() {
 // 支持的级别：DEBUG、INFO、WARN、ERROR（不区分大小写）。
 func newDefaultLogger(s *settings.Settings) *slog.Logger {
 	levelStr := s.GetString("LOG_LEVEL", "DEBUG")
-	return scrapy_log.NewColorLogger(levelStr, nil, false)
+	return sslog.NewColorLogger(levelStr, nil, false)
 }
 
 // AddPipeline 注册一个自定义 Item Pipeline。
@@ -138,7 +137,7 @@ func (c *Crawler) AddPipeline(p pipeline.ItemPipeline, name string, priority int
 //	c := crawler.NewDefault()
 //	c.AddDownloaderMiddleware(&MyAuthMiddleware{}, "Auth", 450)
 //	c.Run(ctx, mySpider)
-func (c *Crawler) AddDownloaderMiddleware(mw dl_mw.DownloaderMiddleware, name string, priority int) {
+func (c *Crawler) AddDownloaderMiddleware(mw dmiddle.DownloaderMiddleware, name string, priority int) {
 	c.userDLMiddlewares = append(c.userDLMiddlewares, downloader.MiddlewareEntry{
 		Middleware: mw,
 		Name:       name,
@@ -157,8 +156,8 @@ func (c *Crawler) AddDownloaderMiddleware(mw dl_mw.DownloaderMiddleware, name st
 //	c := crawler.NewDefault()
 //	c.AddSpiderMiddleware(&MyFilterMiddleware{}, "Filter", 500)
 //	c.Run(ctx, mySpider)
-func (c *Crawler) AddSpiderMiddleware(mw spider_mw.SpiderMiddleware, name string, priority int) {
-	c.userSpiderMiddlewares = append(c.userSpiderMiddlewares, spider_mw.Entry{
+func (c *Crawler) AddSpiderMiddleware(mw smiddle.SpiderMiddleware, name string, priority int) {
+	c.userSpiderMiddlewares = append(c.userSpiderMiddlewares, smiddle.Entry{
 		Middleware: mw,
 		Name:       name,
 		Priority:   priority,
@@ -256,7 +255,7 @@ func (c *Crawler) assembleComponents() {
 }
 
 // MiddlewareFactory 定义内置中间件的工厂函数类型。
-type MiddlewareFactory func(c *Crawler) dl_mw.DownloaderMiddleware
+type MiddlewareFactory func(c *Crawler) dmiddle.DownloaderMiddleware
 
 // componentEntry 表示一个启用的组件条目，用于日志打印。
 type componentEntry struct {
@@ -268,65 +267,65 @@ type componentEntry struct {
 // builtinMiddlewareFactories 是内置下载器中间件的注册表。
 // key 为中间件名称，与 DOWNLOADER_MIDDLEWARES_BASE 中的名称一一对应。
 var builtinMiddlewareFactories = map[string]MiddlewareFactory{
-	"DownloadTimeout": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"DownloadTimeout": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
 		if timeout <= 0 {
 			return nil
 		}
-		return dl_mw.NewDownloadTimeoutMiddleware(timeout, c.Logger)
+		return dmiddle.NewDownloadTimeoutMiddleware(timeout, c.Logger)
 	},
-	"DefaultHeaders": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"DefaultHeaders": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		defaultHeaders := c.Settings.Get("DEFAULT_REQUEST_HEADERS", nil)
 		if headers, ok := defaultHeaders.(http.Header); ok {
-			return dl_mw.NewDefaultHeadersMiddleware(headers)
+			return dmiddle.NewDefaultHeadersMiddleware(headers)
 		}
 		// 没有配置默认请求头，返回 nil 表示跳过
 		return nil
 	},
-	"HttpAuth": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"HttpAuth": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		user := c.Settings.GetString("HTTP_USER", "")
 		pass := c.Settings.GetString("HTTP_PASS", "")
 		if user == "" && pass == "" {
 			return nil
 		}
 		domain := c.Settings.GetString("HTTP_AUTH_DOMAIN", "")
-		return dl_mw.NewHttpAuthMiddleware(user, pass, domain, c.Logger)
+		return dmiddle.NewHttpAuthMiddleware(user, pass, domain, c.Logger)
 	},
-	"UserAgent": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"UserAgent": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		userAgent := c.Settings.GetString("USER_AGENT", "scrapy-go/0.1.0")
-		return dl_mw.NewUserAgentMiddleware(userAgent)
+		return dmiddle.NewUserAgentMiddleware(userAgent)
 	},
-	"Retry": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"Retry": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		if !c.Settings.GetBool("RETRY_ENABLED", true) {
 			return nil
 		}
 		retryTimes := c.Settings.GetInt("RETRY_TIMES", 2)
 		retryPriorityAdjust := c.Settings.GetInt("RETRY_PRIORITY_ADJUST", -1)
 		retryHTTPCodes := c.getIntSlice("RETRY_HTTP_CODES", []int{500, 502, 503, 504, 522, 524, 408, 429})
-		return dl_mw.NewRetryMiddleware(retryTimes, retryHTTPCodes, retryPriorityAdjust, c.Stats, c.Logger)
+		return dmiddle.NewRetryMiddleware(retryTimes, retryHTTPCodes, retryPriorityAdjust, c.Stats, c.Logger)
 	},
-	"Redirect": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"Redirect": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		if !c.Settings.GetBool("REDIRECT_ENABLED", true) {
 			return nil
 		}
 		maxRedirects := c.Settings.GetInt("REDIRECT_MAX_TIMES", 20)
 		redirectPriorityAdjust := c.Settings.GetInt("REDIRECT_PRIORITY_ADJUST", 2)
-		return dl_mw.NewRedirectMiddleware(maxRedirects, redirectPriorityAdjust, c.Logger)
+		return dmiddle.NewRedirectMiddleware(maxRedirects, redirectPriorityAdjust, c.Logger)
 	},
-	"HttpCompression": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"HttpCompression": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		if !c.Settings.GetBool("COMPRESSION_ENABLED", true) {
 			return nil
 		}
 		maxSize := c.Settings.GetInt("DOWNLOAD_MAXSIZE", 1024*1024*1024)
 		warnSize := c.Settings.GetInt("DOWNLOAD_WARNSIZE", 32*1024*1024)
-		return dl_mw.NewHttpCompressionMiddleware(maxSize, warnSize, c.Stats, c.Logger)
+		return dmiddle.NewHttpCompressionMiddleware(maxSize, warnSize, c.Stats, c.Logger)
 	},
-	"Cookies": func(c *Crawler) dl_mw.DownloaderMiddleware {
+	"Cookies": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		if !c.Settings.GetBool("COOKIES_ENABLED", true) {
 			return nil
 		}
 		debug := c.Settings.GetBool("COOKIES_DEBUG", false)
-		return dl_mw.NewCookiesMiddleware(debug, c.Logger)
+		return dmiddle.NewCookiesMiddleware(debug, c.Logger)
 	},
 }
 
@@ -400,8 +399,8 @@ func (c *Crawler) buildDownloaderMiddlewares() *downloader.MiddlewareManager {
 //
 // 禁用中间件的方式：
 //   - 通过配置：在 SPIDER_MIDDLEWARES 中将中间件优先级设为负数（如 {"Depth": -1}）
-func (c *Crawler) buildSpiderMiddlewares() *spider_mw.Manager {
-	m := spider_mw.NewManager(c.Logger)
+func (c *Crawler) buildSpiderMiddlewares() *smiddle.Manager {
+	m := smiddle.NewManager(c.Logger)
 
 	// 收集所有中间件条目（内置 + 自定义），用于排序打印和优先级冲突检测
 	var allEntries []componentEntry
@@ -456,18 +455,7 @@ func (c *Crawler) logEnabledPipelines() {
 	c.logEnabledComponents("item pipelines", entries)
 }
 
-// logEnabledComponents 以 Scrapy 风格打印启用的组件列表。
-// 不同优先级的组件使用不同颜色：
-//   - 0~299 (低优先级/先执行): 绿色
-//   - 300~599 (中优先级): 黄色
-//   - 600+ (高优先级/后执行): 品红色
-//
-// 输出格式：
-//
-//	Enabled downloader middlewares:
-//	  DownloadTimeout (300)
-//	  UserAgent (500)
-//	  Retry (550)
+// logEnabledComponents 打印启用的组件列表。
 func (c *Crawler) logEnabledComponents(componentName string, entries []componentEntry) {
 	if len(entries) == 0 {
 		c.Logger.Info(fmt.Sprintf("Enabled %s: (none)", componentName))
@@ -476,8 +464,8 @@ func (c *Crawler) logEnabledComponents(componentName string, entries []component
 
 	var lines []string
 	for _, e := range entries {
-		color := scrapy_log.ColorByPriority(e.priority)
-		lines = append(lines, fmt.Sprintf("  %s%s (%d)%s", color, e.name, e.priority, scrapy_log.ColorReset))
+		color := sslog.ColorByPriority(e.priority)
+		lines = append(lines, fmt.Sprintf("  %s%s (%d)%s", color, e.name, e.priority, sslog.ColorReset))
 	}
 	c.Logger.Info(fmt.Sprintf("Enabled %s:\n%s", componentName, strings.Join(lines, "\n")))
 }

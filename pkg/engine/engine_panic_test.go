@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
-	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -40,7 +40,7 @@ func newPanicParseSpider(url string) *panicParseSpider {
 	}
 }
 
-func (s *panicParseSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *panicParseSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	s.parseCalled.Store(true)
 	panic("intentional panic in Parse")
 }
@@ -69,7 +69,7 @@ func (s *panicStartSpider) Start(ctx context.Context) <-chan spider.Output {
 	return ch
 }
 
-func (s *panicStartSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *panicStartSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	return nil, nil
 }
 
@@ -86,7 +86,7 @@ func (s *panicStartConsumerSpider) Start(ctx context.Context) <-chan spider.Outp
 	panic("intentional panic in Start method body")
 }
 
-func (s *panicStartConsumerSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *panicStartConsumerSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	return nil, nil
 }
 
@@ -104,10 +104,10 @@ func newPanicCallbackSpider(url string) *panicCallbackSpider {
 	}
 }
 
-func (s *panicCallbackSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *panicCallbackSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	// 返回一个带有 panic callback 的请求
-	req, _ := scrapy_http.NewRequest(response.URL.String()+"/next",
-		scrapy_http.WithCallback(spider.CallbackFunc(func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
+	req, _ := shttp.NewRequest(response.URL.String()+"/next",
+		shttp.WithCallback(spider.CallbackFunc(func(ctx context.Context, resp *shttp.Response) ([]spider.Output, error) {
 			panic("intentional panic in Callback")
 		})),
 	)
@@ -128,7 +128,7 @@ func newPanicPipelineSpider(url string) *panicPipelineSpider {
 	}
 }
 
-func (s *panicPipelineSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *panicPipelineSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	return []spider.Output{
 		{Item: map[string]any{"url": response.URL.String()}},
 	}, nil
@@ -175,7 +175,7 @@ func buildTestEngineWithPipeline(sp spider.Spider, pm *pipeline.Manager, sc stat
 	handler := downloader.NewHTTPDownloadHandler(10 * time.Second)
 	dl := downloader.NewDownloader(s, handler, sm, sc, nil)
 	dlMW := downloader.NewMiddlewareManager(nil)
-	spMW := spider_mw.NewManager(nil)
+	spMW := smiddle.NewManager(nil)
 
 	if pm == nil {
 		pm = pipeline.NewManager(sm, sc, nil)
@@ -377,7 +377,7 @@ type selectivePanicSpider struct {
 	successCount atomic.Int32
 }
 
-func (s *selectivePanicSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *selectivePanicSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	n := s.callCount.Add(1)
 	if n == 1 {
 		panic("first call panic")

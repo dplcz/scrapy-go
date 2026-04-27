@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // HttpAuthMiddleware 为请求设置 HTTP Basic Authentication 头。
@@ -53,7 +53,7 @@ func NewHttpAuthMiddleware(user, pass, domain string, logger *slog.Logger) *Http
 //  1. 请求尚未设置 Authorization 头
 //  2. 存在有效的认证凭据（user 或 pass 非空）
 //  3. 域名匹配（如果设置了域名限制）
-func (m *HttpAuthMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *HttpAuthMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 如果请求已经设置了 Authorization 头，不覆盖
 	if request.Headers.Get("Authorization") != "" {
 		return nil, nil

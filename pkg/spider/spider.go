@@ -9,14 +9,14 @@ import (
 	"log/slog"
 	"runtime/debug"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // Output 表示 Spider 回调的输出，可以是 Request 或 Item。
 // 每个输出只能是 Request 或 Item 之一，不能同时设置。
 type Output struct {
 	// Request 非 nil 表示产出一个新请求，将被 Engine 调度。
-	Request *scrapy_http.Request
+	Request *shttp.Request
 
 	// Item 非 nil 表示产出一个数据项，将被 Item Pipeline 处理。
 	Item any
@@ -34,11 +34,11 @@ func (o Output) IsItem() bool {
 
 // CallbackFunc 定义 Spider 回调函数类型。
 // 接收 context 和 Response，返回 Output 切片和可能的错误。
-type CallbackFunc func(ctx context.Context, response *scrapy_http.Response) ([]Output, error)
+type CallbackFunc func(ctx context.Context, response *shttp.Response) ([]Output, error)
 
 // ErrbackFunc 定义 Spider 错误回调函数类型。
 // 接收 context、错误和原始请求，返回 Output 切片和可能的错误。
-type ErrbackFunc func(ctx context.Context, err error, request *scrapy_http.Request) ([]Output, error)
+type ErrbackFunc func(ctx context.Context, err error, request *shttp.Request) ([]Output, error)
 
 // Spider 定义爬虫的核心接口。
 // 用户通过实现此接口来定义爬取逻辑。
@@ -55,7 +55,7 @@ type Spider interface {
 
 	// Parse 是默认的响应回调函数。
 	// 当 Request.Callback 为 nil 时，Engine 使用此方法处理响应。
-	Parse(ctx context.Context, response *scrapy_http.Response) ([]Output, error)
+	Parse(ctx context.Context, response *shttp.Response) ([]Output, error)
 
 	// CustomSettings 返回 Spider 级别的配置覆盖（可选）。
 	// 返回 nil 表示不覆盖任何配置。
@@ -107,15 +107,15 @@ func (s *Base) Start(ctx context.Context) <-chan Output {
 			}
 		}()
 		for _, rawURL := range s.StartURLs {
-			req, err := scrapy_http.NewRequest(rawURL,
-				scrapy_http.WithDontFilter(true),
+			req, err := shttp.NewRequest(rawURL,
+				shttp.WithDontFilter(true),
 			)
 			if err != nil {
 				if s.Logger != nil {
-				s.Logger.Error("failed to create start request",
-					"url", rawURL,
-					"error", err,
-				)
+					s.Logger.Error("failed to create start request",
+						"url", rawURL,
+						"error", err,
+					)
 				}
 				continue
 			}
@@ -130,7 +130,7 @@ func (s *Base) Start(ctx context.Context) <-chan Output {
 }
 
 // Parse 是默认的响应回调（空实现，子类应覆盖）。
-func (s *Base) Parse(ctx context.Context, response *scrapy_http.Response) ([]Output, error) {
+func (s *Base) Parse(ctx context.Context, response *shttp.Response) ([]Output, error) {
 	return nil, nil
 }
 

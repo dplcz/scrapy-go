@@ -6,11 +6,10 @@ import (
 	"encoding/json"
 	"sort"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // RequestFingerprint 计算请求的指纹（SHA1 哈希）。
-// 对应 Scrapy 的 scrapy.utils.request.fingerprint 函数。
 //
 // 指纹基于以下信息计算：
 //   - HTTP 方法
@@ -22,7 +21,7 @@ import (
 //   - request: 要计算指纹的请求
 //   - includeHeaders: 要包含在指纹中的请求头名称列表（可选）
 //   - keepFragments: 是否保留 URL 中的 fragment
-func RequestFingerprint(request *scrapy_http.Request, includeHeaders []string, keepFragments bool) string {
+func RequestFingerprint(request *shttp.Request, includeHeaders []string, keepFragments bool) string {
 	// 构建指纹数据
 	data := map[string]any{
 		"method": request.Method,
@@ -67,7 +66,7 @@ func RequestFingerprint(request *scrapy_http.Request, includeHeaders []string, k
 
 // SimpleFingerprint 计算请求的简单指纹（仅基于 Method + URL）。
 // 适用于不需要考虑请求体和请求头的场景。
-func SimpleFingerprint(request *scrapy_http.Request) string {
+func SimpleFingerprint(request *shttp.Request) string {
 	data := request.Method + "|" + CanonicalizeURL(request.URL.String(), false)
 	hash := sha1.Sum([]byte(data))
 	return hex.EncodeToString(hash[:])

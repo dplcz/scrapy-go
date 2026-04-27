@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"sort"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
@@ -135,7 +135,7 @@ func (m *Manager) ProcessItem(ctx context.Context, item any, response any) (any,
 	for _, entry := range m.pipelines {
 		item, err = entry.Pipeline.ProcessItem(ctx, item)
 		if err != nil {
-			if errors.Is(err, scrapy_errors.ErrDropItem) {
+			if errors.Is(err, serrors.ErrDropItem) {
 				// Item 被丢弃
 				m.stats.IncValue("item_dropped_count", 1, 0)
 				m.signals.SendCatchLog(signal.ItemDropped, map[string]any{

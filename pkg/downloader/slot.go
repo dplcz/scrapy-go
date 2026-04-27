@@ -8,19 +8,19 @@ import (
 	"sync"
 	"time"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // downloadTask 表示一个排队中的下载任务。
 type downloadTask struct {
 	ctx      context.Context
-	request  *scrapy_http.Request
+	request  *shttp.Request
 	resultCh chan downloadResult
 }
 
 // downloadResult 表示下载任务的结果。
 type downloadResult struct {
-	response *scrapy_http.Response
+	response *shttp.Response
 	err      error
 }
 
@@ -38,9 +38,9 @@ type Slot struct {
 	delay          time.Duration
 	randomizeDelay bool
 
-	active       map[*scrapy_http.Request]struct{} // 所有活跃请求（包括排队和传输中的）
-	transferring map[*scrapy_http.Request]struct{} // 正在传输的请求
-	lastSeen     time.Time                         // 上一次实际发出请求的时间戳
+	active       map[*shttp.Request]struct{} // 所有活跃请求（包括排队和传输中的）
+	transferring map[*shttp.Request]struct{} // 正在传输的请求
+	lastSeen     time.Time                   // 上一次实际发出请求的时间戳
 
 	// queue 是请求排队的 channel，processQueue goroutine 从中消费
 	queue chan *downloadTask
@@ -49,7 +49,7 @@ type Slot struct {
 	transferSem chan struct{}
 
 	// downloadFn 是实际执行下载的函数，由 Downloader 注入
-	downloadFn func(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error)
+	downloadFn func(ctx context.Context, request *shttp.Request) (*shttp.Response, error)
 
 	// done 用于关闭 processQueue goroutine
 	done chan struct{}
@@ -62,7 +62,7 @@ func NewSlot(
 	concurrency int,
 	delay time.Duration,
 	randomizeDelay bool,
-	downloadFn func(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error),
+	downloadFn func(ctx context.Context, request *shttp.Request) (*shttp.Response, error),
 ) *Slot {
 	if concurrency <= 0 {
 		concurrency = 8
@@ -72,8 +72,8 @@ func NewSlot(
 		concurrency:    concurrency,
 		delay:          delay,
 		randomizeDelay: randomizeDelay,
-		active:         make(map[*scrapy_http.Request]struct{}),
-		transferring:   make(map[*scrapy_http.Request]struct{}),
+		active:         make(map[*shttp.Request]struct{}),
+		transferring:   make(map[*shttp.Request]struct{}),
 		lastSeen:       time.Time{}, // 零值，第一个请求不需要等待
 		queue:          make(chan *downloadTask, 1024),
 		transferSem:    make(chan struct{}, concurrency),
@@ -89,7 +89,7 @@ func NewSlot(
 
 // Enqueue 将请求入队，阻塞等待结果返回。
 // 这是外部调用的主要接口。
-func (s *Slot) Enqueue(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (s *Slot) Enqueue(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	task := &downloadTask{
 		ctx:      ctx,
 		request:  request,
@@ -232,28 +232,28 @@ func (s *Slot) FreeTransferSlots() int {
 }
 
 // AddActive 将请求添加到活跃集合。
-func (s *Slot) AddActive(request *scrapy_http.Request) {
+func (s *Slot) AddActive(request *shttp.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.active[request] = struct{}{}
 }
 
 // RemoveActive 从活跃集合中移除请求。
-func (s *Slot) RemoveActive(request *scrapy_http.Request) {
+func (s *Slot) RemoveActive(request *shttp.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.active, request)
 }
 
 // AddTransferring 将请求添加到传输中集合。
-func (s *Slot) AddTransferring(request *scrapy_http.Request) {
+func (s *Slot) AddTransferring(request *shttp.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.transferring[request] = struct{}{}
 }
 
 // RemoveTransferring 从传输中集合移除请求。
-func (s *Slot) RemoveTransferring(request *scrapy_http.Request) {
+func (s *Slot) RemoveTransferring(request *shttp.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.transferring, request)

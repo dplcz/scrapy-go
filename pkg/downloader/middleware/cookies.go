@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // CookiesMiddleware 管理 HTTP Cookie，支持多会话隔离。
@@ -76,7 +76,7 @@ func (m *CookiesMiddleware) getJar(key any) *cookiejar.Jar {
 
 // ProcessRequest 将 Cookie Jar 中的 Cookie 注入请求头。
 // 同时处理 Request.Cookies 字段中的初始 Cookie。
-func (m *CookiesMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *CookiesMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 检查 dont_merge_cookies meta
 	if dontMerge, ok := request.GetMeta("dont_merge_cookies"); ok {
 		if dm, ok := dontMerge.(bool); ok && dm {
@@ -116,7 +116,7 @@ func (m *CookiesMiddleware) ProcessRequest(ctx context.Context, request *scrapy_
 }
 
 // ProcessResponse 从响应的 Set-Cookie 头提取 Cookie 存入 Jar。
-func (m *CookiesMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *CookiesMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	// 检查 dont_merge_cookies meta
 	if dontMerge, ok := request.GetMeta("dont_merge_cookies"); ok {
 		if dm, ok := dontMerge.(bool); ok && dm {
@@ -156,7 +156,7 @@ func (m *CookiesMiddleware) ProcessResponse(ctx context.Context, request *scrapy
 }
 
 // setRequestCookies 将 Request.Cookies 中的 Cookie 设置到 Jar 中。
-func (m *CookiesMiddleware) setRequestCookies(jar *cookiejar.Jar, request *scrapy_http.Request) {
+func (m *CookiesMiddleware) setRequestCookies(jar *cookiejar.Jar, request *shttp.Request) {
 	cookies := make([]*http.Cookie, 0, len(request.Cookies))
 	for _, c := range request.Cookies {
 		cookie := &http.Cookie{
@@ -182,7 +182,7 @@ func (m *CookiesMiddleware) setRequestCookies(jar *cookiejar.Jar, request *scrap
 }
 
 // debugCookie 输出发送的 Cookie 调试日志。
-func (m *CookiesMiddleware) debugCookie(request *scrapy_http.Request) {
+func (m *CookiesMiddleware) debugCookie(request *shttp.Request) {
 	cookieHeader := request.Headers.Get("Cookie")
 	if cookieHeader != "" {
 		m.logger.Debug("sending cookies",
@@ -193,7 +193,7 @@ func (m *CookiesMiddleware) debugCookie(request *scrapy_http.Request) {
 }
 
 // debugSetCookie 输出接收的 Set-Cookie 调试日志。
-func (m *CookiesMiddleware) debugSetCookie(response *scrapy_http.Response) {
+func (m *CookiesMiddleware) debugSetCookie(response *shttp.Response) {
 	setCookies := response.Headers.Values("Set-Cookie")
 	for _, sc := range setCookies {
 		m.logger.Debug("received Set-Cookie",

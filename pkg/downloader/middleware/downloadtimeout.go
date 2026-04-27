@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DownloadTimeoutMiddleware 为每个请求设置下载超时。
@@ -42,7 +42,7 @@ func NewDownloadTimeoutMiddleware(timeout time.Duration, logger *slog.Logger) *D
 //
 // 注意：实际的 context.WithTimeout 包装在 ProcessRequest 中完成，
 // 这样后续的中间件和下载器都会受到超时控制。
-func (m *DownloadTimeoutMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *DownloadTimeoutMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	if m.timeout > 0 {
 		// 仅在请求未设置 download_timeout 时设置默认值
 		if _, ok := request.GetMeta("download_timeout"); !ok {

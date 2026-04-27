@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
-	scrapy_log "github.com/dplcz/scrapy-go/pkg/log"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
+	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
 	"github.com/dplcz/scrapy-go/pkg/signal"
@@ -40,9 +40,9 @@ type Engine struct {
 	stats      stats.Collector
 	logger     *slog.Logger
 
-	running    atomic.Bool
-	paused     atomic.Bool
-	startTime  time.Time
+	running   atomic.Bool
+	paused    atomic.Bool
+	startTime time.Time
 
 	heartbeatInterval time.Duration
 
@@ -233,6 +233,10 @@ func (e *Engine) run(ctx context.Context) error {
 }
 
 // processScheduledRequests 处理调度队列中的请求。
+// 对齐 Scrapy 原版 _start_scheduled_requests 的设计：
+//   - 在同步循环中从 Scheduler 取出请求
+//   - 同步将请求添加到 Downloader.active（确保 NeedsBackout 立即可见）
+//   - 然后异步启动下载 goroutine
 func (e *Engine) processScheduledRequests(ctx context.Context) {
 	if e.paused.Load() || e.slot == nil || e.slot.closing.Load() {
 		return
@@ -245,7 +249,11 @@ func (e *Engine) processScheduledRequests(ctx context.Context) {
 			break
 		}
 
+		// 对齐 Scrapy 原版：在同步路径中将请求添加到 Engine.slot.inprogress 和 Downloader.active。
+		// 这样下一次循环的 needsBackout() 能立即看到最新的计数，
+		// 避免因 goroutine 启动延迟导致的竞态条件。
 		e.slot.AddRequest(req)
+		e.downloader.AddActive(req)
 		go e.downloadAndScrape(ctx, req)
 	}
 
@@ -305,9 +313,10 @@ func (e *Engine) handleSpiderIdle(ctx context.Context) {
 }
 
 // downloadAndScrape 下载并处理单个请求。
-func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Request) {
+func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) {
 	defer func() {
 		e.slot.RemoveRequest(request)
+		e.downloader.RemoveActive(request)
 		e.notifySchedule()
 	}()
 
@@ -315,7 +324,7 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
-			panicErr := scrapy_errors.NewPanicError(r, stack)
+			panicErr := serrors.NewPanicError(r, stack)
 			e.logger.Error("panic recovered in downloadAndScrape",
 				"request", request.String(),
 				"error", panicErr,
@@ -325,11 +334,11 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 	}()
 
 	// 通过下载器中间件链下载
-	var resp *scrapy_http.Response
+	var resp *shttp.Response
 	var err error
 
 	if e.dlMW != nil && e.dlMW.Count() > 0 {
-		resp, err = e.dlMW.Download(ctx, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+		resp, err = e.dlMW.Download(ctx, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 			return e.downloader.Download(ctx, req)
 		}, request)
 	} else {
@@ -338,9 +347,9 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 
 	if err != nil {
 		// 检查是否为 NewRequestError（重试/重定向产生的新请求）
-		var newReqErr *scrapy_errors.NewRequestError
+		var newReqErr *serrors.NewRequestError
 		if errors.As(err, &newReqErr) {
-			if newReq, ok := newReqErr.Request.(*scrapy_http.Request); ok {
+			if newReq, ok := newReqErr.Request.(*shttp.Request); ok {
 				e.crawl(newReq)
 			}
 			return
@@ -372,14 +381,14 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *scrapy_http.Req
 	e.stats.IncValue(fmt.Sprintf("downloader/response_status_count/%d", resp.Status), 1, 0)
 
 	e.logger.Debug("response received",
-		"status", fmt.Sprintf("%s%d%s", scrapy_log.ColorByStatusCode(resp.Status), resp.Status, scrapy_log.ColorReset),
+		"status", fmt.Sprintf("%s%d%s", sslog.ColorByStatusCode(resp.Status), resp.Status, sslog.ColorReset),
 		"url", resp.URL.String(),
 	)
 
 	// 通过 Scraper 处理响应
 	newReqs, err := e.scraper.Scrape(ctx, resp, request)
 	if err != nil {
-		if errors.Is(err, scrapy_errors.ErrCloseSpider) {
+		if errors.Is(err, serrors.ErrCloseSpider) {
 			e.slot.closing.Store(true)
 			return
 		}
@@ -397,7 +406,7 @@ func (e *Engine) consumeStartRequests(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
 			stack := string(debug.Stack())
-			panicErr := scrapy_errors.NewPanicError(r, stack)
+			panicErr := serrors.NewPanicError(r, stack)
 			e.logger.Error("panic recovered in consumeStartRequests",
 				"error", panicErr,
 			)
@@ -423,7 +432,7 @@ func (e *Engine) consumeStartRequests(ctx context.Context) {
 }
 
 // crawl 将请求注入调度器。
-func (e *Engine) crawl(request *scrapy_http.Request) {
+func (e *Engine) crawl(request *shttp.Request) {
 	if !e.scheduler.EnqueueRequest(request) {
 		// 请求被过滤（去重）
 		e.signals.SendCatchLog(signal.RequestDropped, map[string]any{
@@ -440,7 +449,7 @@ func (e *Engine) crawl(request *scrapy_http.Request) {
 }
 
 // scheduleNewRequests 调度新请求。
-func (e *Engine) scheduleNewRequests(requests []*scrapy_http.Request) {
+func (e *Engine) scheduleNewRequests(requests []*shttp.Request) {
 	for _, req := range requests {
 		e.crawl(req)
 	}
@@ -462,7 +471,7 @@ func (e *Engine) closeReason(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "timeout"
 	}
-	var closeErr *scrapy_errors.CloseSpiderError
+	var closeErr *serrors.CloseSpiderError
 	if errors.As(err, &closeErr) {
 		return closeErr.Reason
 	}

@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // dummyDownloadFn 是测试用的空下载函数。
-func dummyDownloadFn(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
-	return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+func dummyDownloadFn(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
+	return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 }
 
 // ============================================================================
@@ -44,9 +44,9 @@ func TestSlotConcurrency(t *testing.T) {
 	slot := NewSlot(2, 0, false, dummyDownloadFn)
 	defer slot.Close()
 
-	req1 := scrapy_http.MustNewRequest("https://example.com/1")
-	req2 := scrapy_http.MustNewRequest("https://example.com/2")
-	req3 := scrapy_http.MustNewRequest("https://example.com/3")
+	req1 := shttp.MustNewRequest("https://example.com/1")
+	req2 := shttp.MustNewRequest("https://example.com/2")
+	req3 := shttp.MustNewRequest("https://example.com/3")
 
 	slot.AddTransferring(req1)
 	slot.AddTransferring(req2)
@@ -70,7 +70,7 @@ func TestSlotActive(t *testing.T) {
 	slot := NewSlot(8, 0, false, dummyDownloadFn)
 	defer slot.Close()
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	slot.AddActive(req)
 
 	if slot.IsIdle() {
@@ -113,13 +113,13 @@ func TestSlotDownloadDelay(t *testing.T) {
 // TestSlotEnqueueBasic 测试 Slot 的入队和下载功能。
 func TestSlotEnqueueBasic(t *testing.T) {
 	downloadCalled := false
-	slot := NewSlot(8, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		downloadCalled = true
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	})
 	defer slot.Close()
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	slot.AddActive(req)
 	defer slot.RemoveActive(req)
 
@@ -141,11 +141,11 @@ func TestSlotDelayEnforcement(t *testing.T) {
 	var mu sync.Mutex
 	var timestamps []time.Time
 
-	slot := NewSlot(8, 200*time.Millisecond, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 200*time.Millisecond, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		mu.Lock()
 		timestamps = append(timestamps, time.Now())
 		mu.Unlock()
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	})
 	defer slot.Close()
 
@@ -155,7 +155,7 @@ func TestSlotDelayEnforcement(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest("https://example.com")
+			req := shttp.MustNewRequest("https://example.com")
 			slot.AddActive(req)
 			defer slot.RemoveActive(req)
 			slot.Enqueue(context.Background(), req)
@@ -186,7 +186,7 @@ func TestSlotConcurrencyWithDelay(t *testing.T) {
 	var maxConcurrent atomic.Int32
 	var currentConcurrent atomic.Int32
 
-	slot := NewSlot(2, 50*time.Millisecond, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(2, 50*time.Millisecond, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		cur := currentConcurrent.Add(1)
 		for {
 			old := maxConcurrent.Load()
@@ -199,7 +199,7 @@ func TestSlotConcurrencyWithDelay(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond) // 模拟下载耗时
 		currentConcurrent.Add(-1)
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	})
 	defer slot.Close()
 
@@ -208,7 +208,7 @@ func TestSlotConcurrencyWithDelay(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest("https://example.com")
+			req := shttp.MustNewRequest("https://example.com")
 			slot.AddActive(req)
 			defer slot.RemoveActive(req)
 			slot.Enqueue(context.Background(), req)
@@ -224,9 +224,9 @@ func TestSlotConcurrencyWithDelay(t *testing.T) {
 // TestSlotClose 测试关闭 Slot 后入队应返回错误。
 func TestSlotClose(t *testing.T) {
 	// 使用一个慢下载函数，确保 Close 能在 processQueue 处理之前生效
-	slot := NewSlot(8, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		time.Sleep(time.Second)
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	})
 
 	// 先关闭 Slot
@@ -235,7 +235,7 @@ func TestSlotClose(t *testing.T) {
 	// 等待 processQueue goroutine 退出
 	time.Sleep(50 * time.Millisecond)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
@@ -260,7 +260,7 @@ func TestHTTPDownloadHandlerGET(t *testing.T) {
 	handler := NewHTTPDownloadHandler(10 * time.Second)
 	defer handler.Close()
 
-	req := scrapy_http.MustNewRequest(server.URL)
+	req := shttp.MustNewRequest(server.URL)
 	resp, err := handler.Download(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -290,9 +290,9 @@ func TestHTTPDownloadHandlerPOST(t *testing.T) {
 	handler := NewHTTPDownloadHandler(10 * time.Second)
 	defer handler.Close()
 
-	req := scrapy_http.MustNewRequest(server.URL,
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte("test body")),
+	req := shttp.MustNewRequest(server.URL,
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("test body")),
 	)
 	resp, err := handler.Download(context.Background(), req)
 	if err != nil {
@@ -312,8 +312,8 @@ func TestHTTPDownloadHandlerHeaders(t *testing.T) {
 	handler := NewHTTPDownloadHandler(10 * time.Second)
 	defer handler.Close()
 
-	req := scrapy_http.MustNewRequest(server.URL,
-		scrapy_http.WithHeader("X-Custom", "test-value"),
+	req := shttp.MustNewRequest(server.URL,
+		shttp.WithHeader("X-Custom", "test-value"),
 	)
 	resp, err := handler.Download(context.Background(), req)
 	if err != nil {
@@ -338,7 +338,7 @@ func TestHTTPDownloadHandlerNoAutoRedirect(t *testing.T) {
 	handler := NewHTTPDownloadHandler(10 * time.Second)
 	defer handler.Close()
 
-	req := scrapy_http.MustNewRequest(server.URL + "/old")
+	req := shttp.MustNewRequest(server.URL + "/old")
 	resp, err := handler.Download(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -359,7 +359,7 @@ func TestHTTPDownloadHandlerTimeout(t *testing.T) {
 	handler := NewHTTPDownloadHandler(100 * time.Millisecond)
 	defer handler.Close()
 
-	req := scrapy_http.MustNewRequest(server.URL)
+	req := shttp.MustNewRequest(server.URL)
 	_, err := handler.Download(context.Background(), req)
 	if err == nil {
 		t.Error("should timeout")
@@ -391,7 +391,7 @@ func TestDownloaderBasic(t *testing.T) {
 	d := NewDownloader(s, handler, sm, sc, nil)
 	defer d.Close()
 
-	req := scrapy_http.MustNewRequest(server.URL)
+	req := shttp.MustNewRequest(server.URL)
 	resp, err := d.Download(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -432,8 +432,11 @@ func TestDownloaderNeedsBackout(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest(server.URL)
+			req := shttp.MustNewRequest(server.URL)
+			// 对齐 Engine 的调用模式：先 AddActive 再 Download，完成后 RemoveActive
+			d.AddActive(req)
 			d.Download(context.Background(), req)
+			d.RemoveActive(req)
 		}()
 	}
 
@@ -481,7 +484,7 @@ func TestDownloaderSignals(t *testing.T) {
 		return nil
 	}, signal.ResponseDownloaded)
 
-	req := scrapy_http.MustNewRequest(server.URL)
+	req := shttp.MustNewRequest(server.URL)
 	d.Download(context.Background(), req)
 
 	if reachedCount.Load() != 1 {
@@ -521,7 +524,7 @@ func TestDownloaderConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest(server.URL)
+			req := shttp.MustNewRequest(server.URL)
 			d.Download(context.Background(), req)
 		}()
 	}
@@ -563,7 +566,7 @@ func TestDownloaderDelayEnforcement(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest(server.URL)
+			req := shttp.MustNewRequest(server.URL)
 			d.Download(context.Background(), req)
 		}()
 	}
@@ -619,12 +622,12 @@ func TestDownloaderNoConcurrencyLimitWithDelay(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest(server1.URL)
+		req := shttp.MustNewRequest(server1.URL)
 		d.Download(context.Background(), req)
 	}()
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest(server2.URL)
+		req := shttp.MustNewRequest(server2.URL)
 		d.Download(context.Background(), req)
 	}()
 	wg.Wait()
@@ -677,8 +680,8 @@ func TestDownloaderCustomSlotKey(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest(server.URL,
-				scrapy_http.WithMeta(map[string]any{
+			req := shttp.MustNewRequest(server.URL,
+				shttp.WithMeta(map[string]any{
 					DownloadSlotMetaKey: "my-custom-group",
 				}),
 			)
@@ -739,8 +742,8 @@ func TestDownloaderCustomSlotIsolation(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest(server.URL,
-			scrapy_http.WithMeta(map[string]any{
+		req := shttp.MustNewRequest(server.URL,
+			shttp.WithMeta(map[string]any{
 				DownloadSlotMetaKey: "group-a",
 			}),
 		)
@@ -748,8 +751,8 @@ func TestDownloaderCustomSlotIsolation(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest(server.URL,
-			scrapy_http.WithMeta(map[string]any{
+		req := shttp.MustNewRequest(server.URL,
+			shttp.WithMeta(map[string]any{
 				DownloadSlotMetaKey: "group-b",
 			}),
 		)
@@ -798,8 +801,8 @@ func TestDownloaderCustomSlotMetaWriteback(t *testing.T) {
 	defer d.Close()
 
 	// 测试1：设置了自定义 download_slot 的请求，Meta 回写为自定义值
-	req1 := scrapy_http.MustNewRequest(server.URL,
-		scrapy_http.WithMeta(map[string]any{
+	req1 := shttp.MustNewRequest(server.URL,
+		shttp.WithMeta(map[string]any{
 			DownloadSlotMetaKey: "custom-key",
 		}),
 	)
@@ -812,7 +815,7 @@ func TestDownloaderCustomSlotMetaWriteback(t *testing.T) {
 	}
 
 	// 测试2：未设置 download_slot 的请求，Meta 回写为域名
-	req2 := scrapy_http.MustNewRequest(server.URL)
+	req2 := shttp.MustNewRequest(server.URL)
 	_, err = d.Download(context.Background(), req2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -865,8 +868,8 @@ func TestDownloaderCustomSlotOverridesDomain(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest(server.URL+"/a",
-			scrapy_http.WithMeta(map[string]any{
+		req := shttp.MustNewRequest(server.URL+"/a",
+			shttp.WithMeta(map[string]any{
 				DownloadSlotMetaKey: "slot-a",
 			}),
 		)
@@ -874,8 +877,8 @@ func TestDownloaderCustomSlotOverridesDomain(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest(server.URL+"/b",
-			scrapy_http.WithMeta(map[string]any{
+		req := shttp.MustNewRequest(server.URL+"/b",
+			shttp.WithMeta(map[string]any{
 				DownloadSlotMetaKey: "slot-b",
 			}),
 		)
@@ -929,7 +932,7 @@ func TestDownloaderDefaultSlotByDomain(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest(fmt.Sprintf("%s/page/%d", server.URL, idx))
+			req := shttp.MustNewRequest(fmt.Sprintf("%s/page/%d", server.URL, idx))
 			d.Download(context.Background(), req)
 		}(i)
 	}
@@ -966,19 +969,19 @@ func TestDownloaderDefaultSlotByDomain(t *testing.T) {
 // 验证 processTask 中从 Meta 读取超时并创建 context.WithTimeout 的逻辑：
 // 当下载耗时超过 download_timeout 时，应返回 context.DeadlineExceeded 错误。
 func TestSlotDownloadTimeoutApplied(t *testing.T) {
-	slot := NewSlot(8, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		// 模拟慢速下载：等待 2 秒
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(2 * time.Second):
-			return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+			return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 		}
 	})
 	defer slot.Close()
 
 	// 设置 download_timeout = 100ms，下载需要 2s，应超时
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("download_timeout", 100*time.Millisecond)
 
 	start := time.Now()
@@ -1004,19 +1007,19 @@ func TestSlotDownloadTimeoutApplied(t *testing.T) {
 //   - 如果超时在入队时就启动，第二个请求会在排队期间就超时
 //   - 修复后，超时仅在实际下载时才启动，第二个请求应正常完成
 func TestSlotDownloadTimeoutNotConsumedByQueueWait(t *testing.T) {
-	slot := NewSlot(8, 500*time.Millisecond, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 500*time.Millisecond, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		// 下载本身很快（10ms），不会触发超时
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(10 * time.Millisecond):
-			return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+			return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 		}
 	})
 	defer slot.Close()
 
 	// 第一个请求：先发出，让 Slot 记录 lastSeen
-	req1 := scrapy_http.MustNewRequest("https://example.com/1")
+	req1 := shttp.MustNewRequest("https://example.com/1")
 	req1.SetMeta("download_timeout", 200*time.Millisecond)
 	resp1, err1 := slot.Enqueue(context.Background(), req1)
 	if err1 != nil {
@@ -1029,7 +1032,7 @@ func TestSlotDownloadTimeoutNotConsumedByQueueWait(t *testing.T) {
 	// 第二个请求：会在 processTask 中等待 ~500ms 的 delay
 	// download_timeout=200ms，如果超时在入队时就启动，则会在 delay 期间超时
 	// 修复后，超时仅在实际下载时才启动，200ms > 10ms（下载耗时），应成功
-	req2 := scrapy_http.MustNewRequest("https://example.com/2")
+	req2 := shttp.MustNewRequest("https://example.com/2")
 	req2.SetMeta("download_timeout", 200*time.Millisecond)
 
 	resp2, err2 := slot.Enqueue(context.Background(), req2)
@@ -1048,19 +1051,19 @@ func TestSlotDownloadTimeoutNotConsumedBySemaphoreWait(t *testing.T) {
 	downloadStarted.Add(1)
 	firstRequestDone := make(chan struct{})
 
-	slot := NewSlot(1, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(1, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		if req.URL.Path == "/slow" {
 			downloadStarted.Done()
 			// 第一个请求：占住唯一的并发槽位 500ms
 			<-firstRequestDone
-			return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+			return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 		}
 		// 第二个请求：下载本身很快
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(10 * time.Millisecond):
-			return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+			return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 		}
 	})
 	defer slot.Close()
@@ -1071,7 +1074,7 @@ func TestSlotDownloadTimeoutNotConsumedBySemaphoreWait(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest("https://example.com/slow")
+		req := shttp.MustNewRequest("https://example.com/slow")
 		slot.Enqueue(context.Background(), req)
 	}()
 
@@ -1082,11 +1085,11 @@ func TestSlotDownloadTimeoutNotConsumedBySemaphoreWait(t *testing.T) {
 	// 如果超时在入队时就启动，等待信号量期间就会超时
 	// 修复后，超时仅在获取信号量后才启动
 	wg.Add(1)
-	var resp2 *scrapy_http.Response
+	var resp2 *shttp.Response
 	var err2 error
 	go func() {
 		defer wg.Done()
-		req := scrapy_http.MustNewRequest("https://example.com/fast")
+		req := shttp.MustNewRequest("https://example.com/fast")
 		req.SetMeta("download_timeout", 200*time.Millisecond)
 		resp2, err2 = slot.Enqueue(context.Background(), req)
 	}()
@@ -1110,16 +1113,16 @@ func TestSlotDownloadTimeoutNotConsumedBySemaphoreWait(t *testing.T) {
 // TestSlotNoDownloadTimeoutMeta 测试未设置 download_timeout Meta 时正常下载。
 // 验证没有 Meta 时不会意外创建超时 context。
 func TestSlotNoDownloadTimeoutMeta(t *testing.T) {
-	slot := NewSlot(8, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		// 验证 context 没有 deadline（未设置超时）
 		if _, ok := ctx.Deadline(); ok {
 			return nil, fmt.Errorf("context should not have deadline when no download_timeout meta is set")
 		}
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	})
 	defer slot.Close()
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	// 不设置 download_timeout Meta
 
 	resp, err := slot.Enqueue(context.Background(), req)
@@ -1134,16 +1137,16 @@ func TestSlotNoDownloadTimeoutMeta(t *testing.T) {
 // TestSlotDownloadTimeoutZeroValue 测试 download_timeout 为零值时不应用超时。
 // 验证 timeout=0 时不会创建 context.WithTimeout。
 func TestSlotDownloadTimeoutZeroValue(t *testing.T) {
-	slot := NewSlot(8, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		// 验证 context 没有 deadline
 		if _, ok := ctx.Deadline(); ok {
 			return nil, fmt.Errorf("context should not have deadline when download_timeout is zero")
 		}
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	})
 	defer slot.Close()
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("download_timeout", time.Duration(0)) // 零值
 
 	resp, err := slot.Enqueue(context.Background(), req)
@@ -1158,13 +1161,13 @@ func TestSlotDownloadTimeoutZeroValue(t *testing.T) {
 // TestSlotDownloadTimeoutWithUpstreamCancel 测试上游 context 取消与 download_timeout 的交互。
 // 验证上游 context 取消时，即使 download_timeout 未到期，请求也应被取消。
 func TestSlotDownloadTimeoutWithUpstreamCancel(t *testing.T) {
-	slot := NewSlot(8, 0, false, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(8, 0, false, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		// 模拟慢速下载
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-time.After(5 * time.Second):
-			return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+			return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 		}
 	})
 	defer slot.Close()
@@ -1174,7 +1177,7 @@ func TestSlotDownloadTimeoutWithUpstreamCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("download_timeout", 5*time.Second)
 
 	start := time.Now()

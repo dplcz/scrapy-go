@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"strings"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -60,7 +60,7 @@ func NewHttpCompressionMiddleware(maxSize, warnSize int, sc stats.Collector, log
 
 // ProcessRequest 自动添加 Accept-Encoding 请求头。
 // 仅在请求未设置 Accept-Encoding 时添加。
-func (m *HttpCompressionMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *HttpCompressionMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 仅在未设置 Accept-Encoding 时添加
 	if request.Headers.Get("Accept-Encoding") == "" {
 		request.Headers.Set("Accept-Encoding", strings.Join(acceptedEncodings, ", "))
@@ -70,7 +70,7 @@ func (m *HttpCompressionMiddleware) ProcessRequest(ctx context.Context, request 
 
 // ProcessResponse 自动解压压缩的响应体。
 // 支持 gzip、x-gzip、deflate 编码。
-func (m *HttpCompressionMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *HttpCompressionMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	// HEAD 请求不处理响应体
 	if request.Method == "HEAD" {
 		return response, nil
@@ -177,8 +177,8 @@ func parseContentEncoding(header string) []string {
 // 返回值：decodable（需要解压的，从外到内顺序）, remaining（保留的）
 func splitEncodings(encodings []string) (decodable []string, remaining []string) {
 	supported := map[string]bool{
-		"gzip":   true,
-		"x-gzip": true,
+		"gzip":    true,
+		"x-gzip":  true,
 		"deflate": true,
 	}
 

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sort"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
@@ -61,8 +61,8 @@ func (m *Manager) Count() int {
 //  4. 异常时逆序调用 ProcessSpiderException
 func (m *Manager) ScrapeResponse(
 	ctx context.Context,
-	scrapeFunc func(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error),
-	response *scrapy_http.Response,
+	scrapeFunc func(ctx context.Context, response *shttp.Response) ([]spider.Output, error),
+	response *shttp.Response,
 ) ([]spider.Output, error) {
 
 	// 1. ProcessSpiderInput 链（正序）
@@ -85,7 +85,7 @@ func (m *Manager) ScrapeResponse(
 }
 
 // processOutput 逆序调用所有中间件的 ProcessOutput。
-func (m *Manager) processOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
+func (m *Manager) processOutput(ctx context.Context, response *shttp.Response, result []spider.Output) ([]spider.Output, error) {
 	var err error
 	for i := len(m.middlewares) - 1; i >= 0; i-- {
 		result, err = m.middlewares[i].Middleware.ProcessOutput(ctx, response, result)
@@ -98,12 +98,12 @@ func (m *Manager) processOutput(ctx context.Context, response *scrapy_http.Respo
 }
 
 // processSpiderException 逆序调用所有中间件的 ProcessSpiderException。
-func (m *Manager) processSpiderException(ctx context.Context, response *scrapy_http.Response, originalErr error) ([]spider.Output, error) {
+func (m *Manager) processSpiderException(ctx context.Context, response *shttp.Response, originalErr error) ([]spider.Output, error) {
 	return m.processSpiderExceptionFrom(ctx, response, originalErr, len(m.middlewares)-1)
 }
 
 // processSpiderExceptionFrom 从指定索引开始逆序调用 ProcessSpiderException。
-func (m *Manager) processSpiderExceptionFrom(ctx context.Context, response *scrapy_http.Response, originalErr error, startIndex int) ([]spider.Output, error) {
+func (m *Manager) processSpiderExceptionFrom(ctx context.Context, response *shttp.Response, originalErr error, startIndex int) ([]spider.Output, error) {
 	for i := startIndex; i >= 0; i-- {
 		result, err := m.middlewares[i].Middleware.ProcessSpiderException(ctx, response, originalErr)
 		if err != nil {
@@ -120,7 +120,7 @@ func (m *Manager) processSpiderExceptionFrom(ctx context.Context, response *scra
 }
 
 // processOutputFrom 从指定索引开始逆序调用 ProcessOutput。
-func (m *Manager) processOutputFrom(ctx context.Context, response *scrapy_http.Response, result []spider.Output, startIndex int) ([]spider.Output, error) {
+func (m *Manager) processOutputFrom(ctx context.Context, response *shttp.Response, result []spider.Output, startIndex int) ([]spider.Output, error) {
 	var err error
 	for i := startIndex; i >= 0; i-- {
 		result, err = m.middlewares[i].Middleware.ProcessOutput(ctx, response, result)

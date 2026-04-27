@@ -11,19 +11,19 @@ import (
 	"log/slog"
 	"sync/atomic"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
-	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 // Scraper 处理下载的响应，调用 Spider 回调，分发结果。
 // 对应 Scrapy 的 Scraper 类。
 type Scraper struct {
-	spiderMW  *spider_mw.Manager
+	spiderMW  *smiddle.Manager
 	itemProc  *pipeline.Manager
 	spiderRef spider.Spider
 	signals   *signal.Manager
@@ -37,7 +37,7 @@ type Scraper struct {
 
 // NewScraper 创建一个新的 Scraper。
 func NewScraper(
-	spiderMW *spider_mw.Manager,
+	spiderMW *smiddle.Manager,
 	itemProc *pipeline.Manager,
 	spiderRef spider.Spider,
 	signals *signal.Manager,
@@ -46,7 +46,7 @@ func NewScraper(
 	maxActiveSize int,
 ) *Scraper {
 	if spiderMW == nil {
-		spiderMW = spider_mw.NewManager(nil)
+		spiderMW = smiddle.NewManager(nil)
 	}
 	if itemProc == nil {
 		itemProc = pipeline.NewManager(nil, nil, nil)
@@ -101,7 +101,7 @@ func (s *Scraper) NeedsBackout() bool {
 // 返回值：
 //   - requests: 需要重新调度的新请求
 //   - err: 处理过程中的错误
-func (s *Scraper) Scrape(ctx context.Context, response *scrapy_http.Response, request *scrapy_http.Request) ([]*scrapy_http.Request, error) {
+func (s *Scraper) Scrape(ctx context.Context, response *shttp.Response, request *shttp.Request) ([]*shttp.Request, error) {
 	// 追踪活跃大小
 	responseSize := int64(len(response.Body))
 	if responseSize < 1024 {
@@ -116,7 +116,7 @@ func (s *Scraper) Scrape(ctx context.Context, response *scrapy_http.Response, re
 	callbackFn := s.resolveCallback(request)
 
 	// 通过 Spider 中间件链处理
-	outputs, err := s.spiderMW.ScrapeResponse(ctx, func(ctx context.Context, resp *scrapy_http.Response) ([]spider.Output, error) {
+	outputs, err := s.spiderMW.ScrapeResponse(ctx, func(ctx context.Context, resp *shttp.Response) ([]spider.Output, error) {
 		return callbackFn(ctx, resp)
 	}, response)
 
@@ -125,7 +125,7 @@ func (s *Scraper) Scrape(ctx context.Context, response *scrapy_http.Response, re
 		s.handleSpiderError(err, request, response)
 
 		// 检查是否为 CloseSpider 错误
-		if errors.Is(err, scrapy_errors.ErrCloseSpider) {
+		if errors.Is(err, serrors.ErrCloseSpider) {
 			return nil, err
 		}
 
@@ -137,7 +137,7 @@ func (s *Scraper) Scrape(ctx context.Context, response *scrapy_http.Response, re
 }
 
 // ScrapeError 处理下载错误（调用 Request.Errback）。
-func (s *Scraper) ScrapeError(ctx context.Context, err error, request *scrapy_http.Request) ([]*scrapy_http.Request, error) {
+func (s *Scraper) ScrapeError(ctx context.Context, err error, request *shttp.Request) ([]*shttp.Request, error) {
 	// 调用 errback
 	if request.Errback != nil {
 		if errbackFn, ok := request.Errback.(spider.ErrbackFunc); ok {
@@ -163,7 +163,7 @@ func (s *Scraper) ScrapeError(ctx context.Context, err error, request *scrapy_ht
 // ============================================================================
 
 // resolveCallback 确定请求的回调函数。
-func (s *Scraper) resolveCallback(request *scrapy_http.Request) spider.CallbackFunc {
+func (s *Scraper) resolveCallback(request *shttp.Request) spider.CallbackFunc {
 	if request.Callback != nil {
 		if cb, ok := request.Callback.(spider.CallbackFunc); ok {
 			return cb
@@ -175,8 +175,8 @@ func (s *Scraper) resolveCallback(request *scrapy_http.Request) spider.CallbackF
 
 // processOutputs 分发 Spider 输出。
 // 将 Request 收集返回给 Engine，将 Item 发送到 Pipeline。
-func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, response any) ([]*scrapy_http.Request, error) {
-	var newRequests []*scrapy_http.Request
+func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, response any) ([]*shttp.Request, error) {
+	var newRequests []*shttp.Request
 
 	for _, output := range outputs {
 		if output.IsRequest() && output.IsItem() {
@@ -189,7 +189,7 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 		} else if output.IsItem() {
 			s.logger.Debug("scraped item", "item", output.Item)
 			_, err := s.itemProc.ProcessItem(ctx, output.Item, response)
-			if err != nil && !errors.Is(err, scrapy_errors.ErrDropItem) {
+			if err != nil && !errors.Is(err, serrors.ErrDropItem) {
 				// Pipeline 处理错误（非 DropItem），记录但不中断
 				s.logger.Error("pipeline failed to process item",
 					"error", err,
@@ -202,9 +202,9 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 }
 
 // handleSpiderError 处理 Spider 回调异常。
-func (s *Scraper) handleSpiderError(err error, request *scrapy_http.Request, response *scrapy_http.Response) {
+func (s *Scraper) handleSpiderError(err error, request *shttp.Request, response *shttp.Response) {
 	// CloseSpider 不记录为错误
-	if errors.Is(err, scrapy_errors.ErrCloseSpider) {
+	if errors.Is(err, serrors.ErrCloseSpider) {
 		return
 	}
 

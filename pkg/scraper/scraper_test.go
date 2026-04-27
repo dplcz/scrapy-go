@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/spider"
-	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -20,10 +20,10 @@ func TestScraperBasic(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithResponseBody([]byte("<html>Hello</html>")),
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithResponseBody([]byte("<html>Hello</html>")),
+		shttp.WithRequest(req),
 	)
 
 	newReqs, err := s.Scrape(context.Background(), resp, req)
@@ -47,17 +47,17 @@ func TestScraperWithCallback(t *testing.T) {
 	defer s.Close(context.Background())
 
 	// 设置自定义回调
-	customCallback := spider.CallbackFunc(func(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+	customCallback := spider.CallbackFunc(func(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 		return []spider.Output{
 			{Item: map[string]any{"custom": true}},
 		}, nil
 	})
 
-	req := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithCallback(customCallback),
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithCallback(customCallback),
 	)
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
 	)
 
 	newReqs, err := s.Scrape(context.Background(), resp, req)
@@ -76,9 +76,9 @@ func TestScraperCallbackError(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
 	)
 
 	newReqs, err := s.Scrape(context.Background(), resp, req)
@@ -102,30 +102,30 @@ func TestScraperCloseSpiderError(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
 	)
 
 	_, err := s.Scrape(context.Background(), resp, req)
-	if !errors.Is(err, scrapy_errors.ErrCloseSpider) {
+	if !errors.Is(err, serrors.ErrCloseSpider) {
 		t.Errorf("expected ErrCloseSpider, got %v", err)
 	}
 }
 
 func TestScraperWithSpiderMiddleware(t *testing.T) {
 	sp := &testSpider{}
-	mw := spider_mw.NewManager(nil)
+	mw := smiddle.NewManager(nil)
 	mw.AddMiddleware(&filterItemMW{}, "filter", 100)
 
 	s := NewScraper(mw, nil, sp, nil, nil, nil, 0)
 	s.Open(context.Background())
 	defer s.Close(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithResponseBody([]byte("test")),
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithResponseBody([]byte("test")),
+		shttp.WithRequest(req),
 	)
 
 	newReqs, err := s.Scrape(context.Background(), resp, req)
@@ -148,10 +148,10 @@ func TestScraperWithPipeline(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithResponseBody([]byte("test")),
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithResponseBody([]byte("test")),
+		shttp.WithRequest(req),
 	)
 
 	s.Scrape(context.Background(), resp, req)
@@ -177,7 +177,7 @@ func TestScraperScrapeError(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 
 	// 无 errback
 	newReqs, err := s.ScrapeError(context.Background(), errors.New("download failed"), req)
@@ -196,15 +196,15 @@ func TestScraperScrapeErrorWithErrback(t *testing.T) {
 	defer s.Close(context.Background())
 
 	errbackCalled := false
-	errback := spider.ErrbackFunc(func(ctx context.Context, err error, request *scrapy_http.Request) ([]spider.Output, error) {
+	errback := spider.ErrbackFunc(func(ctx context.Context, err error, request *shttp.Request) ([]spider.Output, error) {
 		errbackCalled = true
 		return []spider.Output{
-			{Request: scrapy_http.MustNewRequest("https://example.com/retry")},
+			{Request: shttp.MustNewRequest("https://example.com/retry")},
 		}, nil
 	})
 
-	req := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithErrback(errback),
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithErrback(errback),
 	)
 
 	newReqs, err := s.ScrapeError(context.Background(), errors.New("download failed"), req)
@@ -229,10 +229,10 @@ type testSpider struct {
 
 func (s *testSpider) Name() string { return "test" }
 
-func (s *testSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *testSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	return []spider.Output{
 		{Item: map[string]any{"url": response.URL.String()}},
-		{Request: scrapy_http.MustNewRequest("https://example.com/next")},
+		{Request: shttp.MustNewRequest("https://example.com/next")},
 	}, nil
 }
 
@@ -242,7 +242,7 @@ type errorSpider struct {
 
 func (s *errorSpider) Name() string { return "error" }
 
-func (s *errorSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *errorSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	return nil, errors.New("parse error")
 }
 
@@ -252,16 +252,16 @@ type closeSpiderSpider struct {
 
 func (s *closeSpiderSpider) Name() string { return "close" }
 
-func (s *closeSpiderSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
-	return nil, scrapy_errors.NewCloseSpiderError("item_count_exceeded")
+func (s *closeSpiderSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
+	return nil, serrors.NewCloseSpiderError("item_count_exceeded")
 }
 
 // filterItemMW 过滤掉所有 Item，只保留 Request
 type filterItemMW struct {
-	spider_mw.BaseSpiderMiddleware
+	smiddle.BaseSpiderMiddleware
 }
 
-func (m *filterItemMW) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
+func (m *filterItemMW) ProcessOutput(ctx context.Context, response *shttp.Response, result []spider.Output) ([]spider.Output, error) {
 	var filtered []spider.Output
 	for _, output := range result {
 		if output.IsRequest() {

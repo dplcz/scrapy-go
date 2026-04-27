@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/url"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // RedirectMiddleware 处理 HTTP 重定向。
@@ -42,7 +42,7 @@ func NewRedirectMiddleware(maxRedirectTimes int, priorityAdjust int, logger *slo
 }
 
 // ProcessResponse 检查响应是否为重定向，如果是则返回 NewRequestError 触发重定向。
-func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	// 检查 dont_redirect meta
 	if dontRedirect, ok := request.GetMeta("dont_redirect"); ok {
 		if dr, ok := dontRedirect.(bool); ok && dr {
@@ -92,7 +92,7 @@ func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrap
 		m.logger.Debug("max redirects reached, dropping request",
 			"request", request.String(),
 		)
-		return nil, scrapy_errors.ErrIgnoreRequest
+		return nil, serrors.ErrIgnoreRequest
 	}
 
 	// 构建重定向请求
@@ -130,11 +130,11 @@ func (m *RedirectMiddleware) ProcessResponse(ctx context.Context, request *scrap
 	)
 
 	// 返回 NewRequestError，由 Manager 传播给 Engine 重新调度
-	return nil, scrapy_errors.NewNewRequestError(redirectReq, fmt.Sprintf("redirect %d", response.Status))
+	return nil, serrors.NewNewRequestError(redirectReq, fmt.Sprintf("redirect %d", response.Status))
 }
 
 // buildRedirectRequest 构建重定向请求。
-func (m *RedirectMiddleware) buildRedirectRequest(request *scrapy_http.Request, response *scrapy_http.Response, redirectURL string) *scrapy_http.Request {
+func (m *RedirectMiddleware) buildRedirectRequest(request *shttp.Request, response *shttp.Response, redirectURL string) *shttp.Request {
 	u, _ := url.Parse(redirectURL)
 
 	newReq := request.Copy()

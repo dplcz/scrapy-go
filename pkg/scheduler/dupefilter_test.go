@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestRFPDupeFilterBasic(t *testing.T) {
@@ -12,8 +12,8 @@ func TestRFPDupeFilterBasic(t *testing.T) {
 	df.Open(context.Background())
 	defer df.Close("finished")
 
-	req1 := scrapy_http.MustNewRequest("https://example.com/page1")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page2")
+	req1 := shttp.MustNewRequest("https://example.com/page1")
+	req2 := shttp.MustNewRequest("https://example.com/page2")
 
 	// 第一次见到应返回 false
 	if df.RequestSeen(req1) {
@@ -38,8 +38,8 @@ func TestRFPDupeFilterSameURLDifferentParams(t *testing.T) {
 	defer df.Close("finished")
 
 	// 查询参数顺序不同但内容相同的 URL 应被视为重复
-	req1 := scrapy_http.MustNewRequest("https://example.com/page?a=1&b=2")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page?b=2&a=1")
+	req1 := shttp.MustNewRequest("https://example.com/page?a=1&b=2")
+	req2 := shttp.MustNewRequest("https://example.com/page?b=2&a=1")
 
 	if df.RequestSeen(req1) {
 		t.Error("first request should not be seen")
@@ -54,9 +54,9 @@ func TestRFPDupeFilterDifferentMethods(t *testing.T) {
 	df.Open(context.Background())
 	defer df.Close("finished")
 
-	get := scrapy_http.MustNewRequest("https://example.com/page")
-	post := scrapy_http.MustNewRequest("https://example.com/page",
-		scrapy_http.WithMethod("POST"),
+	get := shttp.MustNewRequest("https://example.com/page")
+	post := shttp.MustNewRequest("https://example.com/page",
+		shttp.WithMethod("POST"),
 	)
 
 	if df.RequestSeen(get) {
@@ -73,13 +73,13 @@ func TestRFPDupeFilterDifferentBodies(t *testing.T) {
 	df.Open(context.Background())
 	defer df.Close("finished")
 
-	req1 := scrapy_http.MustNewRequest("https://example.com/api",
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte(`{"key":"value1"}`)),
+	req1 := shttp.MustNewRequest("https://example.com/api",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte(`{"key":"value1"}`)),
 	)
-	req2 := scrapy_http.MustNewRequest("https://example.com/api",
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte(`{"key":"value2"}`)),
+	req2 := shttp.MustNewRequest("https://example.com/api",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte(`{"key":"value2"}`)),
 	)
 
 	if df.RequestSeen(req1) {
@@ -96,8 +96,8 @@ func TestRFPDupeFilterSeenCount(t *testing.T) {
 	df.Open(context.Background())
 
 	for i := 0; i < 100; i++ {
-		req := scrapy_http.MustNewRequest("https://example.com/page",
-			scrapy_http.WithPriority(i), // 不同优先级不影响指纹
+		req := shttp.MustNewRequest("https://example.com/page",
+			shttp.WithPriority(i), // 不同优先级不影响指纹
 		)
 		df.RequestSeen(req)
 	}
@@ -112,7 +112,7 @@ func TestRFPDupeFilterClose(t *testing.T) {
 	df := NewRFPDupeFilter(nil, false)
 	df.Open(context.Background())
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	df.RequestSeen(req)
 
 	// Close 后指纹集合应被清空
@@ -125,7 +125,7 @@ func TestNoDupeFilter(t *testing.T) {
 	df.Open(context.Background())
 	defer df.Close("finished")
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 
 	// NoDupeFilter 永远返回 false
 	if df.RequestSeen(req) {
@@ -142,7 +142,7 @@ func TestRFPDupeFilterDebugMode(t *testing.T) {
 	df.Open(context.Background())
 	defer df.Close("finished")
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	df.RequestSeen(req)
 	df.RequestSeen(req) // 触发 debug 日志
 }
@@ -153,8 +153,8 @@ func TestRFPDupeFilterFragments(t *testing.T) {
 	defer df.Close("finished")
 
 	// 默认不保留 fragment，所以这两个 URL 应被视为相同
-	req1 := scrapy_http.MustNewRequest("https://example.com/page#section1")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page#section2")
+	req1 := shttp.MustNewRequest("https://example.com/page#section1")
+	req2 := shttp.MustNewRequest("https://example.com/page#section2")
 
 	if df.RequestSeen(req1) {
 		t.Error("first request should not be seen")

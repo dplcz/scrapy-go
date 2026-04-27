@@ -3,7 +3,7 @@ package scheduler
 import (
 	"testing"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestPriorityQueueBasic(t *testing.T) {
@@ -21,7 +21,7 @@ func TestPriorityQueueBasic(t *testing.T) {
 	}
 
 	// 推入单个请求
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	pq.Push(req)
 	if pq.Len() != 1 {
 		t.Errorf("expected len 1, got %d", pq.Len())
@@ -50,9 +50,9 @@ func TestPriorityQueuePriorityOrder(t *testing.T) {
 	pq := NewPriorityQueue()
 
 	// 推入不同优先级的请求
-	low := scrapy_http.MustNewRequest("https://example.com/low", scrapy_http.WithPriority(1))
-	mid := scrapy_http.MustNewRequest("https://example.com/mid", scrapy_http.WithPriority(5))
-	high := scrapy_http.MustNewRequest("https://example.com/high", scrapy_http.WithPriority(10))
+	low := shttp.MustNewRequest("https://example.com/low", shttp.WithPriority(1))
+	mid := shttp.MustNewRequest("https://example.com/mid", shttp.WithPriority(5))
+	high := shttp.MustNewRequest("https://example.com/high", shttp.WithPriority(10))
 
 	// 按低→中→高顺序推入
 	pq.Push(low)
@@ -79,9 +79,9 @@ func TestPriorityQueuePriorityOrder(t *testing.T) {
 func TestPriorityQueueNegativePriority(t *testing.T) {
 	pq := NewPriorityQueue()
 
-	neg := scrapy_http.MustNewRequest("https://example.com/neg", scrapy_http.WithPriority(-5))
-	zero := scrapy_http.MustNewRequest("https://example.com/zero", scrapy_http.WithPriority(0))
-	pos := scrapy_http.MustNewRequest("https://example.com/pos", scrapy_http.WithPriority(5))
+	neg := shttp.MustNewRequest("https://example.com/neg", shttp.WithPriority(-5))
+	zero := shttp.MustNewRequest("https://example.com/zero", shttp.WithPriority(0))
+	pos := shttp.MustNewRequest("https://example.com/pos", shttp.WithPriority(5))
 
 	pq.Push(neg)
 	pq.Push(zero)
@@ -106,9 +106,9 @@ func TestPriorityQueueLIFO(t *testing.T) {
 	pq := NewPriorityQueue()
 
 	// 相同优先级的请求应按 LIFO 顺序出队
-	first := scrapy_http.MustNewRequest("https://example.com/first", scrapy_http.WithPriority(0))
-	second := scrapy_http.MustNewRequest("https://example.com/second", scrapy_http.WithPriority(0))
-	third := scrapy_http.MustNewRequest("https://example.com/third", scrapy_http.WithPriority(0))
+	first := shttp.MustNewRequest("https://example.com/first", shttp.WithPriority(0))
+	second := shttp.MustNewRequest("https://example.com/second", shttp.WithPriority(0))
+	third := shttp.MustNewRequest("https://example.com/third", shttp.WithPriority(0))
 
 	pq.Push(first)
 	pq.Push(second)
@@ -133,10 +133,10 @@ func TestPriorityQueueMixed(t *testing.T) {
 	pq := NewPriorityQueue()
 
 	// 混合优先级和 LIFO
-	a := scrapy_http.MustNewRequest("https://example.com/a", scrapy_http.WithPriority(1))
-	b := scrapy_http.MustNewRequest("https://example.com/b", scrapy_http.WithPriority(2))
-	c := scrapy_http.MustNewRequest("https://example.com/c", scrapy_http.WithPriority(1))
-	d := scrapy_http.MustNewRequest("https://example.com/d", scrapy_http.WithPriority(2))
+	a := shttp.MustNewRequest("https://example.com/a", shttp.WithPriority(1))
+	b := shttp.MustNewRequest("https://example.com/b", shttp.WithPriority(2))
+	c := shttp.MustNewRequest("https://example.com/c", shttp.WithPriority(1))
+	d := shttp.MustNewRequest("https://example.com/d", shttp.WithPriority(2))
 
 	pq.Push(a) // priority=1, seq=0
 	pq.Push(b) // priority=2, seq=1
@@ -167,8 +167,8 @@ func TestPriorityQueueLargeScale(t *testing.T) {
 
 	n := 10000
 	for i := 0; i < n; i++ {
-		req := scrapy_http.MustNewRequest("https://example.com/page",
-			scrapy_http.WithPriority(i % 10),
+		req := shttp.MustNewRequest("https://example.com/page",
+			shttp.WithPriority(i%10),
 		)
 		pq.Push(req)
 	}

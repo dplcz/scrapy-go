@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -56,7 +56,7 @@ func NewRetryMiddleware(maxRetryTimes int, retryHTTPCodes []int, priorityAdjust 
 }
 
 // ProcessResponse 检查响应状态码，如果在重试列表中则返回 NewRequestError 触发重试。
-func (m *RetryMiddleware) ProcessResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *RetryMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	// 检查 dont_retry meta
 	if dontRetry, ok := request.GetMeta("dont_retry"); ok {
 		if dr, ok := dontRetry.(bool); ok && dr {
@@ -70,7 +70,7 @@ func (m *RetryMiddleware) ProcessResponse(ctx context.Context, request *scrapy_h
 		retryReq := m.retry(request, reason)
 		if retryReq != nil {
 			// 返回 NewRequestError，由 Manager 传播给 Engine 重新调度
-			return nil, scrapy_errors.NewNewRequestError(retryReq, "retry")
+			return nil, serrors.NewNewRequestError(retryReq, "retry")
 		}
 	}
 
@@ -78,7 +78,7 @@ func (m *RetryMiddleware) ProcessResponse(ctx context.Context, request *scrapy_h
 }
 
 // ProcessException 检查异常是否可重试。
-func (m *RetryMiddleware) ProcessException(ctx context.Context, request *scrapy_http.Request, err error) (*scrapy_http.Response, error) {
+func (m *RetryMiddleware) ProcessException(ctx context.Context, request *shttp.Request, err error) (*shttp.Response, error) {
 	// 检查 dont_retry meta
 	if dontRetry, ok := request.GetMeta("dont_retry"); ok {
 		if dr, ok := dontRetry.(bool); ok && dr {
@@ -87,11 +87,11 @@ func (m *RetryMiddleware) ProcessException(ctx context.Context, request *scrapy_
 	}
 
 	// 检查是否为可重试的异常
-	if scrapy_errors.IsRetryable(err) {
+	if serrors.IsRetryable(err) {
 		retryReq := m.retry(request, err.Error())
 		if retryReq != nil {
 			// 返回 NewRequestError，由 Manager 传播给 Engine 重新调度
-			return nil, scrapy_errors.NewNewRequestError(retryReq, "retry")
+			return nil, serrors.NewNewRequestError(retryReq, "retry")
 		}
 	}
 
@@ -99,7 +99,7 @@ func (m *RetryMiddleware) ProcessException(ctx context.Context, request *scrapy_
 }
 
 // retry 创建重试请求。
-func (m *RetryMiddleware) retry(request *scrapy_http.Request, reason string) *scrapy_http.Request {
+func (m *RetryMiddleware) retry(request *shttp.Request, reason string) *shttp.Request {
 	retryTimes := 0
 	if v, ok := request.GetMeta("retry_times"); ok {
 		if rt, ok := v.(int); ok {
@@ -144,7 +144,7 @@ func (m *RetryMiddleware) retry(request *scrapy_http.Request, reason string) *sc
 
 // GetRetryRequest 是一个公共辅助函数，可在 Spider 回调中手动触发重试。
 // 对应 Scrapy 的 get_retry_request 函数。
-func GetRetryRequest(request *scrapy_http.Request, reason string, maxRetryTimes int, priorityAdjust int, sc stats.Collector, logger *slog.Logger) *scrapy_http.Request {
+func GetRetryRequest(request *shttp.Request, reason string, maxRetryTimes int, priorityAdjust int, sc stats.Collector, logger *slog.Logger) *shttp.Request {
 	m := &RetryMiddleware{
 		maxRetryTimes:  maxRetryTimes,
 		priorityAdjust: priorityAdjust,

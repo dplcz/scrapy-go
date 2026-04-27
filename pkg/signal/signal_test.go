@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 )
 
 func TestManagerConnect(t *testing.T) {
@@ -117,7 +117,7 @@ func TestManagerSendCatchLog(t *testing.T) {
 
 	// 处理器返回普通错误
 	sm.Connect(func(params map[string]any) error {
-		return scrapy_errors.ErrDownloadFailed
+		return serrors.ErrDownloadFailed
 	}, SpiderError)
 
 	errs := sm.SendCatchLog(SpiderError, nil)
@@ -130,7 +130,7 @@ func TestManagerDontCloseSpider(t *testing.T) {
 	sm := NewManager(nil)
 
 	sm.Connect(func(params map[string]any) error {
-		return scrapy_errors.ErrDontCloseSpider
+		return serrors.ErrDontCloseSpider
 	}, SpiderIdle)
 
 	errs := sm.SendCatchLog(SpiderIdle, nil)
@@ -143,7 +143,7 @@ func TestManagerCloseSpider(t *testing.T) {
 	sm := NewManager(nil)
 
 	sm.Connect(func(params map[string]any) error {
-		return scrapy_errors.NewCloseSpiderError("item_count_exceeded")
+		return serrors.NewCloseSpiderError("item_count_exceeded")
 	}, SpiderIdle)
 
 	errs := sm.SendCatchLog(SpiderIdle, nil)
@@ -256,13 +256,13 @@ func TestContainsDontCloseSpider(t *testing.T) {
 	}
 
 	// 不包含
-	errs := []error{scrapy_errors.ErrDownloadFailed, scrapy_errors.ErrCloseSpider}
+	errs := []error{serrors.ErrDownloadFailed, serrors.ErrCloseSpider}
 	if ContainsDontCloseSpider(errs) {
 		t.Error("should return false")
 	}
 
 	// 包含
-	errs2 := []error{scrapy_errors.ErrDownloadFailed, scrapy_errors.ErrDontCloseSpider}
+	errs2 := []error{serrors.ErrDownloadFailed, serrors.ErrDontCloseSpider}
 	if !ContainsDontCloseSpider(errs2) {
 		t.Error("should return true")
 	}
@@ -275,13 +275,13 @@ func TestContainsCloseSpider(t *testing.T) {
 	}
 
 	// 不包含
-	errs := []error{scrapy_errors.ErrDownloadFailed}
+	errs := []error{serrors.ErrDownloadFailed}
 	if ContainsCloseSpider(errs) != nil {
 		t.Error("should return nil")
 	}
 
 	// 包含 CloseSpiderError
-	errs2 := []error{scrapy_errors.NewCloseSpiderError("timeout")}
+	errs2 := []error{serrors.NewCloseSpiderError("timeout")}
 	closeErr := ContainsCloseSpider(errs2)
 	if closeErr == nil {
 		t.Fatal("should return CloseSpiderError")
@@ -291,7 +291,7 @@ func TestContainsCloseSpider(t *testing.T) {
 	}
 
 	// 包含 sentinel ErrCloseSpider
-	errs3 := []error{scrapy_errors.ErrCloseSpider}
+	errs3 := []error{serrors.ErrCloseSpider}
 	closeErr2 := ContainsCloseSpider(errs3)
 	if closeErr2 == nil {
 		t.Fatal("should return CloseSpiderError")

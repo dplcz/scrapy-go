@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/internal/utils"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // ============================================================================
@@ -27,7 +27,7 @@ type DupeFilter interface {
 	// RequestSeen 检查请求是否已见过。
 	// 如果是新请求，记录并返回 false。
 	// 如果是重复请求，返回 true。
-	RequestSeen(request *scrapy_http.Request) bool
+	RequestSeen(request *shttp.Request) bool
 }
 
 // ============================================================================
@@ -83,7 +83,7 @@ func (f *RFPDupeFilter) Close(reason string) error {
 //
 // 使用 RequestFingerprint 计算请求指纹，如果指纹已存在于集合中，
 // 则认为是重复请求。否则将指纹加入集合并返回 false。
-func (f *RFPDupeFilter) RequestSeen(request *scrapy_http.Request) bool {
+func (f *RFPDupeFilter) RequestSeen(request *shttp.Request) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -107,13 +107,13 @@ func (f *RFPDupeFilter) SeenCount() int {
 }
 
 // requestFingerprint 计算请求的指纹。
-func (f *RFPDupeFilter) requestFingerprint(request *scrapy_http.Request) string {
+func (f *RFPDupeFilter) requestFingerprint(request *shttp.Request) string {
 	return utils.RequestFingerprint(request, nil, false)
 }
 
 // logDupe 记录重复请求的日志。
 // 在 debug 模式下记录每个重复请求；否则仅记录一次提示。
-func (f *RFPDupeFilter) logDupe(request *scrapy_http.Request) {
+func (f *RFPDupeFilter) logDupe(request *shttp.Request) {
 	if f.debug {
 		f.logger.Debug("filtered duplicate request",
 			"request", request.String(),
@@ -140,6 +140,6 @@ func NewNoDupeFilter() *NoDupeFilter {
 	return &NoDupeFilter{}
 }
 
-func (f *NoDupeFilter) Open(ctx context.Context) error              { return nil }
-func (f *NoDupeFilter) Close(reason string) error                   { return nil }
-func (f *NoDupeFilter) RequestSeen(request *scrapy_http.Request) bool { return false }
+func (f *NoDupeFilter) Open(ctx context.Context) error          { return nil }
+func (f *NoDupeFilter) Close(reason string) error               { return nil }
+func (f *NoDupeFilter) RequestSeen(request *shttp.Request) bool { return false }

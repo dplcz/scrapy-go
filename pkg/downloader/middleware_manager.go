@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sort"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 
 	"github.com/dplcz/scrapy-go/pkg/downloader/middleware"
 )
@@ -41,8 +41,8 @@ func NewMiddlewareManager(logger *slog.Logger) *MiddlewareManager {
 func (m *MiddlewareManager) AddMiddleware(mw middleware.DownloaderMiddleware, name string, priority int) {
 	m.middlewares = append(m.middlewares, MiddlewareEntry{
 		Middleware: mw,
-		Name:      name,
-		Priority:  priority,
+		Name:       name,
+		Priority:   priority,
 	})
 	// 按优先级排序（小的在前）
 	sort.Slice(m.middlewares, func(i, j int) bool {
@@ -66,12 +66,12 @@ func (m *MiddlewareManager) Count() int {
 //
 // 当中间件返回 NewRequestError 时，该错误会被直接传播给调用方（Engine），
 // 由 Engine 负责将新请求重新调度到 Scheduler。
-func (m *MiddlewareManager) Download(ctx context.Context, downloadFunc middleware.DownloadFunc, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) Download(ctx context.Context, downloadFunc middleware.DownloadFunc, request *shttp.Request) (*shttp.Response, error) {
 	// 1. ProcessRequest 链（正序）
 	result, err := m.processRequest(ctx, request)
 	if err != nil {
 		// NewRequestError 直接传播给 Engine
-		if errors.Is(err, scrapy_errors.ErrNewRequest) {
+		if errors.Is(err, serrors.ErrNewRequest) {
 			return nil, err
 		}
 		// 进入 ProcessException 链
@@ -98,7 +98,7 @@ func (m *MiddlewareManager) Download(ctx context.Context, downloadFunc middlewar
 }
 
 // processRequest 正序调用所有中间件的 ProcessRequest。
-func (m *MiddlewareManager) processRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) processRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	for _, entry := range m.middlewares {
 		resp, err := entry.Middleware.ProcessRequest(ctx, request)
 		if err != nil {
@@ -113,7 +113,7 @@ func (m *MiddlewareManager) processRequest(ctx context.Context, request *scrapy_
 
 // processResponse 逆序调用所有中间件的 ProcessResponse。
 // 当中间件返回 NewRequestError 时，直接传播给调用方。
-func (m *MiddlewareManager) processResponse(ctx context.Context, request *scrapy_http.Request, response *scrapy_http.Response) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) processResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	for i := len(m.middlewares) - 1; i >= 0; i-- {
 		resp, err := m.middlewares[i].Middleware.ProcessResponse(ctx, request, response)
 		if err != nil {
@@ -126,12 +126,12 @@ func (m *MiddlewareManager) processResponse(ctx context.Context, request *scrapy
 
 // processException 逆序调用所有中间件的 ProcessException。
 // 当中间件返回 NewRequestError 时，直接传播给调用方。
-func (m *MiddlewareManager) processException(ctx context.Context, request *scrapy_http.Request, originalErr error) (*scrapy_http.Response, error) {
+func (m *MiddlewareManager) processException(ctx context.Context, request *shttp.Request, originalErr error) (*shttp.Response, error) {
 	for i := len(m.middlewares) - 1; i >= 0; i-- {
 		resp, err := m.middlewares[i].Middleware.ProcessException(ctx, request, originalErr)
 		if err != nil {
 			// NewRequestError 直接传播
-			if errors.Is(err, scrapy_errors.ErrNewRequest) {
+			if errors.Is(err, serrors.ErrNewRequest) {
 				return nil, err
 			}
 			// 中间件返回了新的错误，替换原始错误继续传播

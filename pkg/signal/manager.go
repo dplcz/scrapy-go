@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"sync"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 )
 
 // ============================================================================
@@ -31,7 +31,7 @@ type handlerEntry struct {
 
 // 全局处理器 ID 计数器
 var (
-	handlerIDMu sync.Mutex
+	handlerIDMu   sync.Mutex
 	nextHandlerID uint64
 )
 
@@ -115,8 +115,8 @@ func (sm *Manager) SendCatchLog(sig Signal, params map[string]any) []error {
 	for _, entry := range handlers {
 		if err := entry.handler(params); err != nil {
 			// DontCloseSpider 和 CloseSpider 是特殊错误，不记录为错误日志
-			if errors.Is(err, scrapy_errors.ErrDontCloseSpider) ||
-				errors.Is(err, scrapy_errors.ErrCloseSpider) {
+			if errors.Is(err, serrors.ErrDontCloseSpider) ||
+				errors.Is(err, serrors.ErrCloseSpider) {
 				errs = append(errs, err)
 				continue
 			}
@@ -143,13 +143,13 @@ func (sm *Manager) SendCatchLogCtx(ctx context.Context, sig Signal, params map[s
 			return errs
 		default:
 			if err := entry.handler(params); err != nil {
-				if errors.Is(err, scrapy_errors.ErrDontCloseSpider) ||
-					errors.Is(err, scrapy_errors.ErrCloseSpider) {
+				if errors.Is(err, serrors.ErrDontCloseSpider) ||
+					errors.Is(err, serrors.ErrCloseSpider) {
 					errs = append(errs, err)
 					continue
 				}
 
-			sm.logger.Error("signal handler error",
+				sm.logger.Error("signal handler error",
 					"signal", sig.String(),
 					"error", err,
 				)
@@ -201,7 +201,7 @@ func (sm *Manager) getHandlers(sig Signal) []handlerEntry {
 // ContainsDontCloseSpider 检查错误列表中是否包含 ErrDontCloseSpider。
 func ContainsDontCloseSpider(errs []error) bool {
 	for _, err := range errs {
-		if errors.Is(err, scrapy_errors.ErrDontCloseSpider) {
+		if errors.Is(err, serrors.ErrDontCloseSpider) {
 			return true
 		}
 	}
@@ -210,14 +210,14 @@ func ContainsDontCloseSpider(errs []error) bool {
 
 // ContainsCloseSpider 检查错误列表中是否包含 ErrCloseSpider。
 // 如果包含，返回 CloseSpiderError（含关闭原因）。
-func ContainsCloseSpider(errs []error) *scrapy_errors.CloseSpiderError {
+func ContainsCloseSpider(errs []error) *serrors.CloseSpiderError {
 	for _, err := range errs {
-		var closeErr *scrapy_errors.CloseSpiderError
+		var closeErr *serrors.CloseSpiderError
 		if errors.As(err, &closeErr) {
 			return closeErr
 		}
-		if errors.Is(err, scrapy_errors.ErrCloseSpider) {
-			return &scrapy_errors.CloseSpiderError{Reason: "cancelled"}
+		if errors.Is(err, serrors.ErrCloseSpider) {
+			return &serrors.CloseSpiderError{Reason: "cancelled"}
 		}
 	}
 	return nil

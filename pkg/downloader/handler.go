@@ -10,14 +10,14 @@ import (
 	"net/http"
 	"time"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DownloadHandler 定义下载处理器接口。
 // 不同协议（http、https、ftp 等）可以有不同的处理器实现。
 type DownloadHandler interface {
 	// Download 执行下载请求并返回响应。
-	Download(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error)
+	Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error)
 
 	// Close 关闭处理器，释放资源。
 	Close() error
@@ -56,7 +56,7 @@ func NewHTTPDownloadHandler(timeout time.Duration) *HTTPDownloadHandler {
 }
 
 // Download 执行 HTTP 下载。
-func (h *HTTPDownloadHandler) Download(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 构建 net/http.Request
 	httpReq, err := http.NewRequestWithContext(ctx, request.Method, request.URL.String(), nil)
 	if err != nil {
@@ -95,7 +95,7 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *scrapy_http
 	}
 
 	// 构建 scrapy Response
-	resp := &scrapy_http.Response{
+	resp := &shttp.Response{
 		URL:      request.URL,
 		Status:   httpResp.StatusCode,
 		Headers:  httpResp.Header,

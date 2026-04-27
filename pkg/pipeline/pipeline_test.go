@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -57,7 +57,7 @@ func TestManagerProcessItemDrop(t *testing.T) {
 	m.AddPipeline(&addFieldPipeline{field: "after_drop", value: true}, "after", 200)
 
 	_, err := m.ProcessItem(context.Background(), map[string]any{}, nil)
-	if !errors.Is(err, scrapy_errors.ErrDropItem) {
+	if !errors.Is(err, serrors.ErrDropItem) {
 		t.Errorf("expected ErrDropItem, got %v", err)
 	}
 
@@ -192,7 +192,7 @@ type dropPipeline struct{}
 func (p *dropPipeline) Open(ctx context.Context) error  { return nil }
 func (p *dropPipeline) Close(ctx context.Context) error { return nil }
 func (p *dropPipeline) ProcessItem(ctx context.Context, item any) (any, error) {
-	return nil, scrapy_errors.NewDropItemError("test drop")
+	return nil, serrors.NewDropItemError("test drop")
 }
 
 type errorPipeline struct {

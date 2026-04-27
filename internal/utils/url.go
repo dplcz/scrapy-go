@@ -1,5 +1,4 @@
 // Package utils 提供 scrapy-go 框架的内部工具函数。
-// 此包不对外导出。
 package utils
 
 import (
@@ -9,7 +8,6 @@ import (
 )
 
 // CanonicalizeURL 规范化 URL，用于去重比较。
-// 对应 Scrapy 中 w3lib.url.canonicalize_url 的功能。
 //
 // 规范化规则：
 //  1. 转换 scheme 和 host 为小写

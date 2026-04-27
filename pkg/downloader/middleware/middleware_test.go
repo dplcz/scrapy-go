@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	scrapy_errors "github.com/dplcz/scrapy-go/pkg/errors"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -29,7 +29,7 @@ func TestDefaultHeadersMiddleware(t *testing.T) {
 	mw := NewDefaultHeadersMiddleware(headers)
 
 	// 请求没有设置 Accept，应被设置
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	if req.Headers.Get("Accept") != "text/html" {
@@ -40,8 +40,8 @@ func TestDefaultHeadersMiddleware(t *testing.T) {
 	}
 
 	// 请求已设置 Accept，不应被覆盖
-	req2 := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithHeader("Accept", "application/json"),
+	req2 := shttp.MustNewRequest("https://example.com",
+		shttp.WithHeader("Accept", "application/json"),
 	)
 	mw.ProcessRequest(context.Background(), req2)
 
@@ -57,7 +57,7 @@ func TestDefaultHeadersMiddleware(t *testing.T) {
 func TestUserAgentMiddleware(t *testing.T) {
 	mw := NewUserAgentMiddleware("scrapy-go/0.1")
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	if req.Headers.Get("User-Agent") != "scrapy-go/0.1" {
@@ -65,8 +65,8 @@ func TestUserAgentMiddleware(t *testing.T) {
 	}
 
 	// 已设置 User-Agent 不应被覆盖
-	req2 := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithHeader("User-Agent", "custom-agent"),
+	req2 := shttp.MustNewRequest("https://example.com",
+		shttp.WithHeader("User-Agent", "custom-agent"),
 	)
 	mw.ProcessRequest(context.Background(), req2)
 
@@ -78,7 +78,7 @@ func TestUserAgentMiddleware(t *testing.T) {
 func TestUserAgentMiddlewareEmpty(t *testing.T) {
 	mw := NewUserAgentMiddleware("")
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	if req.Headers.Get("User-Agent") != "" {
@@ -94,24 +94,24 @@ func TestRetryMiddlewareHTTPCode(t *testing.T) {
 	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewRetryMiddleware(2, []int{500, 502, 503}, -1, sc, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 500,
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 500,
+		shttp.WithRequest(req),
 	)
 
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
 	// 应返回 NewRequestError
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	if !errors.As(err, &newReqErr) {
 		t.Fatal("should be able to extract NewRequestError")
 	}
 
-	rr, ok := newReqErr.Request.(*scrapy_http.Request)
+	rr, ok := newReqErr.Request.(*shttp.Request)
 	if !ok {
 		t.Fatal("NewRequestError.Request should be *http.Request")
 	}
@@ -132,9 +132,9 @@ func TestRetryMiddlewareHTTPCode(t *testing.T) {
 func TestRetryMiddlewareNonRetryCode(t *testing.T) {
 	mw := NewRetryMiddleware(2, []int{500, 502, 503}, -1, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
 	)
 
 	result, err := mw.ProcessResponse(context.Background(), req, resp)
@@ -150,11 +150,11 @@ func TestRetryMiddlewareMaxRetries(t *testing.T) {
 	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewRetryMiddleware(2, []int{500}, -1, sc, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("retry_times", 2) // 已重试 2 次
 
-	resp := scrapy_http.MustNewResponse("https://example.com", 500,
-		scrapy_http.WithRequest(req),
+	resp := shttp.MustNewResponse("https://example.com", 500,
+		shttp.WithRequest(req),
 	)
 
 	result, err := mw.ProcessResponse(context.Background(), req, resp)
@@ -175,11 +175,11 @@ func TestRetryMiddlewareMaxRetries(t *testing.T) {
 func TestRetryMiddlewareDontRetry(t *testing.T) {
 	mw := NewRetryMiddleware(2, []int{500}, -1, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("dont_retry", true)
 
-	resp := scrapy_http.MustNewResponse("https://example.com", 500,
-		scrapy_http.WithRequest(req),
+	resp := shttp.MustNewResponse("https://example.com", 500,
+		shttp.WithRequest(req),
 	)
 
 	result, err := mw.ProcessResponse(context.Background(), req, resp)
@@ -195,21 +195,21 @@ func TestRetryMiddlewareException(t *testing.T) {
 	sc := stats.NewMemoryCollector(false, nil)
 	mw := NewRetryMiddleware(2, nil, -1, sc, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 
-	_, err := mw.ProcessException(context.Background(), req, scrapy_errors.ErrDownloadTimeout)
+	_, err := mw.ProcessException(context.Background(), req, serrors.ErrDownloadTimeout)
 
 	// 应返回 NewRequestError
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest for retryable exception, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	if !errors.As(err, &newReqErr) {
 		t.Fatal("should be able to extract NewRequestError")
 	}
 
-	rr, ok := newReqErr.Request.(*scrapy_http.Request)
+	rr, ok := newReqErr.Request.(*shttp.Request)
 	if !ok {
 		t.Fatal("NewRequestError.Request should be *http.Request")
 	}
@@ -221,7 +221,7 @@ func TestRetryMiddlewareException(t *testing.T) {
 func TestRetryMiddlewareExceptionNonRetryable(t *testing.T) {
 	mw := NewRetryMiddleware(2, nil, -1, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 
 	resp, err := mw.ProcessException(context.Background(), req, errors.New("some random error"))
 	// 非可重试异常，应返回 nil, nil（继续传播）
@@ -236,16 +236,16 @@ func TestRetryMiddlewareExceptionNonRetryable(t *testing.T) {
 func TestRetryMiddlewareRequestLevelMaxRetries(t *testing.T) {
 	mw := NewRetryMiddleware(2, []int{500}, -1, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("max_retry_times", 5) // 请求级覆盖
 
-	resp := scrapy_http.MustNewResponse("https://example.com", 500,
-		scrapy_http.WithRequest(req),
+	resp := shttp.MustNewResponse("https://example.com", 500,
+		shttp.WithRequest(req),
 	)
 
 	// 第一次重试应成功
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 }
@@ -257,10 +257,10 @@ func TestRetryMiddlewareRequestLevelMaxRetries(t *testing.T) {
 func TestRedirectMiddleware301(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old")
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 301,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com/old")
+	resp := shttp.MustNewResponse("https://example.com/old", 301,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"https://example.com/new"},
 		}),
 	)
@@ -268,16 +268,16 @@ func TestRedirectMiddleware301(t *testing.T) {
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
 	// 应返回 NewRequestError
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	if !errors.As(err, &newReqErr) {
 		t.Fatal("should be able to extract NewRequestError")
 	}
 
-	rr, ok := newReqErr.Request.(*scrapy_http.Request)
+	rr, ok := newReqErr.Request.(*shttp.Request)
 	if !ok {
 		t.Fatal("NewRequestError.Request should be *http.Request")
 	}
@@ -289,26 +289,26 @@ func TestRedirectMiddleware301(t *testing.T) {
 func TestRedirectMiddleware302POST(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old",
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte("data")),
+	req := shttp.MustNewRequest("https://example.com/old",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("data")),
 	)
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 302,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com/old", 302,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"/new"},
 		}),
 	)
 
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	errors.As(err, &newReqErr)
-	rr := newReqErr.Request.(*scrapy_http.Request)
+	rr := newReqErr.Request.(*shttp.Request)
 
 	// 302 + POST → GET
 	if rr.Method != "GET" {
@@ -322,26 +322,26 @@ func TestRedirectMiddleware302POST(t *testing.T) {
 func TestRedirectMiddleware307(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old",
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte("data")),
+	req := shttp.MustNewRequest("https://example.com/old",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("data")),
 	)
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 307,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com/old", 307,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"/new"},
 		}),
 	)
 
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	errors.As(err, &newReqErr)
-	rr := newReqErr.Request.(*scrapy_http.Request)
+	rr := newReqErr.Request.(*shttp.Request)
 
 	// 307 保持原方法
 	if rr.Method != "POST" {
@@ -352,18 +352,18 @@ func TestRedirectMiddleware307(t *testing.T) {
 func TestRedirectMiddlewareMaxRedirects(t *testing.T) {
 	mw := NewRedirectMiddleware(2, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old")
+	req := shttp.MustNewRequest("https://example.com/old")
 	req.SetMeta("redirect_times", 2) // 已重定向 2 次
 
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 301,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com/old", 301,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"/new"},
 		}),
 	)
 
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
-	if !errors.Is(err, scrapy_errors.ErrIgnoreRequest) {
+	if !errors.Is(err, serrors.ErrIgnoreRequest) {
 		t.Errorf("should return ErrIgnoreRequest when max redirects reached, got %v", err)
 	}
 }
@@ -371,12 +371,12 @@ func TestRedirectMiddlewareMaxRedirects(t *testing.T) {
 func TestRedirectMiddlewareDontRedirect(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old")
+	req := shttp.MustNewRequest("https://example.com/old")
 	req.SetMeta("dont_redirect", true)
 
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 301,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com/old", 301,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"/new"},
 		}),
 	)
@@ -393,9 +393,9 @@ func TestRedirectMiddlewareDontRedirect(t *testing.T) {
 func TestRedirectMiddlewareNoLocation(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old")
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 301,
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com/old")
+	resp := shttp.MustNewResponse("https://example.com/old", 301,
+		shttp.WithRequest(req),
 	)
 
 	result, err := mw.ProcessResponse(context.Background(), req, resp)
@@ -410,9 +410,9 @@ func TestRedirectMiddlewareNoLocation(t *testing.T) {
 func TestRedirectMiddlewareNon3xx(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
 	)
 
 	result, err := mw.ProcessResponse(context.Background(), req, resp)
@@ -427,26 +427,26 @@ func TestRedirectMiddlewareNon3xx(t *testing.T) {
 func TestRedirectMiddlewareCrossDomain(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/old",
-		scrapy_http.WithHeader("Cookie", "session=abc"),
-		scrapy_http.WithHeader("Authorization", "Bearer token"),
+	req := shttp.MustNewRequest("https://example.com/old",
+		shttp.WithHeader("Cookie", "session=abc"),
+		shttp.WithHeader("Authorization", "Bearer token"),
 	)
-	resp := scrapy_http.MustNewResponse("https://example.com/old", 301,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com/old", 301,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"https://other.com/new"},
 		}),
 	)
 
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
 
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	errors.As(err, &newReqErr)
-	rr := newReqErr.Request.(*scrapy_http.Request)
+	rr := newReqErr.Request.(*shttp.Request)
 
 	// 跨域应移除敏感头
 	if rr.Headers.Get("Cookie") != "" {
@@ -460,22 +460,22 @@ func TestRedirectMiddlewareCrossDomain(t *testing.T) {
 func TestRedirectMiddlewareRedirectHistory(t *testing.T) {
 	mw := NewRedirectMiddleware(20, 2, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/page1")
-	resp := scrapy_http.MustNewResponse("https://example.com/page1", 301,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com/page1")
+	resp := shttp.MustNewResponse("https://example.com/page1", 301,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Location": {"https://example.com/page2"},
 		}),
 	)
 
 	_, err := mw.ProcessResponse(context.Background(), req, resp)
-	if !errors.Is(err, scrapy_errors.ErrNewRequest) {
+	if !errors.Is(err, serrors.ErrNewRequest) {
 		t.Fatalf("expected ErrNewRequest, got %v", err)
 	}
 
-	var newReqErr *scrapy_errors.NewRequestError
+	var newReqErr *serrors.NewRequestError
 	errors.As(err, &newReqErr)
-	rr := newReqErr.Request.(*scrapy_http.Request)
+	rr := newReqErr.Request.(*shttp.Request)
 
 	// 检查重定向历史
 	redirectURLs, ok := rr.GetMeta("redirect_urls")
@@ -504,7 +504,7 @@ func TestRedirectMiddlewareRedirectHistory(t *testing.T) {
 func TestDownloadTimeoutMiddleware(t *testing.T) {
 	mw := NewDownloadTimeoutMiddleware(30*time.Second, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	v, ok := req.GetMeta("download_timeout")
@@ -523,7 +523,7 @@ func TestDownloadTimeoutMiddleware(t *testing.T) {
 func TestDownloadTimeoutMiddlewareNoOverride(t *testing.T) {
 	mw := NewDownloadTimeoutMiddleware(30*time.Second, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("download_timeout", 10*time.Second) // 请求级覆盖
 
 	mw.ProcessRequest(context.Background(), req)
@@ -538,7 +538,7 @@ func TestDownloadTimeoutMiddlewareNoOverride(t *testing.T) {
 func TestDownloadTimeoutMiddlewareZero(t *testing.T) {
 	mw := NewDownloadTimeoutMiddleware(0, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	_, ok := req.GetMeta("download_timeout")
@@ -554,7 +554,7 @@ func TestDownloadTimeoutMiddlewareZero(t *testing.T) {
 func TestHttpAuthMiddleware(t *testing.T) {
 	mw := NewHttpAuthMiddleware("user", "pass", "", nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	auth := req.Headers.Get("Authorization")
@@ -567,8 +567,8 @@ func TestHttpAuthMiddleware(t *testing.T) {
 func TestHttpAuthMiddlewareNoOverride(t *testing.T) {
 	mw := NewHttpAuthMiddleware("user", "pass", "", nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithHeader("Authorization", "Bearer existing-token"),
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithHeader("Authorization", "Bearer existing-token"),
 	)
 	mw.ProcessRequest(context.Background(), req)
 
@@ -582,21 +582,21 @@ func TestHttpAuthMiddlewareDomainMatch(t *testing.T) {
 	mw := NewHttpAuthMiddleware("user", "pass", "example.com", nil)
 
 	// 匹配域名
-	req1 := scrapy_http.MustNewRequest("https://example.com/page")
+	req1 := shttp.MustNewRequest("https://example.com/page")
 	mw.ProcessRequest(context.Background(), req1)
 	if req1.Headers.Get("Authorization") == "" {
 		t.Error("should set auth for matching domain")
 	}
 
 	// 子域名匹配
-	req2 := scrapy_http.MustNewRequest("https://sub.example.com/page")
+	req2 := shttp.MustNewRequest("https://sub.example.com/page")
 	mw.ProcessRequest(context.Background(), req2)
 	if req2.Headers.Get("Authorization") == "" {
 		t.Error("should set auth for subdomain")
 	}
 
 	// 不匹配域名
-	req3 := scrapy_http.MustNewRequest("https://other.com/page")
+	req3 := shttp.MustNewRequest("https://other.com/page")
 	mw.ProcessRequest(context.Background(), req3)
 	if req3.Headers.Get("Authorization") != "" {
 		t.Error("should not set auth for non-matching domain")
@@ -606,7 +606,7 @@ func TestHttpAuthMiddlewareDomainMatch(t *testing.T) {
 func TestHttpAuthMiddlewareNoCredentials(t *testing.T) {
 	mw := NewHttpAuthMiddleware("", "", "", nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	if req.Headers.Get("Authorization") != "" {
@@ -617,7 +617,7 @@ func TestHttpAuthMiddlewareNoCredentials(t *testing.T) {
 func TestHttpAuthMiddlewareMetaOverride(t *testing.T) {
 	mw := NewHttpAuthMiddleware("global_user", "global_pass", "", nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	req.SetMeta("http_user", "meta_user")
 	req.SetMeta("http_pass", "meta_pass")
 	mw.ProcessRequest(context.Background(), req)
@@ -649,8 +649,6 @@ func TestInterfaceImplementations(t *testing.T) {
 // 测试辅助类型
 // ============================================================================
 
-
-
 // ============================================================================
 // Cookies 测试
 // ============================================================================
@@ -658,10 +656,10 @@ func TestInterfaceImplementations(t *testing.T) {
 func TestCookiesMiddlewareProcessResponse(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/login")
-	resp := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com/login")
+	resp := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"session=abc123; Path=/"},
 		}),
 	)
@@ -673,7 +671,7 @@ func TestCookiesMiddlewareProcessResponse(t *testing.T) {
 	}
 
 	// 后续请求应携带 Cookie
-	req2 := scrapy_http.MustNewRequest("https://example.com/dashboard")
+	req2 := shttp.MustNewRequest("https://example.com/dashboard")
 	mw.ProcessRequest(context.Background(), req2)
 
 	cookieHeader := req2.Headers.Get("Cookie")
@@ -688,10 +686,10 @@ func TestCookiesMiddlewareProcessResponse(t *testing.T) {
 func TestCookiesMiddlewareMultipleSetCookies(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/login")
-	resp := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com/login")
+	resp := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {
 				"session=abc123; Path=/",
 				"user=john; Path=/",
@@ -701,7 +699,7 @@ func TestCookiesMiddlewareMultipleSetCookies(t *testing.T) {
 
 	mw.ProcessResponse(context.Background(), req, resp)
 
-	req2 := scrapy_http.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page")
 	mw.ProcessRequest(context.Background(), req2)
 
 	cookieHeader := req2.Headers.Get("Cookie")
@@ -721,17 +719,17 @@ func TestCookiesMiddlewareDontMergeCookies(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
 	// 先设置一个 Cookie
-	req1 := scrapy_http.MustNewRequest("https://example.com/login")
-	resp := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req1),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req1 := shttp.MustNewRequest("https://example.com/login")
+	resp := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req1),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"session=abc123; Path=/"},
 		}),
 	)
 	mw.ProcessResponse(context.Background(), req1, resp)
 
 	// 带 dont_merge_cookies 的请求不应注入 Cookie
-	req2 := scrapy_http.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page")
 	req2.SetMeta("dont_merge_cookies", true)
 	mw.ProcessRequest(context.Background(), req2)
 
@@ -744,29 +742,29 @@ func TestCookiesMiddlewareMultiSession(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
 	// 会话 1：设置 Cookie
-	req1 := scrapy_http.MustNewRequest("https://example.com/login")
+	req1 := shttp.MustNewRequest("https://example.com/login")
 	req1.SetMeta("cookiejar", "session1")
-	resp1 := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req1),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp1 := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req1),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"user=alice; Path=/"},
 		}),
 	)
 	mw.ProcessResponse(context.Background(), req1, resp1)
 
 	// 会话 2：设置不同的 Cookie
-	req2 := scrapy_http.MustNewRequest("https://example.com/login")
+	req2 := shttp.MustNewRequest("https://example.com/login")
 	req2.SetMeta("cookiejar", "session2")
-	resp2 := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req2),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp2 := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req2),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"user=bob; Path=/"},
 		}),
 	)
 	mw.ProcessResponse(context.Background(), req2, resp2)
 
 	// 会话 1 的请求应携带 alice 的 Cookie
-	req3 := scrapy_http.MustNewRequest("https://example.com/page")
+	req3 := shttp.MustNewRequest("https://example.com/page")
 	req3.SetMeta("cookiejar", "session1")
 	mw.ProcessRequest(context.Background(), req3)
 	if req3.Headers.Get("Cookie") != "user=alice" {
@@ -774,7 +772,7 @@ func TestCookiesMiddlewareMultiSession(t *testing.T) {
 	}
 
 	// 会话 2 的请求应携带 bob 的 Cookie
-	req4 := scrapy_http.MustNewRequest("https://example.com/page")
+	req4 := shttp.MustNewRequest("https://example.com/page")
 	req4.SetMeta("cookiejar", "session2")
 	mw.ProcessRequest(context.Background(), req4)
 	if req4.Headers.Get("Cookie") != "user=bob" {
@@ -790,8 +788,8 @@ func TestCookiesMiddlewareMultiSession(t *testing.T) {
 func TestCookiesMiddlewareRequestCookies(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/page",
-		scrapy_http.WithCookies([]*http.Cookie{
+	req := shttp.MustNewRequest("https://example.com/page",
+		shttp.WithCookies([]*http.Cookie{
 			{Name: "init", Value: "cookie1"},
 		}),
 	)
@@ -820,17 +818,17 @@ func TestCookiesMiddlewareCrossDomain(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
 	// 在 example.com 设置 Cookie
-	req1 := scrapy_http.MustNewRequest("https://example.com/login")
-	resp := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req1),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req1 := shttp.MustNewRequest("https://example.com/login")
+	resp := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req1),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"session=abc; Path=/"},
 		}),
 	)
 	mw.ProcessResponse(context.Background(), req1, resp)
 
 	// 对 other.com 的请求不应携带 example.com 的 Cookie
-	req2 := scrapy_http.MustNewRequest("https://other.com/page")
+	req2 := shttp.MustNewRequest("https://other.com/page")
 	mw.ProcessRequest(context.Background(), req2)
 	if req2.Headers.Get("Cookie") != "" {
 		t.Error("should not send cookies to different domain")
@@ -841,17 +839,17 @@ func TestCookiesMiddlewareDebug(t *testing.T) {
 	// 仅验证 debug 模式不会 panic
 	mw := NewCookiesMiddleware(true, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/login")
-	resp := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com/login")
+	resp := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"session=abc; Path=/"},
 		}),
 	)
 
 	mw.ProcessResponse(context.Background(), req, resp)
 
-	req2 := scrapy_http.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page")
 	mw.ProcessRequest(context.Background(), req2)
 	// 不 panic 即为通过
 }
@@ -859,11 +857,11 @@ func TestCookiesMiddlewareDebug(t *testing.T) {
 func TestCookiesMiddlewareDontMergeResponse(t *testing.T) {
 	mw := NewCookiesMiddleware(false, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com/login")
+	req := shttp.MustNewRequest("https://example.com/login")
 	req.SetMeta("dont_merge_cookies", true)
-	resp := scrapy_http.MustNewResponse("https://example.com/login", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com/login", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Set-Cookie": {"session=abc; Path=/"},
 		}),
 	)
@@ -871,7 +869,7 @@ func TestCookiesMiddlewareDontMergeResponse(t *testing.T) {
 	mw.ProcessResponse(context.Background(), req, resp)
 
 	// dont_merge_cookies 应阻止 Set-Cookie 被存入 Jar
-	req2 := scrapy_http.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page")
 	mw.ProcessRequest(context.Background(), req2)
 	if req2.Headers.Get("Cookie") != "" {
 		t.Error("dont_merge_cookies should prevent Set-Cookie extraction")
@@ -885,7 +883,7 @@ func TestCookiesMiddlewareDontMergeResponse(t *testing.T) {
 func TestHttpCompressionMiddlewareAcceptEncoding(t *testing.T) {
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	mw.ProcessRequest(context.Background(), req)
 
 	ae := req.Headers.Get("Accept-Encoding")
@@ -903,8 +901,8 @@ func TestHttpCompressionMiddlewareAcceptEncoding(t *testing.T) {
 func TestHttpCompressionMiddlewareNoOverrideAcceptEncoding(t *testing.T) {
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithHeader("Accept-Encoding", "identity"),
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithHeader("Accept-Encoding", "identity"),
 	)
 	mw.ProcessRequest(context.Background(), req)
 
@@ -919,11 +917,11 @@ func TestHttpCompressionMiddlewareGzip(t *testing.T) {
 	originalBody := []byte("Hello, World! This is a test body for gzip compression.")
 	compressedBody := gzipCompress(t, originalBody)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseBody(compressedBody),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"gzip"},
 		}),
 	)
@@ -946,10 +944,10 @@ func TestHttpCompressionMiddlewareGzip(t *testing.T) {
 func TestHttpCompressionMiddlewareNoContentEncoding(t *testing.T) {
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseBody([]byte("plain text")),
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody([]byte("plain text")),
 	)
 
 	result, err := mw.ProcessResponse(context.Background(), req, resp)
@@ -964,12 +962,12 @@ func TestHttpCompressionMiddlewareNoContentEncoding(t *testing.T) {
 func TestHttpCompressionMiddlewareHeadRequest(t *testing.T) {
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithMethod("HEAD"),
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithMethod("HEAD"),
 	)
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"gzip"},
 		}),
 	)
@@ -987,10 +985,10 @@ func TestHttpCompressionMiddlewareHeadRequest(t *testing.T) {
 func TestHttpCompressionMiddlewareEmptyBody(t *testing.T) {
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"gzip"},
 		}),
 	)
@@ -1011,11 +1009,11 @@ func TestHttpCompressionMiddlewareStats(t *testing.T) {
 	originalBody := []byte("test body for stats")
 	compressedBody := gzipCompress(t, originalBody)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseBody(compressedBody),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"gzip"},
 		}),
 	)
@@ -1041,11 +1039,11 @@ func TestHttpCompressionMiddlewareMaxSize(t *testing.T) {
 	originalBody := []byte("This is a body that exceeds the max size limit of 10 bytes")
 	compressedBody := gzipCompress(t, originalBody)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseBody(compressedBody),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"gzip"},
 		}),
 	)
@@ -1064,11 +1062,11 @@ func TestHttpCompressionMiddlewareMaxSize(t *testing.T) {
 func TestHttpCompressionMiddlewareUnknownEncoding(t *testing.T) {
 	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseBody([]byte("some data")),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody([]byte("some data")),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"br"},
 		}),
 	)
@@ -1089,11 +1087,11 @@ func TestHttpCompressionMiddlewareDeflate(t *testing.T) {
 	originalBody := []byte("Hello, World! This is a test body for deflate compression.")
 	compressedBody := deflateCompress(t, originalBody)
 
-	req := scrapy_http.MustNewRequest("https://example.com")
-	resp := scrapy_http.MustNewResponse("https://example.com", 200,
-		scrapy_http.WithRequest(req),
-		scrapy_http.WithResponseBody(compressedBody),
-		scrapy_http.WithResponseHeaders(http.Header{
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
 			"Content-Encoding": {"deflate"},
 		}),
 	)

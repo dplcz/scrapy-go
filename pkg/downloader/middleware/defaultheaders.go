@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // DefaultHeadersMiddleware 为请求设置默认请求头。
@@ -24,7 +24,7 @@ func NewDefaultHeadersMiddleware(headers http.Header) *DefaultHeadersMiddleware 
 }
 
 // ProcessRequest 为请求设置默认请求头。
-func (m *DefaultHeadersMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *DefaultHeadersMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	for key, values := range m.headers {
 		if request.Headers.Get(key) == "" {
 			for _, v := range values {

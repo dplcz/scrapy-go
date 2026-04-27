@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // ============================================================================
@@ -16,14 +16,14 @@ import (
 // TestSlotDownloadHandlerPanic 验证下载处理器中的 panic 不会导致进程崩溃。
 // panic 应被捕获并作为 error 返回给调用者。
 func TestSlotDownloadHandlerPanic(t *testing.T) {
-	panicFn := func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	panicFn := func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		panic("intentional panic in download handler")
 	}
 
 	slot := NewSlot(8, 0, false, panicFn)
 	defer slot.Close()
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	slot.AddActive(req)
 	defer slot.RemoveActive(req)
 
@@ -46,12 +46,12 @@ func TestSlotDownloadHandlerPanic(t *testing.T) {
 // TestSlotDownloadHandlerPanicDoesNotBlockSlot 验证 panic 后 Slot 仍然可以正常工作。
 func TestSlotDownloadHandlerPanicDoesNotBlockSlot(t *testing.T) {
 	callCount := 0
-	downloadFn := func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	downloadFn := func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		callCount++
 		if callCount == 1 {
 			panic("first call panic")
 		}
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	}
 
 	slot := NewSlot(8, 0, false, downloadFn)
@@ -61,7 +61,7 @@ func TestSlotDownloadHandlerPanicDoesNotBlockSlot(t *testing.T) {
 	defer cancel()
 
 	// 第一次请求：panic
-	req1 := scrapy_http.MustNewRequest("https://example.com/1")
+	req1 := shttp.MustNewRequest("https://example.com/1")
 	slot.AddActive(req1)
 	_, err := slot.Enqueue(ctx, req1)
 	slot.RemoveActive(req1)
@@ -70,7 +70,7 @@ func TestSlotDownloadHandlerPanicDoesNotBlockSlot(t *testing.T) {
 	}
 
 	// 第二次请求：正常
-	req2 := scrapy_http.MustNewRequest("https://example.com/2")
+	req2 := shttp.MustNewRequest("https://example.com/2")
 	slot.AddActive(req2)
 	resp, err := slot.Enqueue(ctx, req2)
 	slot.RemoveActive(req2)
@@ -87,7 +87,7 @@ func TestSlotDownloadHandlerPanicDoesNotBlockSlot(t *testing.T) {
 
 // TestSlotDownloadHandlerPanicReleasesResources 验证 panic 后信号量和传输标记被正确释放。
 func TestSlotDownloadHandlerPanicReleasesResources(t *testing.T) {
-	panicFn := func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	panicFn := func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		panic("resource leak test panic")
 	}
 
@@ -99,7 +99,7 @@ func TestSlotDownloadHandlerPanicReleasesResources(t *testing.T) {
 
 	// 发送多个 panic 请求，验证信号量不会被耗尽
 	for i := 0; i < 5; i++ {
-		req := scrapy_http.MustNewRequest("https://example.com")
+		req := shttp.MustNewRequest("https://example.com")
 		slot.AddActive(req)
 		_, _ = slot.Enqueue(ctx, req)
 		slot.RemoveActive(req)
@@ -114,13 +114,13 @@ func TestSlotDownloadHandlerPanicReleasesResources(t *testing.T) {
 	}
 
 	// 验证信号量已释放（可以继续发送请求）
-	normalFn := func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+	normalFn := func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	}
 	slot2 := NewSlot(2, 0, false, normalFn)
 	defer slot2.Close()
 
-	req := scrapy_http.MustNewRequest("https://example.com/verify")
+	req := shttp.MustNewRequest("https://example.com/verify")
 	slot2.AddActive(req)
 	resp, err := slot2.Enqueue(ctx, req)
 	slot2.RemoveActive(req)
@@ -135,9 +135,9 @@ func TestSlotDownloadHandlerPanicReleasesResources(t *testing.T) {
 // TestSlotProcessQueuePanicRecovery 验证 processQueue 中的 panic 会自动重启。
 func TestSlotProcessQueuePanicRecovery(t *testing.T) {
 	callCount := 0
-	downloadFn := func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	downloadFn := func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		callCount++
-		return scrapy_http.MustNewResponse(req.URL.String(), 200, scrapy_http.WithRequest(req)), nil
+		return shttp.MustNewResponse(req.URL.String(), 200, shttp.WithRequest(req)), nil
 	}
 
 	slot := NewSlot(8, 0, false, downloadFn)
@@ -147,7 +147,7 @@ func TestSlotProcessQueuePanicRecovery(t *testing.T) {
 	defer cancel()
 
 	// 正常请求应该能成功
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	slot.AddActive(req)
 	resp, err := slot.Enqueue(ctx, req)
 	slot.RemoveActive(req)

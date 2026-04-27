@@ -8,7 +8,7 @@ package middleware
 import (
 	"context"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 )
 
@@ -18,30 +18,30 @@ type SpiderMiddleware interface {
 	// ProcessSpiderInput 在响应传递给 Spider 回调之前调用（正序）。
 	// 返回 nil 表示继续处理链。
 	// 返回 error 表示跳过 Spider 回调，直接进入 ProcessSpiderException 链。
-	ProcessSpiderInput(ctx context.Context, response *scrapy_http.Response) error
+	ProcessSpiderInput(ctx context.Context, response *shttp.Response) error
 
 	// ProcessOutput 在 Spider 回调产出结果后调用（逆序）。
 	// 可以过滤、修改或添加新的输出项。
-	ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error)
+	ProcessOutput(ctx context.Context, response *shttp.Response, result []spider.Output) ([]spider.Output, error)
 
 	// ProcessSpiderException 在 Spider 回调抛出异常时调用（逆序）。
 	// 返回 (nil, nil) 继续异常传播。
 	// 返回 (outputs, nil) 用输出替代异常。
-	ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.Output, error)
+	ProcessSpiderException(ctx context.Context, response *shttp.Response, err error) ([]spider.Output, error)
 }
 
 // BaseSpiderMiddleware 提供默认的空实现。
 // 中间件可以嵌入此结构体，只覆盖需要的方法。
 type BaseSpiderMiddleware struct{}
 
-func (b *BaseSpiderMiddleware) ProcessSpiderInput(ctx context.Context, response *scrapy_http.Response) error {
+func (b *BaseSpiderMiddleware) ProcessSpiderInput(ctx context.Context, response *shttp.Response) error {
 	return nil
 }
 
-func (b *BaseSpiderMiddleware) ProcessOutput(ctx context.Context, response *scrapy_http.Response, result []spider.Output) ([]spider.Output, error) {
+func (b *BaseSpiderMiddleware) ProcessOutput(ctx context.Context, response *shttp.Response, result []spider.Output) ([]spider.Output, error) {
 	return result, nil
 }
 
-func (b *BaseSpiderMiddleware) ProcessSpiderException(ctx context.Context, response *scrapy_http.Response, err error) ([]spider.Output, error) {
+func (b *BaseSpiderMiddleware) ProcessSpiderException(ctx context.Context, response *shttp.Response, err error) ([]spider.Output, error) {
 	return nil, nil
 }

@@ -3,7 +3,7 @@ package middleware
 import (
 	"context"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // UserAgentMiddleware 为请求设置 User-Agent 请求头。
@@ -23,7 +23,7 @@ func NewUserAgentMiddleware(userAgent string) *UserAgentMiddleware {
 }
 
 // ProcessRequest 为请求设置 User-Agent。
-func (m *UserAgentMiddleware) ProcessRequest(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+func (m *UserAgentMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	if m.userAgent != "" && request.Headers.Get("User-Agent") == "" {
 		request.Headers.Set("User-Agent", m.userAgent)
 	}

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/stats"
@@ -35,7 +35,7 @@ type Downloader struct {
 
 	handler           DownloadHandler
 	slots             map[string]*Slot
-	active            map[*scrapy_http.Request]struct{}
+	active            map[*shttp.Request]struct{}
 	totalConcurrency  int
 	domainConcurrency int
 	randomizeDelay    bool
@@ -67,7 +67,7 @@ func NewDownloader(s *settings.Settings, handler DownloadHandler, signals *signa
 	return &Downloader{
 		handler:           handler,
 		slots:             make(map[string]*Slot),
-		active:            make(map[*scrapy_http.Request]struct{}),
+		active:            make(map[*shttp.Request]struct{}),
 		totalConcurrency:  s.GetInt("CONCURRENT_REQUESTS", 16),
 		domainConcurrency: s.GetInt("CONCURRENT_REQUESTS_PER_DOMAIN", 8),
 		randomizeDelay:    s.GetBool("RANDOMIZE_DOWNLOAD_DELAY", true),
@@ -88,17 +88,19 @@ func NewDownloader(s *settings.Settings, handler DownloadHandler, signals *signa
 //     b. 获取传输信号量（控制并发）
 //     c. 执行实际下载
 //  4. 等待下载结果返回
-func (d *Downloader) Download(ctx context.Context, request *scrapy_http.Request) (*scrapy_http.Response, error) {
+//
+// 注意：全局 active 集合的添加/移除由 Engine 在同步路径中完成（对齐 Scrapy 原版），
+// 以确保 NeedsBackout() 在调度循环中能看到最新的计数。
+// Slot 级别的 active 仍在此处管理。
+func (d *Downloader) Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 获取或创建 Slot
 	key, slot := d.getSlot(request)
 	request.SetMeta(DownloadSlotMetaKey, key)
 
-	// 添加到活跃集合
-	d.addActive(request)
+	// Slot 级别的活跃追踪
 	slot.AddActive(request)
 	defer func() {
 		slot.RemoveActive(request)
-		d.removeActive(request)
 	}()
 
 	// 发送 request_reached_downloader 信号
@@ -140,6 +142,28 @@ func (d *Downloader) ActiveCount() int {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return len(d.active)
+}
+
+// TotalConcurrency 返回全局并发限制值。
+func (d *Downloader) TotalConcurrency() int {
+	return d.totalConcurrency
+}
+
+// AddActive 将请求添加到全局活跃集合。
+// 由 Engine 在同步调度路径中调用，确保 NeedsBackout() 能立即看到最新计数。
+// 对齐 Scrapy 原版：Downloader.fetch() 入口处同步执行 self.active.add(request)。
+func (d *Downloader) AddActive(request *shttp.Request) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.active[request] = struct{}{}
+}
+
+// RemoveActive 从全局活跃集合中移除请求。
+// 由 Engine 在请求完成后调用。
+func (d *Downloader) RemoveActive(request *shttp.Request) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.active, request)
 }
 
 // Close 关闭下载器，释放所有资源。
@@ -185,7 +209,7 @@ func (d *Downloader) StartSlotGC() {
 // ============================================================================
 
 // getSlot 获取或创建请求对应的 Slot。
-func (d *Downloader) getSlot(request *scrapy_http.Request) (string, *Slot) {
+func (d *Downloader) getSlot(request *shttp.Request) (string, *Slot) {
 	key := d.getSlotKey(request)
 
 	d.mu.Lock()
@@ -195,8 +219,17 @@ func (d *Downloader) getSlot(request *scrapy_http.Request) (string, *Slot) {
 		return key, slot
 	}
 
+	// 域名级并发 = min(totalConcurrency, domainConcurrency)
+	// 对齐 Scrapy 原版：域名级并发不应超过全局限制。
+	// 当用户只设置 CONCURRENT_REQUESTS=1 不设置 PER_DOMAIN 时，
+	// Slot 的并发也应被限制为 1。
+	slotConcurrency := d.domainConcurrency
+	if d.totalConcurrency < slotConcurrency {
+		slotConcurrency = d.totalConcurrency
+	}
+
 	// 创建新 Slot，注入实际下载函数
-	slot := NewSlot(d.domainConcurrency, d.downloadDelay, d.randomizeDelay, func(ctx context.Context, req *scrapy_http.Request) (*scrapy_http.Response, error) {
+	slot := NewSlot(slotConcurrency, d.downloadDelay, d.randomizeDelay, func(ctx context.Context, req *shttp.Request) (*shttp.Response, error) {
 		return d.handler.Download(ctx, req)
 	})
 	d.slots[key] = slot
@@ -205,27 +238,13 @@ func (d *Downloader) getSlot(request *scrapy_http.Request) (string, *Slot) {
 
 // getSlotKey 获取请求的 Slot key。
 // 优先使用 Meta 中的 download_slot，否则使用域名。
-func (d *Downloader) getSlotKey(request *scrapy_http.Request) string {
+func (d *Downloader) getSlotKey(request *shttp.Request) string {
 	if v, ok := request.GetMeta(DownloadSlotMetaKey); ok {
 		if key, ok := v.(string); ok {
 			return key
 		}
 	}
 	return getHostname(request.URL)
-}
-
-// addActive 将请求添加到全局活跃集合。
-func (d *Downloader) addActive(request *scrapy_http.Request) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.active[request] = struct{}{}
-}
-
-// removeActive 从全局活跃集合中移除请求。
-func (d *Downloader) removeActive(request *scrapy_http.Request) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	delete(d.active, request)
 }
 
 // slotGC 清理空闲超过指定时间的 Slot。
@@ -238,7 +257,7 @@ func (d *Downloader) slotGC(maxAge time.Duration) {
 		if slot.IsIdle() && slot.LastSeen().Before(cutoff) {
 			slot.Close()
 			delete(d.slots, key)
-		d.logger.Debug("recycled idle slot",
+			d.logger.Debug("recycled idle slot",
 				"slot", key,
 			)
 		}

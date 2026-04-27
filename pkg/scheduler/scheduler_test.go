@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -27,7 +27,7 @@ func TestDefaultSchedulerBasic(t *testing.T) {
 	}
 
 	// 入队
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	if !s.EnqueueRequest(req) {
 		t.Error("first request should be enqueued successfully")
 	}
@@ -59,8 +59,8 @@ func TestDefaultSchedulerDupeFilter(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
 
-	req1 := scrapy_http.MustNewRequest("https://example.com/page")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page") // 重复
+	req1 := shttp.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page") // 重复
 
 	// 第一次入队成功
 	if !s.EnqueueRequest(req1) {
@@ -90,9 +90,9 @@ func TestDefaultSchedulerDontFilter(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
 
-	req1 := scrapy_http.MustNewRequest("https://example.com/page")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page",
-		scrapy_http.WithDontFilter(true),
+	req1 := shttp.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page",
+		shttp.WithDontFilter(true),
 	)
 
 	// 第一次入队
@@ -114,17 +114,17 @@ func TestDefaultSchedulerPriorityOrder(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
 
-	low := scrapy_http.MustNewRequest("https://example.com/low",
-		scrapy_http.WithPriority(1),
-		scrapy_http.WithDontFilter(true),
+	low := shttp.MustNewRequest("https://example.com/low",
+		shttp.WithPriority(1),
+		shttp.WithDontFilter(true),
 	)
-	high := scrapy_http.MustNewRequest("https://example.com/high",
-		scrapy_http.WithPriority(10),
-		scrapy_http.WithDontFilter(true),
+	high := shttp.MustNewRequest("https://example.com/high",
+		shttp.WithPriority(10),
+		shttp.WithDontFilter(true),
 	)
-	mid := scrapy_http.MustNewRequest("https://example.com/mid",
-		scrapy_http.WithPriority(5),
-		scrapy_http.WithDontFilter(true),
+	mid := shttp.MustNewRequest("https://example.com/mid",
+		shttp.WithPriority(5),
+		shttp.WithDontFilter(true),
 	)
 
 	s.EnqueueRequest(low)
@@ -153,9 +153,9 @@ func TestDefaultSchedulerStats(t *testing.T) {
 	defer s.Close(context.Background(), "finished")
 
 	// 入队 3 个请求（1 个重复）
-	s.EnqueueRequest(scrapy_http.MustNewRequest("https://example.com/1"))
-	s.EnqueueRequest(scrapy_http.MustNewRequest("https://example.com/2"))
-	s.EnqueueRequest(scrapy_http.MustNewRequest("https://example.com/1")) // 重复
+	s.EnqueueRequest(shttp.MustNewRequest("https://example.com/1"))
+	s.EnqueueRequest(shttp.MustNewRequest("https://example.com/2"))
+	s.EnqueueRequest(shttp.MustNewRequest("https://example.com/1")) // 重复
 
 	// 验证入队统计
 	enqueued := sc.GetValue("scheduler/enqueued", 0)
@@ -206,9 +206,9 @@ func TestDefaultSchedulerConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			req := scrapy_http.MustNewRequest("https://example.com/page",
-				scrapy_http.WithPriority(i%10),
-				scrapy_http.WithDontFilter(true),
+			req := shttp.MustNewRequest("https://example.com/page",
+				shttp.WithPriority(i%10),
+				shttp.WithDontFilter(true),
 			)
 			s.EnqueueRequest(req)
 		}(i)
@@ -254,8 +254,8 @@ func TestDefaultSchedulerOpenClose(t *testing.T) {
 	}
 
 	// 入队一些请求
-	s.EnqueueRequest(scrapy_http.MustNewRequest("https://example.com/1"))
-	s.EnqueueRequest(scrapy_http.MustNewRequest("https://example.com/2"))
+	s.EnqueueRequest(shttp.MustNewRequest("https://example.com/1"))
+	s.EnqueueRequest(shttp.MustNewRequest("https://example.com/2"))
 
 	// Close
 	err = s.Close(context.Background(), "finished")
@@ -272,7 +272,7 @@ func TestDefaultSchedulerWithCustomDupeFilter(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 
 	// 同一请求入队多次都应成功
 	for i := 0; i < 5; i++ {
@@ -292,7 +292,7 @@ func TestDefaultSchedulerDebugMode(t *testing.T) {
 	s.Open(context.Background())
 	defer s.Close(context.Background(), "finished")
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	s.EnqueueRequest(req)
 	s.EnqueueRequest(req) // 触发 debug 日志
 }

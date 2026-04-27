@@ -3,7 +3,7 @@ package scheduler
 import (
 	"container/heap"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 // ============================================================================
@@ -27,7 +27,7 @@ func NewPriorityQueue() *PriorityQueue {
 }
 
 // Push 将请求推入队列。
-func (pq *PriorityQueue) Push(request *scrapy_http.Request) {
+func (pq *PriorityQueue) Push(request *shttp.Request) {
 	heap.Push(pq.items, &requestEntry{
 		request: request,
 		index:   0,
@@ -38,7 +38,7 @@ func (pq *PriorityQueue) Push(request *scrapy_http.Request) {
 
 // Pop 从队列中弹出优先级最高的请求。
 // 如果队列为空，返回 nil。
-func (pq *PriorityQueue) Pop() *scrapy_http.Request {
+func (pq *PriorityQueue) Pop() *shttp.Request {
 	if pq.items.Len() == 0 {
 		return nil
 	}
@@ -48,7 +48,7 @@ func (pq *PriorityQueue) Pop() *scrapy_http.Request {
 
 // Peek 查看队列中优先级最高的请求，但不弹出。
 // 如果队列为空，返回 nil。
-func (pq *PriorityQueue) Peek() *scrapy_http.Request {
+func (pq *PriorityQueue) Peek() *shttp.Request {
 	if pq.items.Len() == 0 {
 		return nil
 	}
@@ -66,7 +66,7 @@ func (pq *PriorityQueue) Len() int {
 
 // requestEntry 是优先级队列中的条目。
 type requestEntry struct {
-	request *scrapy_http.Request
+	request *shttp.Request
 	index   int    // 在 heap 中的索引
 	seq     uint64 // 入队序号，用于相同优先级时的 LIFO 排序
 }

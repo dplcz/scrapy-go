@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"testing"
 
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
 func TestRequestFingerprint(t *testing.T) {
 	// 相同请求应产生相同指纹
-	req1 := scrapy_http.MustNewRequest("https://example.com/page?b=2&a=1")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page?a=1&b=2")
+	req1 := shttp.MustNewRequest("https://example.com/page?b=2&a=1")
+	req2 := shttp.MustNewRequest("https://example.com/page?a=1&b=2")
 
 	fp1 := RequestFingerprint(req1, nil, false)
 	fp2 := RequestFingerprint(req2, nil, false)
@@ -20,15 +20,15 @@ func TestRequestFingerprint(t *testing.T) {
 	}
 
 	// 不同 URL 应产生不同指纹
-	req3 := scrapy_http.MustNewRequest("https://example.com/other")
+	req3 := shttp.MustNewRequest("https://example.com/other")
 	fp3 := RequestFingerprint(req3, nil, false)
 	if fp1 == fp3 {
 		t.Error("different URLs should have different fingerprints")
 	}
 
 	// 不同方法应产生不同指纹
-	req4 := scrapy_http.MustNewRequest("https://example.com/page?a=1&b=2",
-		scrapy_http.WithMethod("POST"),
+	req4 := shttp.MustNewRequest("https://example.com/page?a=1&b=2",
+		shttp.WithMethod("POST"),
 	)
 	fp4 := RequestFingerprint(req4, nil, false)
 	if fp1 == fp4 {
@@ -36,13 +36,13 @@ func TestRequestFingerprint(t *testing.T) {
 	}
 
 	// 不同 body 应产生不同指纹
-	req5 := scrapy_http.MustNewRequest("https://example.com/page?a=1&b=2",
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte("body1")),
+	req5 := shttp.MustNewRequest("https://example.com/page?a=1&b=2",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("body1")),
 	)
-	req6 := scrapy_http.MustNewRequest("https://example.com/page?a=1&b=2",
-		scrapy_http.WithMethod("POST"),
-		scrapy_http.WithBody([]byte("body2")),
+	req6 := shttp.MustNewRequest("https://example.com/page?a=1&b=2",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("body2")),
 	)
 	fp5 := RequestFingerprint(req5, nil, false)
 	fp6 := RequestFingerprint(req6, nil, false)
@@ -52,13 +52,13 @@ func TestRequestFingerprint(t *testing.T) {
 }
 
 func TestRequestFingerprintWithHeaders(t *testing.T) {
-	req1 := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithHeaders(http.Header{
+	req1 := shttp.MustNewRequest("https://example.com",
+		shttp.WithHeaders(http.Header{
 			"Authorization": {"Bearer token1"},
 		}),
 	)
-	req2 := scrapy_http.MustNewRequest("https://example.com",
-		scrapy_http.WithHeaders(http.Header{
+	req2 := shttp.MustNewRequest("https://example.com",
+		shttp.WithHeaders(http.Header{
 			"Authorization": {"Bearer token2"},
 		}),
 	)
@@ -79,8 +79,8 @@ func TestRequestFingerprintWithHeaders(t *testing.T) {
 }
 
 func TestRequestFingerprintWithFragments(t *testing.T) {
-	req1 := scrapy_http.MustNewRequest("https://example.com/page#section1")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page#section2")
+	req1 := shttp.MustNewRequest("https://example.com/page#section1")
+	req2 := shttp.MustNewRequest("https://example.com/page#section2")
 
 	// 不保留 fragment 时指纹相同
 	fp1 := RequestFingerprint(req1, nil, false)
@@ -98,9 +98,9 @@ func TestRequestFingerprintWithFragments(t *testing.T) {
 }
 
 func TestSimpleFingerprint(t *testing.T) {
-	req1 := scrapy_http.MustNewRequest("https://example.com/page")
-	req2 := scrapy_http.MustNewRequest("https://example.com/page")
-	req3 := scrapy_http.MustNewRequest("https://example.com/other")
+	req1 := shttp.MustNewRequest("https://example.com/page")
+	req2 := shttp.MustNewRequest("https://example.com/page")
+	req3 := shttp.MustNewRequest("https://example.com/other")
 
 	fp1 := SimpleFingerprint(req1)
 	fp2 := SimpleFingerprint(req2)

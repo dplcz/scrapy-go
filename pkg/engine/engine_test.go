@@ -11,15 +11,15 @@ import (
 	"time"
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
-	dl_mw "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
-	scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
-	spider_mw "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
@@ -121,7 +121,7 @@ func newQuotesSpider(baseURL string) *quotesSpider {
 	}
 }
 
-func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *quotesSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	var outputs []spider.Output
 
 	// 简单的文本解析（不使用 HTML 解析器，保持测试简单）
@@ -146,7 +146,7 @@ func (s *quotesSpider) Parse(ctx context.Context, response *scrapy_http.Response
 	if nextURL := extractNextPage(body); nextURL != "" {
 		absURL, err := response.URLJoin(nextURL)
 		if err == nil {
-			req, _ := scrapy_http.NewRequest(absURL)
+			req, _ := shttp.NewRequest(absURL)
 			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
@@ -169,7 +169,7 @@ func newSinglePageSpider(url string) *singlePageSpider {
 	}
 }
 
-func (s *singlePageSpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *singlePageSpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
 	s.parseCalled.Store(true)
 	return []spider.Output{
 		{Item: map[string]any{"url": response.URL.String(), "status": response.Status}},
@@ -239,9 +239,9 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector,
 	dl := downloader.NewDownloader(s, handler, sm, sc, nil)
 
 	dlMW := downloader.NewMiddlewareManager(nil)
-	dlMW.AddMiddleware(dl_mw.NewUserAgentMiddleware("scrapy-go-test/0.1"), "UserAgent", 500)
+	dlMW.AddMiddleware(dmiddle.NewUserAgentMiddleware("scrapy-go-test/0.1"), "UserAgent", 500)
 
-	spMW := spider_mw.NewManager(nil)
+	spMW := smiddle.NewManager(nil)
 	pm := pipeline.NewManager(sm, sc, nil)
 	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
 
@@ -434,7 +434,7 @@ func TestEngineWithPipeline(t *testing.T) {
 	dl := downloader.NewDownloader(s, handler, sm, sc, nil)
 
 	dlMW := downloader.NewMiddlewareManager(nil)
-	spMW := spider_mw.NewManager(nil)
+	spMW := smiddle.NewManager(nil)
 
 	// 添加一个收集 Item 的 Pipeline
 	collector := &itemCollectorPipeline{}
@@ -470,7 +470,7 @@ func TestSlotBasic(t *testing.T) {
 		t.Error("new slot should have 0 in progress")
 	}
 
-	req := scrapy_http.MustNewRequest("https://example.com")
+	req := shttp.MustNewRequest("https://example.com")
 	slot.AddRequest(req)
 
 	if slot.IsIdle() {
