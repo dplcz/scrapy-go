@@ -324,7 +324,7 @@ func (s *MySpider) CustomSettings() *spider.Settings {
 |------|------|--------|------|
 | `DOWNLOADER_MIDDLEWARES_BASE` | map[string]int | 见下方 | 内置下载器中间件及优先级 |
 | `DOWNLOADER_MIDDLEWARES` | map[string]int | {} | 用户自定义中间件优先级覆盖 |
-| `SPIDER_MIDDLEWARES_BASE` | map[string]int | {} | 内置 Spider 中间件及优先级 |
+| `SPIDER_MIDDLEWARES_BASE` | map[string]int | 见下方 | 内置 Spider 中间件及优先级 |
 | `SPIDER_MIDDLEWARES` | map[string]int | {} | 用户自定义 Spider 中间件优先级覆盖 |
 
 内置下载器中间件默认优先级：
@@ -340,6 +340,16 @@ Redirect:         600
 Cookies:          700
 HttpProxy:        750
 DownloaderStats:  850
+```
+
+内置 Spider 中间件默认优先级：
+
+```
+HttpError:  50
+Offsite:    500
+Referer:    700
+UrlLength:  800
+Depth:      900
 ```
 
 禁用内置中间件的方式：
@@ -473,10 +483,10 @@ scrapy-go 的架构完全对齐 Scrapy 的经典数据流模型：
 | **Scraper** | `pkg/scraper` | 响应处理（调用 Spider 回调 + 分发结果） |
 | **Spider** | `pkg/spider` | 用户爬虫接口（定义爬取逻辑） |
 | **Pipeline** | `pkg/pipeline` | Item 数据处理管道 |
-| **Extension** | `pkg/extension` | 扩展系统（信号驱动的生命周期管理） |
+| **Extension** | `pkg/extension` | 扩展系统（4 个内置扩展 + 信号驱动生命周期管理） |
 | **DL Middleware** | `pkg/downloader/middleware` | 下载器中间件接口与实现（10 个内置中间件） |
 | **DL MW Manager** | `pkg/downloader` | 下载器中间件管理器（编排中间件链 + 调用下载函数） |
-| **Spider Middleware** | `pkg/spider/middleware` | Spider 中间件（输入/输出拦截） |
+| **Spider Middleware** | `pkg/spider/middleware` | Spider 中间件（5 个内置 + 输入/输出拦截） |
 | **Settings** | `pkg/settings` | 多优先级配置系统 |
 | **Signal** | `pkg/signal` | 事件/信号系统 |
 | **Stats** | `pkg/stats` | 统计收集器（含 HTTP 状态码统计） |
@@ -587,7 +597,7 @@ scrapy-go/
 │   ├── spider/                     # Spider 接口 + 配置
 │   │   └── middleware/             # Spider 中间件
 │   ├── pipeline/                   # Item Pipeline
-│   ├── extension/                  # Extension 扩展系统
+│   ├── extension/                  # Extension 扩展系统（4 个内置扩展）
 │   ├── http/                       # Request/Response 数据模型
 │   ├── selector/                   # CSS/XPath 选择器
 │   ├── settings/                   # 多优先级配置系统

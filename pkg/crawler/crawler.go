@@ -423,20 +423,60 @@ func (c *Crawler) buildDownloaderMiddlewares() *downloader.MiddlewareManager {
 		}
 	}
 
-	// 6. 打印启用列表（Scrapy 风格）
+	// 6. 打印启用列表
 	c.logEnabledComponents("downloader middlewares", allEntries)
 	return m
+}
+
+// SpiderMiddlewareFactory 定义内置 Spider 中间件的工厂函数类型。
+type SpiderMiddlewareFactory func(c *Crawler) smiddle.SpiderMiddleware
+
+// builtinSpiderMiddlewareFactories 是内置 Spider 中间件的注册表。
+// key 为中间件名称，与 SPIDER_MIDDLEWARES_BASE 中的名称一一对应。
+var builtinSpiderMiddlewareFactories = map[string]SpiderMiddlewareFactory{
+	"HttpError": func(c *Crawler) smiddle.SpiderMiddleware {
+		allowAll := c.Settings.GetBool("HTTPERROR_ALLOW_ALL", false)
+		allowCodes := c.getIntSlice("HTTPERROR_ALLOWED_CODES", nil)
+		return smiddle.NewHttpErrorMiddleware(allowAll, allowCodes, c.Stats, c.Logger)
+	},
+	"UrlLength": func(c *Crawler) smiddle.SpiderMiddleware {
+		maxLength := c.Settings.GetInt("URLLENGTH_LIMIT", 2083)
+		if maxLength <= 0 {
+			return nil
+		}
+		return smiddle.NewUrlLengthMiddleware(maxLength, c.Stats, c.Logger)
+	},
+	"Depth": func(c *Crawler) smiddle.SpiderMiddleware {
+		maxDepth := c.Settings.GetInt("DEPTH_LIMIT", 0)
+		priority := c.Settings.GetInt("DEPTH_PRIORITY", 0)
+		verbose := c.Settings.GetBool("DEPTH_STATS_VERBOSE", false)
+		return smiddle.NewDepthMiddleware(maxDepth, priority, verbose, c.Stats, c.Logger)
+	},
+	"Offsite": func(c *Crawler) smiddle.SpiderMiddleware {
+		// 从 Spider 获取 AllowedDomains（如果有的话）
+		var allowedDomains []string
+		if c.spider != nil {
+			if domainSpider, ok := c.spider.(interface{ AllowedDomains() []string }); ok {
+				allowedDomains = domainSpider.AllowedDomains()
+			}
+		}
+		return smiddle.NewOffsiteMiddleware(allowedDomains, c.Stats, c.Logger)
+	},
+	"Referer": func(c *Crawler) smiddle.SpiderMiddleware {
+		if !c.Settings.GetBool("REFERER_ENABLED", true) {
+			return nil
+		}
+		return smiddle.NewRefererMiddleware()
+	},
 }
 
 // buildSpiderMiddlewares 构建 Spider 中间件链。
 // 通过读取 SPIDER_MIDDLEWARES_BASE 和 SPIDER_MIDDLEWARES 配置，
 // 决定启用哪些内置中间件及其优先级。
 //
-// 目前没有内置的 Spider 中间件，用户可通过 AddSpiderMiddleware 注册自定义中间件。
-// 未来可添加内置中间件（如 DepthMiddleware、HttpErrorMiddleware 等）。
-//
 // 禁用中间件的方式：
 //   - 通过配置：在 SPIDER_MIDDLEWARES 中将中间件优先级设为负数（如 {"Depth": -1}）
+//   - 通过开关：设置 REFERER_ENABLED=false
 func (c *Crawler) buildSpiderMiddlewares() *smiddle.Manager {
 	m := smiddle.NewManager(c.Logger)
 
@@ -444,10 +484,20 @@ func (c *Crawler) buildSpiderMiddlewares() *smiddle.Manager {
 	var allEntries []componentEntry
 
 	// 1. 读取合并后的中间件配置（已过滤掉优先级 < 0 的条目）
-	// 目前 SPIDER_MIDDLEWARES_BASE 为空，预留给未来内置中间件
-	_ = c.Settings.GetComponentPriorityDictWithBase("SPIDER_MIDDLEWARES")
+	mwConfig := c.Settings.GetComponentPriorityDictWithBase("SPIDER_MIDDLEWARES")
 
-	// 2. 添加用户通过 AddSpiderMiddleware 注册的自定义中间件
+	// 2. 根据配置实例化内置中间件
+	for name, priority := range mwConfig {
+		if factory, ok := builtinSpiderMiddlewareFactories[name]; ok {
+			mw := factory(c)
+			if mw != nil {
+				m.AddMiddleware(mw, name, priority)
+				allEntries = append(allEntries, componentEntry{name: name, priority: priority, source: "builtin"})
+			}
+		}
+	}
+
+	// 3. 添加用户通过 AddSpiderMiddleware 注册的自定义中间件
 	for _, entry := range c.userSpiderMiddlewares {
 		m.AddMiddleware(entry.Middleware, entry.Name, entry.Priority)
 		allEntries = append(allEntries, componentEntry{name: entry.Name, priority: entry.Priority, source: "custom"})
@@ -479,6 +529,35 @@ func (c *Crawler) buildSpiderMiddlewares() *smiddle.Manager {
 	return m
 }
 
+// ExtensionFactory 定义内置扩展的工厂函数类型。
+type ExtensionFactory func(c *Crawler) extension.Extension
+
+// builtinExtensionFactories 是内置扩展的注册表。
+// key 为扩展名称，与 EXTENSIONS_BASE 中的名称一一对应。
+var builtinExtensionFactories = map[string]ExtensionFactory{
+	"CoreStats": func(c *Crawler) extension.Extension {
+		return extension.NewCoreStatsExtension(c.Stats, c.Signals, c.Logger)
+	},
+	"CloseSpider": func(c *Crawler) extension.Extension {
+		timeout := c.Settings.GetFloat("CLOSESPIDER_TIMEOUT", 0)
+		itemCount := c.Settings.GetInt("CLOSESPIDER_ITEMCOUNT", 0)
+		pageCount := c.Settings.GetInt("CLOSESPIDER_PAGECOUNT", 0)
+		errorCount := c.Settings.GetInt("CLOSESPIDER_ERRORCOUNT", 0)
+		return extension.NewCloseSpiderExtension(timeout, itemCount, pageCount, errorCount, c.Signals, c.Stats, c.Logger)
+	},
+	"LogStats": func(c *Crawler) extension.Extension {
+		interval := c.Settings.GetFloat("LOGSTATS_INTERVAL", 60.0)
+		return extension.NewLogStatsExtension(interval, c.Stats, c.Signals, c.Logger)
+	},
+	"MemoryUsage": func(c *Crawler) extension.Extension {
+		enabled := c.Settings.GetBool("MEMUSAGE_ENABLED", true)
+		limitMB := c.Settings.GetInt("MEMUSAGE_LIMIT_MB", 0)
+		warningMB := c.Settings.GetInt("MEMUSAGE_WARNING_MB", 0)
+		checkInterval := c.Settings.GetFloat("MEMUSAGE_CHECK_INTERVAL_SECONDS", 60.0)
+		return extension.NewMemoryUsageExtension(enabled, limitMB, warningMB, checkInterval, c.Stats, c.Signals, c.Logger)
+	},
+}
+
 // buildExtensions 构建扩展管理器。
 // 通过读取 EXTENSIONS_BASE 和 EXTENSIONS 配置，
 // 决定启用哪些内置扩展及其优先级。
@@ -490,8 +569,16 @@ func (c *Crawler) buildExtensions() *extension.Manager {
 	// 1. 读取合并后的扩展配置（已过滤掉优先级 < 0 的条目）
 	extConfig := c.Settings.GetComponentPriorityDictWithBase("EXTENSIONS")
 
-	// 2. 根据配置实例化内置扩展（目前无内置扩展，预留给 Sprint 5）
-	_ = extConfig
+	// 2. 根据配置实例化内置扩展
+	for name, priority := range extConfig {
+		if factory, ok := builtinExtensionFactories[name]; ok {
+			ext := factory(c)
+			if ext != nil {
+				m.AddExtension(ext, name, priority)
+				allEntries = append(allEntries, componentEntry{name: name, priority: priority, source: "builtin"})
+			}
+		}
+	}
 
 	// 3. 添加用户通过 AddExtension 注册的自定义扩展
 	for _, entry := range c.userExtensions {

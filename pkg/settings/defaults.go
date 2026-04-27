@@ -185,7 +185,13 @@ func (s *Settings) loadDefaults() {
 	// Spider 中间件（优先级字典）
 	// ========================================================================
 
-	s.Set("SPIDER_MIDDLEWARES_BASE", map[string]int{}, d)
+	s.Set("SPIDER_MIDDLEWARES_BASE", map[string]int{
+		"HttpError": 50,
+		"Offsite":   500,
+		"Referer":   700,
+		"UrlLength": 800,
+		"Depth":     900,
+	}, d)
 	s.Set("SPIDER_MIDDLEWARES", map[string]int{}, d)
 
 	// ========================================================================
@@ -199,7 +205,12 @@ func (s *Settings) loadDefaults() {
 	// 扩展（优先级字典）
 	// ========================================================================
 
-	s.Set("EXTENSIONS_BASE", map[string]int{}, d)
+	s.Set("EXTENSIONS_BASE", map[string]int{
+		"CoreStats":   0,
+		"CloseSpider": 0,
+		"LogStats":    0,
+		"MemoryUsage": 0,
+	}, d)
 	s.Set("EXTENSIONS", map[string]int{}, d)
 
 	// ========================================================================
@@ -240,6 +251,13 @@ func (s *Settings) loadDefaults() {
 	s.Set("FEED_EXPORT_INDENT", 0, d)
 	s.Set("FEED_STORE_EMPTY", true, d)
 	s.Set("FEED_EXPORT_BATCH_ITEM_COUNT", 0, d)
+
+	// ========================================================================
+	// HTTP 错误过滤
+	// ========================================================================
+
+	s.Set("HTTPERROR_ALLOW_ALL", false, d)
+	s.Set("HTTPERROR_ALLOWED_CODES", []int{}, d)
 
 	// ========================================================================
 	// Referer 配置
