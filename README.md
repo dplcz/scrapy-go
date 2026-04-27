@@ -152,7 +152,7 @@ import (
     "fmt"
 
     "github.com/dplcz/scrapy-go/pkg/crawler"
-    scrapy_http "github.com/dplcz/scrapy-go/pkg/http"
+    shttp "github.com/dplcz/scrapy-go/pkg/http"
     "github.com/dplcz/scrapy-go/pkg/spider"
 )
 
@@ -169,7 +169,7 @@ func NewMySpider() *MySpider {
     }
 }
 
-func (s *MySpider) Parse(ctx context.Context, response *scrapy_http.Response) ([]spider.Output, error) {
+func (s *MySpider) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
     fmt.Printf("Status: %d, URL: %s\n", response.Status, response.URL)
     fmt.Printf("Body length: %d bytes\n", len(response.Body))
     return nil, nil
@@ -449,8 +449,8 @@ Downloader 通过 Slot 机制实现精细的并发和延迟控制：
 - 支持通过 Request Meta 自定义 Slot 分组：
 
 ```go
-req, _ := scrapy_http.NewRequest("https://example.com/api",
-    scrapy_http.WithMeta(map[string]any{
+req, _ := shttp.NewRequest("https://example.com/api",
+    shttp.WithMeta(map[string]any{
         "download_slot": "my-custom-group",
     }),
 )

@@ -16,7 +16,7 @@
   - `middleware.NewManager()` → `downloader.NewMiddlewareManager()`
   - `middleware.Entry` → `downloader.MiddlewareEntry`
   - 更贴近 Scrapy 原版设计：Manager 是 downloader 的编排层，不是中间件本身
-  - Engine 可直接使用 `downloader.MiddlewareManager`，无需 `dl_mw` 包别名
+  - Engine 可直接使用 `downloader.MiddlewareManager`，无需 `dmiddle` 包别名
 - **测试迁移** — Manager 相关测试从 `middleware/middleware_test.go` 移到 `downloader/middleware_manager_test.go`
 
 ### 变更
