@@ -5,6 +5,100 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.3.0-alpha.3] - 2026-04-27
+
+### 新增
+
+#### Spider 内置中间件（P2-005，5 个）
+
+- **HttpError 中间件**（优先级 50）— 过滤非 2xx 响应（`pkg/spider/middleware/httperror.go`）
+  - 支持 `HTTPERROR_ALLOW_ALL` 全局允许所有状态码
+  - 支持 `HTTPERROR_ALLOWED_CODES` 全局允许特定状态码列表
+  - 支持 `Request.Meta["handle_httpstatus_all"]` 请求级允许所有
+  - 支持 `Request.Meta["handle_httpstatus_list"]` 请求级允许列表
+  - 统计：`httperror/response_ignored_count`、`httperror/response_ignored_status_count/{STATUS}`
+
+- **Offsite 中间件**（优先级 500）— 站外请求过滤（`pkg/spider/middleware/offsite.go`）
+  - 基于 Spider `AllowedDomains()` 接口过滤站外请求
+  - 支持子域名匹配（`example.com` 匹配 `www.example.com`）
+  - `Request.DontFilter=true` 或 `Meta["allow_offsite"]=true` 跳过过滤
+  - 统计：`offsite/filtered`、`offsite/domains`
+
+- **Referer 中间件**（优先级 700）— 自动设置 Referer 头（`pkg/spider/middleware/referer.go`）
+  - 使用简化的 scrapy-default 策略（no-referrer-when-downgrade）
+  - HTTPS→HTTP 降级不发送 Referer；本地 scheme（file://、data://）不发送
+  - 自动去除 URL 中的 fragment 和认证信息
+  - 不覆盖已存在的 Referer 头
+  - 配置项：`REFERER_ENABLED`（默认 true）
+
+- **UrlLength 中间件**（优先级 800）— 过滤超长 URL（`pkg/spider/middleware/urllength.go`）
+  - 在 ProcessOutput 阶段过滤 URL 长度超过 `URLLENGTH_LIMIT` 的请求
+  - 统计：`urllength/request_ignored_count`
+
+- **Depth 中间件**（优先级 900）— 爬取深度控制（`pkg/spider/middleware/depth.go`）
+  - 自动为请求设置 `depth` Meta（父响应 depth + 1）
+  - `DEPTH_LIMIT` 超过限制的请求被丢弃
+  - `DEPTH_PRIORITY` 根据深度调整请求优先级
+  - `DEPTH_STATS_VERBOSE` 记录各深度请求数统计
+  - 统计：`request_depth_max`、`request_depth_count/{N}`
+
+### 变更
+- `SPIDER_MIDDLEWARES_BASE` 默认注册 5 个内置中间件：HttpError(50)、Offsite(500)、Referer(700)、UrlLength(800)、Depth(900)
+- Crawler `buildSpiderMiddlewares()` 新增 `builtinSpiderMiddlewareFactories` 注册表
+- 新增配置项：`HTTPERROR_ALLOW_ALL`（默认 false）、`HTTPERROR_ALLOWED_CODES`（默认 []）
+
+### 质量
+- 新增 35 个 Spider 中间件单元测试
+- 测试总数：411 个
+- Spider 中间件包覆盖率：82.0%
+- 竞态检测：全部通过
+- `go vet`：全部通过
+
+---
+
+## [v0.3.0-alpha.2] - 2026-04-27
+
+### 新增
+
+#### 内置扩展实现（P2-004）
+
+- **CoreStats 扩展** — 收集核心统计信息（`pkg/extension/corestats.go`）
+  - 监听 `spider_opened`/`spider_closed`/`item_scraped`/`item_dropped`/`response_received` 信号
+  - 记录 `start_time`、`finish_time`、`elapsed_time_seconds`、`finish_reason`
+  - 通过信号自动递增 `item_scraped_count`、`item_dropped_count`、`response_received_count`
+
+- **CloseSpider 扩展** — 条件自动关闭 Spider（`pkg/extension/closespider.go`）
+  - `CLOSESPIDER_TIMEOUT` — 运行超时自动关闭（秒）
+  - `CLOSESPIDER_ITEMCOUNT` — 达到 Item 数量自动关闭
+  - `CLOSESPIDER_PAGECOUNT` — 达到页面数量自动关闭
+  - `CLOSESPIDER_ERRORCOUNT` — 达到错误数量自动关闭
+  - 使用原子计数器和 CAS 确保并发安全，所有条件为 0 时返回 `ErrNotConfigured` 自动禁用
+
+- **LogStats 扩展** — 定期输出爬取统计摘要（`pkg/extension/logstats.go`）
+  - 定期输出 RPM（每分钟页面数）和 IPM（每分钟 Item 数）
+  - Spider 关闭时计算并记录最终平均速率（`responses_per_minute`、`items_per_minute`）
+  - `LOGSTATS_INTERVAL` 配置输出间隔（秒），设为 0 自动禁用
+
+- **MemoryUsage 扩展** — Go 运行时内存监控（`pkg/extension/memusage.go`）
+  - 使用 `runtime.MemStats.Sys` 监控系统内存占用
+  - `MEMUSAGE_LIMIT_MB` — 超过限制自动关闭 Spider
+  - `MEMUSAGE_WARNING_MB` — 超过阈值记录警告日志（仅一次）
+  - 统计项：`memusage/startup`、`memusage/max`、`memusage/limit_reached`、`memusage/warning_reached`
+
+### 变更
+- `EXTENSIONS_BASE` 默认注册 4 个内置扩展：CoreStats、CloseSpider、LogStats、MemoryUsage
+- Crawler `buildExtensions()` 新增 `builtinExtensionFactories` 注册表，按配置实例化内置扩展
+- 内置扩展通过 `ErrNotConfigured` 机制自动禁用未配置的扩展
+
+### 质量
+- 新增 21 个内置扩展单元测试
+- 测试总数：376 个
+- Extension 包覆盖率：81.6%
+- 竞态检测：全部通过
+- `go vet`：全部通过
+
+---
+
 ## [v0.3.0-alpha.1] - 2026-04-27
 
 ### 新增
