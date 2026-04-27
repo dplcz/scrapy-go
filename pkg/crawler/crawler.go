@@ -6,6 +6,7 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"os/signal"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -62,6 +65,21 @@ type Crawler struct {
 
 	// userExtensions 存储用户注册的自定义扩展
 	userExtensions []extension.Entry
+
+	// crawling 标记爬虫是否正在运行（原子操作，并发安全）
+	crawling atomic.Bool
+
+	// started 标记爬虫是否已经启动过（Crawler 实例只能运行一次）
+	started atomic.Bool
+
+	// cancelMu 保护 cancel 字段的读写
+	cancelMu sync.Mutex
+	// cancel 是 Run 方法中派生 context 的取消函数，Stop 方法通过它触发优雅关闭
+	cancel context.CancelFunc
+
+	// beforeStartHooks 是在组件组装完成、Engine 启动前调用的钩子列表。
+	// 供 Runner 等上层编排器在 Signals/Stats 被（重新）创建后注入跨爬虫处理器。
+	beforeStartHooks []func(*Crawler)
 }
 
 // New 创建一个新的 Crawler，可通过 Option 自定义各组件。
@@ -189,7 +207,53 @@ func (c *Crawler) AddExtension(ext extension.Extension, name string, priority in
 
 // Run 启动爬虫并阻塞直到完成。
 // 支持 OS 信号优雅关闭（SIGINT、SIGTERM）。
+//
+// 每个 Crawler 实例只能运行一次，再次调用将返回错误。
+// 如需并发/顺序运行多个 Spider，请使用 Runner。
 func (c *Crawler) Run(ctx context.Context, sp spider.Spider) error {
+	if !c.started.CompareAndSwap(false, true) {
+		return errors.New("crawler already started; create a new Crawler for each run")
+	}
+
+	// 监听 OS 信号（SIGINT/SIGTERM），触发优雅关闭
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	go func() {
+		select {
+		case s, ok := <-sigCh:
+			if !ok {
+				return
+			}
+			if c.Logger != nil {
+				c.Logger.Info("received OS signal, shutting down gracefully", "signal", s.String())
+			}
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	return c.crawl(ctx, sp)
+}
+
+// Crawl 启动爬虫并阻塞直到完成（不安装 OS 信号处理器）。
+// 此方法供 Runner 等上层编排器使用，由调用方通过 context 统一管理生命周期和信号处理。
+//
+// 每个 Crawler 实例只能运行一次，再次调用将返回错误。
+func (c *Crawler) Crawl(ctx context.Context, sp spider.Spider) error {
+	if !c.started.CompareAndSwap(false, true) {
+		return errors.New("crawler already started; create a new Crawler for each run")
+	}
+	return c.crawl(ctx, sp)
+}
+
+// crawl 是 Crawler 的核心爬取逻辑，不安装 OS 信号处理器。
+// 调用方必须保证 started 已被标记为 true（通过 Run 或 Crawl 的 CAS）。
+func (c *Crawler) crawl(ctx context.Context, sp spider.Spider) error {
 	c.spider = sp
 
 	// 应用 Spider 级别的配置
@@ -212,22 +276,28 @@ func (c *Crawler) Run(ctx context.Context, sp spider.Spider) error {
 	// 组装组件
 	c.assembleComponents()
 
-	// 创建可取消的 context
-	ctx, cancel := context.WithCancel(ctx)
+	// 执行 Runner 等上层编排器注入的 BeforeStart 钩子
+	// （Signals/Stats 可能因 Spider CustomSettings 重建而变更，此时是最晚可注册跨爬虫信号处理器的时机）
+	for _, hook := range c.beforeStartHooks {
+		hook(c)
+	}
+
+	// 创建可取消的 context，保存 cancel 以供 Stop 触发优雅关闭
+	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// 监听 OS 信号
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		select {
-		case s := <-sigCh:
-			c.Logger.Info("received OS signal, shutting down gracefully", "signal", s.String())
-			cancel()
-		case <-ctx.Done():
-		}
-		signal.Stop(sigCh)
+	c.cancelMu.Lock()
+	c.cancel = cancel
+	c.cancelMu.Unlock()
+
+	defer func() {
+		c.cancelMu.Lock()
+		c.cancel = nil
+		c.cancelMu.Unlock()
 	}()
+
+	c.crawling.Store(true)
+	defer c.crawling.Store(false)
 
 	c.Logger.Info("spider started",
 		"spider", sp.Name(),
@@ -235,7 +305,45 @@ func (c *Crawler) Run(ctx context.Context, sp spider.Spider) error {
 	)
 
 	// 启动引擎
-	return c.engine.Start(ctx)
+	return c.engine.Start(runCtx)
+}
+
+// Stop 请求优雅停止爬虫，立即返回（不等待爬虫退出）。
+//
+// 多次调用是安全的；若爬虫未在运行，此方法为空操作。
+// 如需等待爬虫完全停止，请在 Run/Crawl 返回后再处理。
+func (c *Crawler) Stop() {
+	c.cancelMu.Lock()
+	cancel := c.cancel
+	c.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// Spider 返回当前 Crawler 关联的 Spider 实例。
+// 在 Run/Crawl 调用之前返回 nil。
+func (c *Crawler) Spider() spider.Spider {
+	return c.spider
+}
+
+// IsCrawling 返回爬虫是否正在运行。
+func (c *Crawler) IsCrawling() bool {
+	return c.crawling.Load()
+}
+
+// onBeforeStart 注册一个在组件组装完成、Engine 启动之前调用的钩子。
+// 此方法供 Runner 等上层编排器使用，不对外公开。
+//
+// 钩子执行时机：Crawl/Run 内部在 assembleComponents 之后、engine.Start 之前。
+// 此时 Signals/Stats/Logger 均已就绪（可能因 Spider CustomSettings 被重建过）。
+//
+// 必须在 Crawl/Run 调用之前注册，否则可能错过触发时机。
+func (c *Crawler) onBeforeStart(hook func(*Crawler)) {
+	if hook == nil {
+		return
+	}
+	c.beforeStartHooks = append(c.beforeStartHooks, hook)
 }
 
 // ============================================================================
