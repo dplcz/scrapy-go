@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/andybalholm/brotli"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
@@ -22,9 +23,9 @@ import (
 // 支持的压缩编码：
 //   - gzip / x-gzip
 //   - deflate
+//   - br (brotli)
 //
-// 注意：brotli (br) 和 zstd 需要引入外部依赖，将在后续版本中支持。
-// 当前版本仅使用 Go 标准库实现 gzip 和 deflate 解压。
+// 注意：zstd 需要引入外部依赖，将在后续版本中支持。
 //
 // 相关配置：
 //   - COMPRESSION_ENABLED: 是否启用压缩处理（默认 true）
@@ -40,7 +41,7 @@ type HttpCompressionMiddleware struct {
 }
 
 // acceptedEncodings 是支持的压缩编码列表。
-var acceptedEncodings = []string{"gzip", "deflate"}
+var acceptedEncodings = []string{"gzip", "deflate", "br"}
 
 // NewHttpCompressionMiddleware 创建一个 HttpCompression 中间件。
 func NewHttpCompressionMiddleware(maxSize, warnSize int, sc stats.Collector, logger *slog.Logger) *HttpCompressionMiddleware {
@@ -69,7 +70,7 @@ func (m *HttpCompressionMiddleware) ProcessRequest(ctx context.Context, request 
 }
 
 // ProcessResponse 自动解压压缩的响应体。
-// 支持 gzip、x-gzip、deflate 编码。
+// 支持 gzip、x-gzip、deflate、br (brotli) 编码。
 func (m *HttpCompressionMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
 	// HEAD 请求不处理响应体
 	if request.Method == "HEAD" {
@@ -180,6 +181,7 @@ func splitEncodings(encodings []string) (decodable []string, remaining []string)
 		"gzip":    true,
 		"x-gzip":  true,
 		"deflate": true,
+		"br":      true,
 	}
 
 	// 从末尾开始扫描
@@ -213,6 +215,8 @@ func decompress(data []byte, encoding string, maxSize int) ([]byte, error) {
 		return decompressGzip(data, maxSize)
 	case "deflate":
 		return decompressDeflate(data, maxSize)
+	case "br":
+		return decompressBrotli(data, maxSize)
 	default:
 		return data, nil
 	}
@@ -244,6 +248,12 @@ func decompressDeflate(data []byte, maxSize int) ([]byte, error) {
 	// 某些服务器发送的 deflate 实际上是 raw deflate 而非 zlib
 	reader = flate.NewReader(bytes.NewReader(data))
 	defer reader.Close()
+	return readLimited(reader, maxSize)
+}
+
+// decompressBrotli 解压 brotli 数据。
+func decompressBrotli(data []byte, maxSize int) ([]byte, error) {
+	reader := brotli.NewReader(bytes.NewReader(data))
 	return readLimited(reader, maxSize)
 }
 

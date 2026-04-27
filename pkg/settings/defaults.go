@@ -176,6 +176,8 @@ func (s *Settings) loadDefaults() {
 		"HttpCompression":  590,
 		"Redirect":         600,
 		"Cookies":          700,
+		"HttpProxy":        750,
+		"DownloaderStats":  850,
 	}, d)
 	s.Set("DOWNLOADER_MIDDLEWARES", map[string]int{}, d)
 

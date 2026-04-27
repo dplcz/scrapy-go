@@ -245,7 +245,7 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector,
 	pm := pipeline.NewManager(sm, sc, nil)
 	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
 
-	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil)
+	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
 }
 
 // ============================================================================
@@ -443,7 +443,7 @@ func TestEngineWithPipeline(t *testing.T) {
 
 	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
 
-	eng := NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil)
+	eng := NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

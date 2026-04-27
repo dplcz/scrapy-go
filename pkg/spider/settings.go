@@ -104,6 +104,22 @@ type Settings struct {
 	UserAgent *string `json:"user_agent,omitempty"`
 
 	// ========================================================================
+	// HTTP 代理
+	// ========================================================================
+
+	// HttpProxyEnabled 是否启用 HttpProxy 中间件（默认 true）。
+	// 对齐 Scrapy: HTTPPROXY_ENABLED = True
+	HttpProxyEnabled *bool `json:"httpproxy_enabled,omitempty"`
+
+	// ========================================================================
+	// 下载器统计
+	// ========================================================================
+
+	// DownloaderStats 是否启用下载器统计中间件（默认 true）。
+	// 对齐 Scrapy: DOWNLOADER_STATS = True
+	DownloaderStats *bool `json:"downloader_stats,omitempty"`
+
+	// ========================================================================
 	// 扩展配置（用于不常用或自定义的配置项）
 	// ========================================================================
 
@@ -185,6 +201,16 @@ func (ss *Settings) ToMap() map[string]any {
 	// UserAgent
 	if ss.UserAgent != nil {
 		m["USER_AGENT"] = *ss.UserAgent
+	}
+
+	// HTTP 代理
+	if ss.HttpProxyEnabled != nil {
+		m["HTTPPROXY_ENABLED"] = *ss.HttpProxyEnabled
+	}
+
+	// 下载器统计
+	if ss.DownloaderStats != nil {
+		m["DOWNLOADER_STATS"] = *ss.DownloaderStats
 	}
 
 	// 扩展配置

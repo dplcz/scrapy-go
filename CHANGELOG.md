@@ -5,6 +5,63 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.3.0-alpha.1] - 2026-04-27
+
+### 新增
+
+#### Extension 系统框架（P2-001）
+- **Extension 接口** — 定义 `Extension` 接口（`Open`/`Close` 生命周期），提供 `BaseExtension` 默认实现
+- **ExtensionManager** — 扩展管理器，支持按优先级排序、`ErrNotConfigured` 自动跳过、逆序关闭
+- **Crawler 集成** — Extension 系统集成到 Crawler 组件编排流程，支持 `EXTENSIONS_BASE`/`EXTENSIONS` 配置
+- **AddExtension API** — Crawler 新增 `AddExtension(ext, name, priority)` 方法注册自定义扩展
+
+#### HttpProxy 中间件（P2-002，优先级 750）
+- **环境变量代理** — 自动读取 `http_proxy`/`HTTP_PROXY`、`https_proxy`/`HTTPS_PROXY` 环境变量
+- **请求级代理** — 支持 `Request.Meta["proxy"]` 设置请求级代理，`nil` 值显式禁用代理
+- **代理认证** — 支持 `http://user:password@host:port` 格式的代理 URL，自动设置 `Proxy-Authorization` 头
+- **配置项** — `HTTPPROXY_ENABLED`（默认 true）
+
+#### DownloaderStats 中间件（P2-003，优先级 850）
+- **请求统计** — `downloader/request_count`、`downloader/request_method_count/{METHOD}`、`downloader/request_bytes`
+- **响应统计** — `downloader/response_count`、`downloader/response_status_count/{STATUS}`、`downloader/response_bytes`
+- **异常统计** — `downloader/exception_count`、`downloader/exception_type_count/{TYPE}`
+- **耗时统计** — `downloader/max_download_time`（最大下载耗时）
+- **配置项** — `DOWNLOADER_STATS`（默认 true）
+
+### 变更
+- `DOWNLOADER_MIDDLEWARES_BASE` 新增 `HttpProxy`(750) 和 `DownloaderStats`(850)
+- Engine 构造函数新增 `extensions` 参数，支持扩展系统生命周期管理
+- Engine `openSpider` 中初始化扩展，`closeSpider` 中关闭扩展
+
+### 质量
+- 新增 30+ 个单元测试（Extension 10 个、HttpProxy 8 个、DownloaderStats 12 个）
+- 测试总数：353 个
+- Extension 包覆盖率：100%
+- 中间件包覆盖率：86.7%
+- 竞态检测：全部通过
+
+---
+
+## [v0.2.4] - 2026-04-27
+
+### 新增
+- **Brotli 解压支持** — HttpCompression 中间件新增 brotli (br) 编码解压，引入 `andybalholm/brotli` 外部依赖
+  - `Accept-Encoding` 请求头自动包含 `br`
+  - 响应体 `Content-Encoding: br` 自动解压
+  - 支持 maxSize 限制和统计收集
+
+### 依赖
+- 新增 `github.com/andybalholm/brotli` v1.2.1 — Brotli 压缩/解压
+
+### 质量
+- 新增 4 个 brotli 相关单元测试（解压、maxSize、统计、Accept-Encoding 验证）
+- 全量测试通过，竞态检测通过
+
+### 技术债务
+- TD-006 已偿还：HttpCompression 现已支持 brotli 解压
+
+---
+
 ## [v0.2.3] - 2026-04-24
 
 ### 修复

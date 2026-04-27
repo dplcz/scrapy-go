@@ -111,6 +111,25 @@ func NewCustomSettings() *spider.Settings {
 		// 是否在 Spider 关闭时输出统计信息（默认 true）
 		// 对齐 Scrapy: STATS_DUMP = True
 		// StatsDump: spider.BoolPtr(true),
+
+		// ====================================================================
+		// HTTP 代理
+		// ====================================================================
+
+		// 是否启用 HttpProxy 中间件（默认 true）
+		// 启用后自动读取环境变量 http_proxy/https_proxy 设置代理
+		// 也可通过 Request.Meta["proxy"] 设置请求级代理
+		// 对齐 Scrapy: HTTPPROXY_ENABLED = True
+		// HttpProxyEnabled: spider.BoolPtr(true),
+
+		// ====================================================================
+		// 下载器统计
+		// ====================================================================
+
+		// 是否启用下载器统计中间件（默认 true）
+		// 统计请求数、响应数、字节数、状态码分布、异常类型等
+		// 对齐 Scrapy: DOWNLOADER_STATS = True
+		// DownloaderStats: spider.BoolPtr(true),
 	}
 }
 

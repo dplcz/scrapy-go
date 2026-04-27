@@ -19,6 +19,7 @@ import (
 	"github.com/dplcz/scrapy-go/pkg/downloader"
 	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
 	"github.com/dplcz/scrapy-go/pkg/engine"
+	"github.com/dplcz/scrapy-go/pkg/extension"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
@@ -45,6 +46,7 @@ type Crawler struct {
 	spiderMW   *smiddle.Manager
 	pipelines  *pipeline.Manager
 	scraper    *scraper.Scraper
+	extensions *extension.Manager
 
 	// customLogger 标记用户是否通过 WithLogger 自定义 Logger
 	customLogger bool
@@ -57,6 +59,9 @@ type Crawler struct {
 
 	// userSpiderMiddlewares 存储用户注册的自定义 Spider 中间件
 	userSpiderMiddlewares []smiddle.Entry
+
+	// userExtensions 存储用户注册的自定义扩展
+	userExtensions []extension.Entry
 }
 
 // New 创建一个新的 Crawler，可通过 Option 自定义各组件。
@@ -164,6 +169,24 @@ func (c *Crawler) AddSpiderMiddleware(mw smiddle.SpiderMiddleware, name string, 
 	})
 }
 
+// AddExtension 注册一个自定义扩展。
+// 必须在 Run 之前调用。priority 值越小越先初始化。
+//
+// 扩展通过信号系统监听框架事件，实现自定义逻辑。
+//
+// 用法：
+//
+//	c := crawler.NewDefault()
+//	c.AddExtension(&MyStatsExtension{}, "MyStats", 500)
+//	c.Run(ctx, mySpider)
+func (c *Crawler) AddExtension(ext extension.Extension, name string, priority int) {
+	c.userExtensions = append(c.userExtensions, extension.Entry{
+		Extension: ext,
+		Name:      name,
+		Priority:  priority,
+	})
+}
+
 // Run 启动爬虫并阻塞直到完成。
 // 支持 OS 信号优雅关闭（SIGINT、SIGTERM）。
 func (c *Crawler) Run(ctx context.Context, sp spider.Spider) error {
@@ -246,12 +269,15 @@ func (c *Crawler) assembleComponents() {
 	}
 	c.logEnabledPipelines()
 
-	// 6. Scraper
+	// 6. 扩展系统
+	c.extensions = c.buildExtensions()
+
+	// 7. Scraper
 	maxActiveSize := c.Settings.GetInt("SCRAPER_SLOT_MAX_ACTIVE_SIZE", 5000000)
 	c.scraper = scraper.NewScraper(c.spiderMW, c.pipelines, c.spider, c.Signals, c.Stats, c.Logger, maxActiveSize)
 
-	// 7. Engine
-	c.engine = engine.NewEngine(c.spider, c.scheduler, c.downloader, c.dlMW, c.scraper, c.Signals, c.Stats, c.Logger)
+	// 8. Engine
+	c.engine = engine.NewEngine(c.spider, c.scheduler, c.downloader, c.dlMW, c.scraper, c.Signals, c.Stats, c.Logger, c.extensions)
 }
 
 // MiddlewareFactory 定义内置中间件的工厂函数类型。
@@ -326,6 +352,18 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		}
 		debug := c.Settings.GetBool("COOKIES_DEBUG", false)
 		return dmiddle.NewCookiesMiddleware(debug, c.Logger)
+	},
+	"HttpProxy": func(c *Crawler) dmiddle.DownloaderMiddleware {
+		if !c.Settings.GetBool("HTTPPROXY_ENABLED", true) {
+			return nil
+		}
+		return dmiddle.NewHttpProxyMiddleware(c.Logger)
+	},
+	"DownloaderStats": func(c *Crawler) dmiddle.DownloaderMiddleware {
+		if !c.Settings.GetBool("DOWNLOADER_STATS", true) {
+			return nil
+		}
+		return dmiddle.NewDownloaderStatsMiddleware(c.Stats, c.Logger)
 	},
 }
 
@@ -438,6 +476,52 @@ func (c *Crawler) buildSpiderMiddlewares() *smiddle.Manager {
 
 	// 4. 打印启用列表（Scrapy 风格）
 	c.logEnabledComponents("spider middlewares", allEntries)
+	return m
+}
+
+// buildExtensions 构建扩展管理器。
+// 通过读取 EXTENSIONS_BASE 和 EXTENSIONS 配置，
+// 决定启用哪些内置扩展及其优先级。
+func (c *Crawler) buildExtensions() *extension.Manager {
+	m := extension.NewManager(c.Logger)
+
+	var allEntries []componentEntry
+
+	// 1. 读取合并后的扩展配置（已过滤掉优先级 < 0 的条目）
+	extConfig := c.Settings.GetComponentPriorityDictWithBase("EXTENSIONS")
+
+	// 2. 根据配置实例化内置扩展（目前无内置扩展，预留给 Sprint 5）
+	_ = extConfig
+
+	// 3. 添加用户通过 AddExtension 注册的自定义扩展
+	for _, entry := range c.userExtensions {
+		m.AddExtension(entry.Extension, entry.Name, entry.Priority)
+		allEntries = append(allEntries, componentEntry{name: entry.Name, priority: entry.Priority, source: "custom"})
+	}
+
+	// 4. 按优先级排序
+	if len(allEntries) > 0 {
+		sort.Slice(allEntries, func(i, j int) bool {
+			return allEntries[i].priority < allEntries[j].priority
+		})
+
+		// 检测优先级冲突
+		priorityMap := make(map[int][]string)
+		for _, entry := range allEntries {
+			priorityMap[entry.priority] = append(priorityMap[entry.priority], entry.name)
+		}
+		for priority, names := range priorityMap {
+			if len(names) > 1 {
+				c.Logger.Warn("multiple extensions share the same priority, execution order may be non-deterministic",
+					"priority", priority,
+					"extensions", names,
+				)
+			}
+		}
+	}
+
+	// 5. 打印启用列表
+	c.logEnabledComponents("extensions", allEntries)
 	return m
 }
 

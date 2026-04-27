@@ -182,7 +182,7 @@ func buildTestEngineWithPipeline(sp spider.Spider, pm *pipeline.Manager, sc stat
 	}
 
 	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
-	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil)
+	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
 }
 
 // defaultTestSettings 返回测试用的默认配置。

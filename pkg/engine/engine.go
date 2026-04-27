@@ -14,6 +14,7 @@ import (
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
+	"github.com/dplcz/scrapy-go/pkg/extension"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
 	"github.com/dplcz/scrapy-go/pkg/signal"
@@ -36,6 +37,7 @@ type Engine struct {
 	downloader *downloader.Downloader
 	dlMW       *downloader.MiddlewareManager
 	scraper    *scraper.Scraper
+	extensions *extension.Manager
 	signals    *signal.Manager
 	stats      stats.Collector
 	logger     *slog.Logger
@@ -63,6 +65,7 @@ func NewEngine(
 	signals *signal.Manager,
 	statsCollector stats.Collector,
 	logger *slog.Logger,
+	ext *extension.Manager,
 ) *Engine {
 	if signals == nil {
 		signals = signal.NewManager(nil)
@@ -80,6 +83,7 @@ func NewEngine(
 		downloader:        dl,
 		dlMW:              dlMW,
 		scraper:           sc,
+		extensions:        ext,
 		signals:           signals,
 		stats:             statsCollector,
 		logger:            logger,
@@ -164,6 +168,13 @@ func (e *Engine) openSpider(ctx context.Context) error {
 	// 打开统计收集器
 	e.stats.Open()
 
+	// 打开扩展系统
+	if e.extensions != nil {
+		if err := e.extensions.Open(ctx); err != nil {
+			return err
+		}
+	}
+
 	e.logger.Info("spider opened", "spider", e.spider.Name())
 
 	// 发送 spider_opened 信号
@@ -193,6 +204,13 @@ func (e *Engine) closeSpider(ctx context.Context, reason string) {
 	// 关闭调度器
 	if err := e.scheduler.Close(ctx, reason); err != nil {
 		e.logger.Error("failed to close scheduler", "error", err)
+	}
+
+	// 关闭扩展系统
+	if e.extensions != nil {
+		if err := e.extensions.Close(ctx); err != nil {
+			e.logger.Error("failed to close extensions", "error", err)
+		}
 	}
 
 	// 发送 spider_closed 信号

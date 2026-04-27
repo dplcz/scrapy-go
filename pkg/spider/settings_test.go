@@ -115,6 +115,28 @@ func TestSettingsToMapUserAgent(t *testing.T) {
 	}
 }
 
+func TestSettingsToMapProxy(t *testing.T) {
+	ss := &Settings{
+		HttpProxyEnabled: BoolPtr(false),
+	}
+	m := ss.ToMap()
+
+	if v, ok := m["HTTPPROXY_ENABLED"].(bool); !ok || v != false {
+		t.Errorf("HTTPPROXY_ENABLED: expected false, got %v", m["HTTPPROXY_ENABLED"])
+	}
+}
+
+func TestSettingsToMapDownloaderStats(t *testing.T) {
+	ss := &Settings{
+		DownloaderStats: BoolPtr(false),
+	}
+	m := ss.ToMap()
+
+	if v, ok := m["DOWNLOADER_STATS"].(bool); !ok || v != false {
+		t.Errorf("DOWNLOADER_STATS: expected false, got %v", m["DOWNLOADER_STATS"])
+	}
+}
+
 func TestSettingsToMapExtra(t *testing.T) {
 	ss := &Settings{
 		ConcurrentRequests: IntPtr(8),

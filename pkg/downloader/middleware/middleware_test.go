@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/stats"
@@ -896,6 +897,9 @@ func TestHttpCompressionMiddlewareAcceptEncoding(t *testing.T) {
 	if !containsSubstring(ae, "deflate") {
 		t.Errorf("Accept-Encoding should contain deflate, got %s", ae)
 	}
+	if !containsSubstring(ae, "br") {
+		t.Errorf("Accept-Encoding should contain br, got %s", ae)
+	}
 }
 
 func TestHttpCompressionMiddlewareNoOverrideAcceptEncoding(t *testing.T) {
@@ -1067,7 +1071,7 @@ func TestHttpCompressionMiddlewareUnknownEncoding(t *testing.T) {
 		shttp.WithRequest(req),
 		shttp.WithResponseBody([]byte("some data")),
 		shttp.WithResponseHeaders(http.Header{
-			"Content-Encoding": {"br"},
+			"Content-Encoding": {"zstd"},
 		}),
 	)
 
@@ -1110,6 +1114,93 @@ func TestHttpCompressionMiddlewareDeflate(t *testing.T) {
 	}
 }
 
+func TestHttpCompressionMiddlewareBrotli(t *testing.T) {
+	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, nil, nil)
+
+	originalBody := []byte("Hello, World! This is a test body for brotli compression.")
+	compressedBody := brotliCompress(t, originalBody)
+
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
+			"Content-Encoding": {"br"},
+		}),
+	)
+
+	result, err := mw.ProcessResponse(context.Background(), req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if string(result.Body) != string(originalBody) {
+		t.Errorf("decompressed body mismatch: got %q, want %q", string(result.Body), string(originalBody))
+	}
+
+	// Content-Encoding 应被移除
+	if result.Headers.Get("Content-Encoding") != "" {
+		t.Error("Content-Encoding should be removed after decompression")
+	}
+}
+
+func TestHttpCompressionMiddlewareBrotliMaxSize(t *testing.T) {
+	// 设置一个很小的 maxSize
+	mw := NewHttpCompressionMiddleware(10, 5, nil, nil)
+
+	// 创建一个解压后超过 10 字节的 brotli 数据
+	originalBody := []byte("This is a body that exceeds the max size limit of 10 bytes")
+	compressedBody := brotliCompress(t, originalBody)
+
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
+			"Content-Encoding": {"br"},
+		}),
+	)
+
+	// 超过 maxSize 时应返回原始响应（不解压）
+	result, err := mw.ProcessResponse(context.Background(), req, resp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 解压失败时应返回原始响应
+	if string(result.Body) != string(compressedBody) {
+		t.Error("should return original response when decompression exceeds max size")
+	}
+}
+
+func TestHttpCompressionMiddlewareBrotliStats(t *testing.T) {
+	sc := stats.NewMemoryCollector(false, nil)
+	mw := NewHttpCompressionMiddleware(1024*1024, 32*1024, sc, nil)
+
+	originalBody := []byte("test body for brotli stats")
+	compressedBody := brotliCompress(t, originalBody)
+
+	req := shttp.MustNewRequest("https://example.com")
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithRequest(req),
+		shttp.WithResponseBody(compressedBody),
+		shttp.WithResponseHeaders(http.Header{
+			"Content-Encoding": {"br"},
+		}),
+	)
+
+	mw.ProcessResponse(context.Background(), req, resp)
+
+	count := sc.GetValue("httpcompression/response_count", 0)
+	if count != 1 {
+		t.Errorf("expected response_count=1, got %v", count)
+	}
+
+	bytesVal := sc.GetValue("httpcompression/response_bytes", 0)
+	if bytesVal != len(originalBody) {
+		t.Errorf("expected response_bytes=%d, got %v", len(originalBody), bytesVal)
+	}
+}
+
 // ============================================================================
 // 测试辅助函数
 // ============================================================================
@@ -1125,6 +1216,21 @@ func gzipCompress(t *testing.T, data []byte) []byte {
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("gzip close error: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// brotliCompress 将数据进行 brotli 压缩。
+func brotliCompress(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := brotli.NewWriterLevel(&buf, brotli.DefaultCompression)
+	_, err := writer.Write(data)
+	if err != nil {
+		t.Fatalf("brotli write error: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("brotli close error: %v", err)
 	}
 	return buf.Bytes()
 }
@@ -1159,4 +1265,322 @@ func containsSubstringImpl(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// ============================================================================
+// HttpProxy 测试
+// ============================================================================
+
+func TestHttpProxyMiddleware_MetaProxy(t *testing.T) {
+	mw := NewHttpProxyMiddleware(nil)
+
+	// 通过 Meta 设置代理
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithMeta(map[string]any{
+			"proxy": "http://proxy.example.com:8080",
+		}),
+	)
+
+	resp, err := mw.ProcessRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ProcessRequest error: %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected nil response")
+	}
+
+	proxyVal, ok := req.GetMeta("proxy")
+	if !ok {
+		t.Fatal("expected proxy in meta")
+	}
+	if proxyVal != "http://proxy.example.com:8080" {
+		t.Errorf("expected proxy URL http://proxy.example.com:8080, got %v", proxyVal)
+	}
+}
+
+func TestHttpProxyMiddleware_MetaProxyWithAuth(t *testing.T) {
+	mw := NewHttpProxyMiddleware(nil)
+
+	// 通过 Meta 设置带认证的代理
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithMeta(map[string]any{
+			"proxy": "http://user:pass@proxy.example.com:8080",
+		}),
+	)
+
+	mw.ProcessRequest(context.Background(), req)
+
+	// 验证代理 URL（不含认证信息）
+	proxyVal, _ := req.GetMeta("proxy")
+	if proxyVal != "http://proxy.example.com:8080" {
+		t.Errorf("expected proxy URL without auth, got %v", proxyVal)
+	}
+
+	// 验证认证头
+	authHeader := req.Headers.Get("Proxy-Authorization")
+	expectedAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
+	if authHeader != expectedAuth {
+		t.Errorf("expected Proxy-Authorization %q, got %q", expectedAuth, authHeader)
+	}
+}
+
+func TestHttpProxyMiddleware_MetaProxyNil(t *testing.T) {
+	mw := NewHttpProxyMiddleware(nil)
+
+	// Meta["proxy"] = nil 表示显式禁用代理
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithMeta(map[string]any{
+			"proxy": nil,
+		}),
+	)
+
+	resp, err := mw.ProcessRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ProcessRequest error: %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected nil response")
+	}
+}
+
+func TestHttpProxyMiddleware_NoProxy(t *testing.T) {
+	mw := NewHttpProxyMiddleware(nil)
+
+	// 没有设置代理
+	req := shttp.MustNewRequest("https://example.com")
+
+	resp, err := mw.ProcessRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ProcessRequest error: %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected nil response")
+	}
+
+	// 不应设置 Proxy-Authorization 头
+	if req.Headers.Get("Proxy-Authorization") != "" {
+		t.Error("should not set Proxy-Authorization without proxy")
+	}
+}
+
+func TestParseProxyURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		rawURL      string
+		wantURL     string
+		wantHasAuth bool
+	}{
+		{
+			name:        "simple proxy",
+			rawURL:      "http://proxy.example.com:8080",
+			wantURL:     "http://proxy.example.com:8080",
+			wantHasAuth: false,
+		},
+		{
+			name:        "proxy with auth",
+			rawURL:      "http://user:pass@proxy.example.com:8080",
+			wantURL:     "http://proxy.example.com:8080",
+			wantHasAuth: true,
+		},
+		{
+			name:        "proxy without scheme",
+			rawURL:      "proxy.example.com:8080",
+			wantURL:     "http://proxy.example.com:8080",
+			wantHasAuth: false,
+		},
+		{
+			name:        "https proxy",
+			rawURL:      "https://proxy.example.com:443",
+			wantURL:     "https://proxy.example.com:443",
+			wantHasAuth: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := parseProxyURL(tt.rawURL)
+			if err != nil {
+				t.Fatalf("parseProxyURL error: %v", err)
+			}
+			if info.proxyURL != tt.wantURL {
+				t.Errorf("expected URL %q, got %q", tt.wantURL, info.proxyURL)
+			}
+			hasAuth := info.credentials != ""
+			if hasAuth != tt.wantHasAuth {
+				t.Errorf("expected hasAuth=%v, got %v", tt.wantHasAuth, hasAuth)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// DownloaderStats 测试
+// ============================================================================
+
+func TestDownloaderStatsMiddleware_ProcessRequest(t *testing.T) {
+	sc := stats.NewMemoryCollector(false, nil)
+	mw := NewDownloaderStatsMiddleware(sc, nil)
+
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("test body")),
+	)
+
+	resp, err := mw.ProcessRequest(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ProcessRequest error: %v", err)
+	}
+	if resp != nil {
+		t.Fatal("expected nil response")
+	}
+
+	// 验证统计
+	if sc.GetValue("downloader/request_count", 0) != 1 {
+		t.Errorf("expected request_count=1, got %v", sc.GetValue("downloader/request_count", 0))
+	}
+	if sc.GetValue("downloader/request_method_count/POST", 0) != 1 {
+		t.Errorf("expected POST count=1, got %v", sc.GetValue("downloader/request_method_count/POST", 0))
+	}
+	reqBytes := sc.GetValue("downloader/request_bytes", 0)
+	if reqBytes == 0 {
+		t.Error("expected request_bytes > 0")
+	}
+
+	// 验证下载开始时间被设置到 Meta
+	startTime, ok := req.GetMeta("_download_start_time")
+	if !ok {
+		t.Error("expected _download_start_time in meta")
+	}
+	if _, ok := startTime.(time.Time); !ok {
+		t.Error("expected _download_start_time to be time.Time")
+	}
+}
+
+func TestDownloaderStatsMiddleware_ProcessResponse(t *testing.T) {
+	sc := stats.NewMemoryCollector(false, nil)
+	mw := NewDownloaderStatsMiddleware(sc, nil)
+
+	req := shttp.MustNewRequest("https://example.com")
+	req.SetMeta("_download_start_time", time.Now().Add(-100*time.Millisecond))
+
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithResponseBody([]byte("response body")),
+		shttp.WithResponseHeaders(http.Header{
+			"Content-Type": {"text/html"},
+		}),
+	)
+
+	result, err := mw.ProcessResponse(context.Background(), req, resp)
+	if err != nil {
+		t.Fatalf("ProcessResponse error: %v", err)
+	}
+	if result != resp {
+		t.Error("expected same response returned")
+	}
+
+	// 验证统计
+	if sc.GetValue("downloader/response_count", 0) != 1 {
+		t.Errorf("expected response_count=1, got %v", sc.GetValue("downloader/response_count", 0))
+	}
+	if sc.GetValue("downloader/response_status_count/200", 0) != 1 {
+		t.Errorf("expected status 200 count=1, got %v", sc.GetValue("downloader/response_status_count/200", 0))
+	}
+	respBytes := sc.GetValue("downloader/response_bytes", 0)
+	if respBytes == 0 {
+		t.Error("expected response_bytes > 0")
+	}
+
+	// 验证最大下载时间
+	maxTime := sc.GetValue("downloader/max_download_time", nil)
+	if maxTime == nil {
+		t.Error("expected max_download_time to be set")
+	}
+}
+
+func TestDownloaderStatsMiddleware_ProcessException(t *testing.T) {
+	sc := stats.NewMemoryCollector(false, nil)
+	mw := NewDownloaderStatsMiddleware(sc, nil)
+
+	req := shttp.MustNewRequest("https://example.com")
+	testErr := serrors.ErrDownloadTimeout
+
+	result, retErr := mw.ProcessException(context.Background(), req, testErr)
+	if result != nil {
+		t.Error("expected nil response from ProcessException")
+	}
+	if retErr != nil {
+		t.Error("expected nil error from ProcessException")
+	}
+
+	// 验证统计
+	if sc.GetValue("downloader/exception_count", 0) != 1 {
+		t.Errorf("expected exception_count=1, got %v", sc.GetValue("downloader/exception_count", 0))
+	}
+
+	// 验证异常类型统计
+	allStats := sc.GetStats()
+	found := false
+	for key := range allStats {
+		if len(key) > len("downloader/exception_type_count/") &&
+			key[:len("downloader/exception_type_count/")] == "downloader/exception_type_count/" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected exception_type_count to be set")
+	}
+}
+
+func TestDownloaderStatsMiddleware_MultipleRequests(t *testing.T) {
+	sc := stats.NewMemoryCollector(false, nil)
+	mw := NewDownloaderStatsMiddleware(sc, nil)
+
+	// 发送多个请求
+	for i := 0; i < 5; i++ {
+		req := shttp.MustNewRequest("https://example.com")
+		mw.ProcessRequest(context.Background(), req)
+	}
+
+	if sc.GetValue("downloader/request_count", 0) != 5 {
+		t.Errorf("expected request_count=5, got %v", sc.GetValue("downloader/request_count", 0))
+	}
+	if sc.GetValue("downloader/request_method_count/GET", 0) != 5 {
+		t.Errorf("expected GET count=5, got %v", sc.GetValue("downloader/request_method_count/GET", 0))
+	}
+}
+
+func TestEstimateRequestSize(t *testing.T) {
+	req := shttp.MustNewRequest("https://example.com",
+		shttp.WithMethod("POST"),
+		shttp.WithBody([]byte("hello")),
+		shttp.WithHeader("Content-Type", "text/plain"),
+	)
+
+	size := estimateRequestSize(req)
+	if size <= 0 {
+		t.Errorf("expected positive size, got %d", size)
+	}
+	// 至少包含请求体大小
+	if size < 5 {
+		t.Errorf("expected size >= 5 (body length), got %d", size)
+	}
+}
+
+func TestEstimateResponseSize(t *testing.T) {
+	resp := shttp.MustNewResponse("https://example.com", 200,
+		shttp.WithResponseBody([]byte("hello world")),
+		shttp.WithResponseHeaders(http.Header{
+			"Content-Type": {"text/html"},
+		}),
+	)
+
+	size := estimateResponseSize(resp)
+	if size <= 0 {
+		t.Errorf("expected positive size, got %d", size)
+	}
+	// 至少包含响应体大小
+	if size < 11 {
+		t.Errorf("expected size >= 11 (body length), got %d", size)
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
@@ -26,7 +27,8 @@ type DownloadHandler interface {
 // HTTPDownloadHandler 是基于 net/http 的 HTTP 下载处理器。
 // 支持 HTTP/1.1 和 HTTP/2。
 type HTTPDownloadHandler struct {
-	client *http.Client
+	client    *http.Client
+	transport *http.Transport
 }
 
 // NewHTTPDownloadHandler 创建一个新的 HTTP 下载处理器。
@@ -51,11 +53,13 @@ func NewHTTPDownloadHandler(timeout time.Duration) *HTTPDownloadHandler {
 	}
 
 	return &HTTPDownloadHandler{
-		client: client,
+		client:    client,
+		transport: transport,
 	}
 }
 
 // Download 执行 HTTP 下载。
+// 如果 request.Meta["proxy"] 设置了代理 URL，则通过该代理发送请求。
 func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	// 构建 net/http.Request
 	httpReq, err := http.NewRequestWithContext(ctx, request.Method, request.URL.String(), nil)
@@ -81,8 +85,14 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 		httpReq.AddCookie(cookie)
 	}
 
+	// 选择 HTTP 客户端：如果设置了代理，使用带代理的临时客户端
+	client := h.client
+	if proxyURL := h.getProxyURL(request); proxyURL != nil {
+		client = h.clientWithProxy(proxyURL)
+	}
+
 	// 执行请求
-	httpResp, err := h.client.Do(httpReq)
+	httpResp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +115,42 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 	}
 
 	return resp, nil
+}
+
+// getProxyURL 从 request.Meta["proxy"] 中提取代理 URL。
+// 返回 nil 表示不使用代理。
+func (h *HTTPDownloadHandler) getProxyURL(request *shttp.Request) *url.URL {
+	proxyVal, ok := request.GetMeta("proxy")
+	if !ok || proxyVal == nil {
+		return nil
+	}
+
+	proxyStr, ok := proxyVal.(string)
+	if !ok || proxyStr == "" {
+		return nil
+	}
+
+	proxyURL, err := url.Parse(proxyStr)
+	if err != nil {
+		return nil
+	}
+
+	return proxyURL
+}
+
+// clientWithProxy 创建一个使用指定代理的临时 HTTP 客户端。
+// 复用原始 Transport 的大部分配置，仅覆盖 Proxy 函数。
+func (h *HTTPDownloadHandler) clientWithProxy(proxyURL *url.URL) *http.Client {
+	proxyTransport := h.transport.Clone()
+	proxyTransport.Proxy = http.ProxyURL(proxyURL)
+
+	return &http.Client{
+		Timeout:   h.client.Timeout,
+		Transport: proxyTransport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 // Close 关闭 HTTP 处理器。
