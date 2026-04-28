@@ -7,6 +7,61 @@
 
 ## [Unreleased]
 
+### 新增
+
+#### Feed Export 数据导出系统（Sprint 6 / P2-008）
+
+对齐 Scrapy 的 `scrapy.extensions.feedexport` + `scrapy.exporters`，为 scrapy-go 提供统一的多格式数据导出能力。
+
+- **新增包 `pkg/feedexport/`**
+  - 核心接口：`ItemExporter`、`FeedStorage`、`ExporterFactory`（`interface.go`）
+  - 内置导出器：
+    - `JSONExporter`（`json.go`）— 整体写出 JSON 数组，支持 `FieldsToExport` 保序与 `Indent`
+    - `JSONLinesExporter`（`jsonlines.go`）— 逐行 JSON，适合流式/大数据
+    - `CSVExporter`（`csv.go`）— 自动写入表头，支持 `JoinMultivalued` 拼接多值字段、字段缺失输出空值
+    - `XMLExporter`（`xml.go`）— 支持自定义 `RootElement` / `ItemElement`，非法字段名按 `field_N` 脱敏
+  - 存储后端：
+    - `FileStorage`（`storage.go`）— 支持相对/绝对路径、`file://` URI、自动创建父目录、`overwrite` 与 `append` 模式
+    - `StdoutStorage` — 标准输出，安全包装避免外部关闭 `os.Stdout`
+    - `NewStorageForURI` 工厂：根据 URI scheme 自动选择后端
+  - `FeedSlot`（`slot.go`）— 封装单条 Feed 的生命周期：`Start/ExportItem/Close`，支持延迟启动（首个 Item 到达才创建文件）、`StoreEmpty` 即时启动、`Filter` 过滤
+  - URI 模板渲染：支持 `%(name)s` / `%(time)s` / `%(batch_id)d` / `%(batch_time)s` 占位符，对应 Scrapy `_FeedSlot` 的 URI 参数
+  - Item 字段提取：`extractItem` 同时支持 `map[string]any`、`map[string]string`、自定义 `map`、`struct`（通过 `item` tag / `json` tag / 字段名回退）
+
+- **新增扩展 `pkg/extension/feedexport.go`**
+  - `FeedExportExtension` 实现 `Extension` 接口，通过信号系统接入 Spider 生命周期：
+    - `SpiderOpened` → 为每条 `FeedConfig` 构造 `FeedSlot`，渲染 URI 模板；`StoreEmpty=true` 时立即 Start
+    - `ItemScraped` → 分发 Item 到所有 Slot，错误以 `errors.Join` 聚合，同时写入 `feedexport/error_count/<uri>` 统计
+    - `SpiderClosed` → 关闭全部 Slot，写入 `feedexport/success_count/<uri>`、`feedexport/failed_count/<uri>`、`feedexport/items_count/<uri>`
+  - 配置为空时返回 `ErrNotConfigured`，框架自动跳过
+  - `Close` 注销所有信号处理器并执行防御性清理（异常路径下仍能 flush）
+
+- **新增 `Crawler` API**
+  - `Crawler.AddFeed(cfg feedexport.FeedConfig)`：以 Go 类型安全方式注入 Feed 配置
+  - `Crawler.buildFeedExportConfigs()`：合并 `AddFeed` + `Settings.FEEDS` + `FEED_URI/FEED_FORMAT`（兼容 Scrapy 旧字段）
+
+- **新增默认配置 `pkg/settings/defaults.go`**
+  - `FEEDS`（`map[string]map[string]any`，默认空）
+  - `FEED_EXPORT_ENCODING` / `FEED_EXPORT_INDENT` / `FEED_STORE_EMPTY` / `FEED_EXPORT_BATCH_ITEM_COUNT`
+  - `FEED_URI` / `FEED_FORMAT`（向后兼容 Scrapy 旧字段）
+  - `EXTENSIONS_BASE` 新增 `FeedExport: 0`（默认启用但未配置时自动跳过）
+
+- **示例 `examples/feedexport/main.go`**
+  - 演示同一爬取任务同时输出 JSON / JSON Lines / CSV / XML 四种格式
+  - 覆盖 `FieldsToExport`、URI 模板（`%(name)s`）、`Filter` 过滤、`StoreEmpty`
+
+- **测试**
+  - 单元测试：`pkg/feedexport/exporters_test.go`、`storage_test.go`、`coverage_test.go`（覆盖率 **85.2%**，达 Phase 2 核心包 ≥85% 要求）
+  - 扩展测试：`pkg/extension/feedexport_test.go`（扩展包覆盖率 **89.3%**）
+  - 集成测试：`tests/integration/feedexport_test.go`（10 个端到端用例，含多格式、多 Feed 并行、URI 模板、Settings 驱动、并发压力）
+  - 全部测试 `go test -race` 通过，无竞态
+
+- **与 Scrapy 原版的差异（有意舍弃）**
+  - 未实现 S3/FTP/GCS 等远程存储（可通过用户自定义 `FeedStorage` 扩展，核心框架只保留本地文件与 Stdout）
+  - 未实现 `BATCH_ITEM_COUNT`（分片导出）；配置项保留占位，留待后续迭代
+  - 未实现 `PostProcessing`（gzip/lz4 等后处理）；可由用户在 `FeedStorage.Store` 中自行完成
+  - 用 Go 的反射 + struct tag 取代 Scrapy 的 `ItemAdapter` 动态分发，保持类型安全
+
 ### 规划（迭代日程登记，尚未实现）
 
 基于 Scrapy 原版 Request API 的对比分析，新增以下三项 Request 便捷 API 规划到迭代日程（详见 `scrapy-go-iteration-schedule.md` v1.7）：

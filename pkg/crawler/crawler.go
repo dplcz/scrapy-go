@@ -23,6 +23,7 @@ import (
 	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
 	"github.com/dplcz/scrapy-go/pkg/engine"
 	"github.com/dplcz/scrapy-go/pkg/extension"
+	"github.com/dplcz/scrapy-go/pkg/feedexport"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
@@ -65,6 +66,9 @@ type Crawler struct {
 
 	// userExtensions 存储用户注册的自定义扩展
 	userExtensions []extension.Entry
+
+	// userFeedConfigs 存储用户通过 AddFeed 注册的 Feed 导出配置
+	userFeedConfigs []feedexport.FeedConfig
 
 	// crawling 标记爬虫是否正在运行（原子操作，并发安全）
 	crawling atomic.Bool
@@ -203,6 +207,25 @@ func (c *Crawler) AddExtension(ext extension.Extension, name string, priority in
 		Name:      name,
 		Priority:  priority,
 	})
+}
+
+// AddFeed 注册一个数据导出（Feed Export）配置。
+// 必须在 Run 之前调用。多次调用会追加到配置列表。
+//
+// 等价于 Scrapy 中在 Settings 的 FEEDS 字典中添加一个条目，
+// 但以 Go 类型安全的方式注入配置。
+//
+// 用法：
+//
+//	c := crawler.NewDefault()
+//	c.AddFeed(feedexport.FeedConfig{
+//	    URI:    "output.json",
+//	    Format: feedexport.FormatJSON,
+//	    Overwrite: true,
+//	})
+//	c.Run(ctx, mySpider)
+func (c *Crawler) AddFeed(cfg feedexport.FeedConfig) {
+	c.userFeedConfigs = append(c.userFeedConfigs, cfg)
 }
 
 // Run 启动爬虫并阻塞直到完成。
@@ -640,6 +663,118 @@ func (c *Crawler) buildSpiderMiddlewares() *smiddle.Manager {
 // ExtensionFactory 定义内置扩展的工厂函数类型。
 type ExtensionFactory func(c *Crawler) extension.Extension
 
+// buildFeedExportConfigs 构建 Feed Export 扩展所需的配置列表。
+//
+// 合并来源：
+//  1. 用户通过 AddFeed 注册的 FeedConfig
+//  2. Settings 中 FEEDS (map[string]map[string]any) 配置
+//  3. 兼容性：Settings 中 FEED_URI + FEED_FORMAT（单个输出）
+//
+// 后两者以 PriorityDefault 附加到结果中，确保代码注入的配置具有最高优先级。
+func (c *Crawler) buildFeedExportConfigs() []feedexport.FeedConfig {
+	configs := make([]feedexport.FeedConfig, 0, len(c.userFeedConfigs)+1)
+	configs = append(configs, c.userFeedConfigs...)
+
+	// 从 FEEDS 设置读取（map[string]map[string]any 形式）
+	if raw := c.Settings.Get("FEEDS", nil); raw != nil {
+		if feeds, ok := raw.(map[string]map[string]any); ok {
+			for uri, opts := range feeds {
+				configs = append(configs, feedConfigFromMap(uri, opts, c.Settings))
+			}
+		} else if feeds, ok := raw.(map[string]any); ok {
+			for uri, v := range feeds {
+				if opts, ok := v.(map[string]any); ok {
+					configs = append(configs, feedConfigFromMap(uri, opts, c.Settings))
+				}
+			}
+		}
+	}
+
+	// 向后兼容：FEED_URI + FEED_FORMAT
+	if uri := c.Settings.GetString("FEED_URI", ""); uri != "" {
+		format := c.Settings.GetString("FEED_FORMAT", "jsonlines")
+		configs = append(configs, feedConfigFromMap(uri, map[string]any{
+			"format": format,
+		}, c.Settings))
+	}
+
+	return configs
+}
+
+// feedConfigFromMap 从 map 形式的选项构造 FeedConfig，并应用 Settings 中的全局默认值。
+func feedConfigFromMap(uri string, opts map[string]any, s *settings.Settings) feedexport.FeedConfig {
+	cfg := feedexport.FeedConfig{
+		URI:        uri,
+		Options:    feedexport.DefaultExporterOptions(),
+		StoreEmpty: s.GetBool("FEED_STORE_EMPTY", true),
+	}
+
+	// 全局默认
+	if enc := s.GetString("FEED_EXPORT_ENCODING", ""); enc != "" {
+		cfg.Options.Encoding = enc
+	}
+	if indent := s.GetInt("FEED_EXPORT_INDENT", 0); indent > 0 {
+		cfg.Options.Indent = indent
+	}
+
+	// 每条 Feed 独立覆盖
+	if v, ok := opts["format"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.Format = feedexport.NormalizeFormat(s)
+		}
+	}
+	if v, ok := opts["overwrite"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.Overwrite = b
+		}
+	}
+	if v, ok := opts["store_empty"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.StoreEmpty = b
+		}
+	}
+	if v, ok := opts["encoding"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			cfg.Options.Encoding = s
+		}
+	}
+	if v, ok := opts["indent"]; ok {
+		switch n := v.(type) {
+		case int:
+			cfg.Options.Indent = n
+		case int64:
+			cfg.Options.Indent = int(n)
+		case float64:
+			cfg.Options.Indent = int(n)
+		}
+	}
+	if v, ok := opts["fields"]; ok {
+		switch fs := v.(type) {
+		case []string:
+			cfg.Options.FieldsToExport = append([]string(nil), fs...)
+		case []any:
+			names := make([]string, 0, len(fs))
+			for _, x := range fs {
+				if s, ok := x.(string); ok {
+					names = append(names, s)
+				}
+			}
+			cfg.Options.FieldsToExport = names
+		}
+	}
+	if v, ok := opts["item_element"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.Options.ItemElement = s
+		}
+	}
+	if v, ok := opts["root_element"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.Options.RootElement = s
+		}
+	}
+	return cfg
+}
+
 // builtinExtensionFactories 是内置扩展的注册表。
 // key 为扩展名称，与 EXTENSIONS_BASE 中的名称一一对应。
 var builtinExtensionFactories = map[string]ExtensionFactory{
@@ -663,6 +798,14 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 		warningMB := c.Settings.GetInt("MEMUSAGE_WARNING_MB", 0)
 		checkInterval := c.Settings.GetFloat("MEMUSAGE_CHECK_INTERVAL_SECONDS", 60.0)
 		return extension.NewMemoryUsageExtension(enabled, limitMB, warningMB, checkInterval, c.Stats, c.Signals, c.Logger)
+	},
+	"FeedExport": func(c *Crawler) extension.Extension {
+		configs := c.buildFeedExportConfigs()
+		if len(configs) == 0 {
+			// 未配置 FEEDS，跳过（工厂返回 nil 会在 buildExtensions 中被跳过）
+			return nil
+		}
+		return extension.NewFeedExportExtension(configs, c.Signals, c.Stats, c.Logger)
 	},
 }
 
