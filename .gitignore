@@ -43,3 +43,6 @@ Thumbs.db
 examples/quotes/quotes
 examples/books_json/books_json
 examples/custom_middleware/custom_middleware
+examples/feedexport/feedexport
+examples/itemadapter/itemadapter
+examples/template/spiders/json_api/json_api
