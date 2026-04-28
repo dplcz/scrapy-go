@@ -9,6 +9,95 @@
 
 ### 新增
 
+#### Item 体系与 ItemAdapter（Sprint 6 / P2-009）
+
+对齐 Scrapy 的 `itemadapter` 库，为 scrapy-go 提供统一的 Item 访问抽象，使
+Pipeline / Exporter / 审计日志等下游组件无需感知底层 Item 类型（struct / map /
+自定义类型）。
+
+- **新增包 `pkg/item/`**
+  - 核心接口：`ItemAdapter`（`adapter.go`）— `Item / FieldNames / GetField /
+    SetField / HasField / AsMap / Len / FieldMeta`
+  - 内置实现：
+    - `MapAdapter`（`mapadapter.go`）— 适配 `map[string]any` / `map[string]string`
+      / 其他 `key=string` 的 map；字段按字典序输出；支持反射路径下的类型转换
+    - `StructAdapter`（`structadapter.go`）— 基于 `reflect` 适配任意 struct /
+      *struct；字段名按 `item` tag → `json` tag → Go 字段名的优先级解析；
+      `item:"-"` 显式跳过；struct-level 元数据通过 `sync.Map` 进程级缓存，避免每次
+      Adapter 创建都重复反射
+  - 工厂与扩展点：
+    - `Adapt(item any) ItemAdapter`（`adapt.go`）— 自动检测：接口实现 → 用户
+      注册工厂 → map → struct → nil
+    - `MustAdapt(item any) ItemAdapter` — 适配失败时 panic，适合"调用方已保证
+      类型正确"的场景
+    - `Register(factory AdapterFactory)` — 注册自定义工厂（栈序，后注册先匹配）；
+      用于为第三方 ORM、protobuf Message 等提供定制适配
+    - `IsItem(item any) bool` — 对齐 Scrapy `is_item`，判断是否能被 `Adapt`
+    - `AsMap(item) / FieldNames(item)` — 便捷函数
+  - 字段元数据：
+    - `FieldMeta` 类型（`map[string]any`）+ `Get / GetString / Clone` 方法
+    - 自动解析 struct tag：`item:"name,key1=val1,key2"` 与 `json:"name,omitempty"`
+      的非首个 token 进入 meta（JSON 的 token 以 `json_<token>=true` 形式记录）
+  - 哨兵错误：`ErrFieldNotFound` / `ErrFieldReadOnly` / `ErrUnsupportedItem`
+
+- **与 Scrapy 原版的差异（有意舍弃 / 重新设计）**
+  - 舍弃 Python 的元类（`ItemMeta`）与 MRO 动态分发，改用 Go 的 interface + reflect
+  - 舍弃第三方适配层（attrs / dataclass / pydantic），Go 版本只保留 map + struct +
+    用户自定义三条路径，新增语言特性支持通过 `Register` 注入
+  - `SetField` 显式返回 `error`（Scrapy 通过 `__setitem__` 抛异常）
+  - `HasField` 对 struct 按"声明"判定（所有声明字段都视为存在）；对 map 按"键存在"
+    判定——这是 Go 类型系统下自然的语义选择，Pipeline 需要"已赋值"语义时应通过
+    指针字段或业务层标志位自行维护
+  - 字段元数据在首次访问时懒构建并缓存
+
+- **与 Feed Export 集成**
+  - `pkg/feedexport/item.go` 重写为 `item.Adapt` 的薄封装，所有 Exporter
+    （JSON / JSON Lines / CSV / XML）通过 `ItemAdapter` 统一读取字段，原有的私有
+    反射代码全部迁移到 `pkg/item` 以消除重复
+  - 新增集成测试：`pkg/feedexport/itemadapter_test.go` — 三种 Item 类型
+    （struct / map / 自实现 `ItemAdapter`）在同一 Exporter 中混合导出
+  - 端到端集成测试：`tests/integration/itemadapter_test.go`
+    - `TestFeedExport_ItemAdapter_MixedTypes` — Crawler 级别同时导出 3 条异构
+      Item 到 JSON Lines 与 CSV，验证字段对齐、`item:"-"` 隐藏字段被过滤
+    - `TestItemAdapter_Pipeline_ProcessHeterogeneousItems` — 自定义 Pipeline
+      通过 `item.Adapt` 统一修改异构 Item 的字段，修改后通过 Feed Export 持久化
+
+- **测试**
+  - 单元测试：`pkg/item/adapter_test.go`，覆盖率 **94.9%**，超过 Phase 2 核心包
+    ≥85% 要求
+  - 集成测试：两个端到端场景（Feed Export + Pipeline）
+  - 全部测试通过 `go test ./... -race`，无竞态；`go vet ./...` 无告警
+
+- **依赖影响**
+  - 无新增外部依赖，仅使用 Go 标准库（`reflect`、`sync`、`strings`）
+
+### 修复
+
+#### Pipeline 统计计数重复（item_scraped_count / item_dropped_count 双倍计数）
+
+修复 `Pipeline.Manager.ProcessItem` 中 `item_scraped_count` 和 `item_dropped_count` 被重复递增的 bug。
+
+- **问题背景**
+  - `Pipeline.Manager.ProcessItem` 在处理成功/丢弃时既直接调用 `stats.IncValue("item_scraped_count"/"item_dropped_count")` 又发出 `ItemScraped`/`ItemDropped` 信号
+  - `CoreStatsExtension` 监听这两个信号后再次调用 `stats.IncValue`，导致每个 Item 被计数 **2 次**
+  - 该问题与之前修复的 `response_received_count` 重复计数（v0.3.0-alpha.5）属于同一类 bug：Engine/Pipeline 层越界直接操作统计
+
+- **修复内容**
+  - 从 `pkg/pipeline/pipeline.go` 的 `ProcessItem` 方法中移除 `item_scraped_count` 和 `item_dropped_count` 的直接 `IncValue` 调用
+  - 统计计数统一由 `CoreStatsExtension` 通过信号机制完成，与 Scrapy 原版设计一致
+  - `item_error_count` 保留在 Pipeline 中（CoreStats 未监听 `ItemError` 信号），无重复问题
+  - 在关键位置添加注释说明职责归属，避免未来误改
+
+- **测试调整**
+  - `pkg/pipeline/pipeline_test.go`：移除 `TestManagerProcessItemNormal` 和 `TestManagerProcessItemDrop` 中对 `item_scraped_count`/`item_dropped_count` 的直接断言（这些测试未注册 CoreStats 扩展）
+  - `pkg/scraper/scraper_test.go`：移除 `TestScraperWithPipeline` 中对 `item_scraped_count` 的断言
+  - 端到端集成测试（`tests/integration/`）通过 Crawler 完整流程验证统计正确性
+
+### 质量
+
+- `go test ./... -race`：全量测试通过，无竞态
+- `go vet ./...`：零告警
+
 #### Feed Export 数据导出系统（Sprint 6 / P2-008）
 
 对齐 Scrapy 的 `scrapy.extensions.feedexport` + `scrapy.exporters`，为 scrapy-go 提供统一的多格式数据导出能力。
@@ -60,7 +149,7 @@
   - 未实现 S3/FTP/GCS 等远程存储（可通过用户自定义 `FeedStorage` 扩展，核心框架只保留本地文件与 Stdout）
   - 未实现 `BATCH_ITEM_COUNT`（分片导出）；配置项保留占位，留待后续迭代
   - 未实现 `PostProcessing`（gzip/lz4 等后处理）；可由用户在 `FeedStorage.Store` 中自行完成
-  - 用 Go 的反射 + struct tag 取代 Scrapy 的 `ItemAdapter` 动态分发，保持类型安全
+  - 通过 `pkg/item.ItemAdapter` 统一 Item 访问（详见本次 Sprint 6 新增的 Item 体系条目），对等 Scrapy 的 `ItemAdapter` 体系
 
 ### 规划（迭代日程登记，尚未实现）
 

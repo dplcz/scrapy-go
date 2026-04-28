@@ -137,7 +137,8 @@ func (m *Manager) ProcessItem(ctx context.Context, item any, response any) (any,
 		if err != nil {
 			if errors.Is(err, serrors.ErrDropItem) {
 				// Item 被丢弃
-				m.stats.IncValue("item_dropped_count", 1, 0)
+				// 注意：item_dropped_count 由 CoreStats 扩展通过 ItemDropped 信号递增，
+				// 此处不再直接操作统计，避免重复计数。
 				m.signals.SendCatchLog(signal.ItemDropped, map[string]any{
 					"item":     item,
 					"response": response,
@@ -162,7 +163,8 @@ func (m *Manager) ProcessItem(ctx context.Context, item any, response any) (any,
 	}
 
 	// 所有 Pipeline 处理成功
-	m.stats.IncValue("item_scraped_count", 1, 0)
+	// 注意：item_scraped_count 由 CoreStats 扩展通过 ItemScraped 信号递增，
+	// 此处不再直接操作统计，避免重复计数。
 	m.signals.SendCatchLog(signal.ItemScraped, map[string]any{
 		"item":     item,
 		"response": response,
