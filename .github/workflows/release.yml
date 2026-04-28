@@ -1,0 +1,59 @@
+name: Create Release from Tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          # 提取当前版本标题到下一个版本标题之间的内容
+          # 匹配 ## [vX.Y.Z...] 格式的标题行
+          NOTES=$(awk "
+            /^## \\[${TAG}\\]/ { found=1; next }
+            /^## \\[v/         { if (found) exit }
+            found              { print }
+          " CHANGELOG.md)
+
+          # 去除首尾空行
+          NOTES=$(echo "$NOTES" | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba}')
+
+          # 写入多行输出
+          {
+            echo "notes<<CHANGELOG_EOF"
+            echo "$NOTES"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Determine pre-release status
+        id: prerelease
+        run: |
+          TAG="${{ steps.changelog.outputs.tag }}"
+          if echo "$TAG" | grep -qE '(alpha|beta|rc)'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.changelog.outputs.tag }}
+          name: ${{ steps.changelog.outputs.tag }}
+          body: ${{ steps.changelog.outputs.notes }}
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
+          draft: false
