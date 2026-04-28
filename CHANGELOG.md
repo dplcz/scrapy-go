@@ -5,6 +5,37 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.3.0-alpha.6] - 2026-04-28
+
+### 修复
+
+#### Engine closeSpider 收尾顺序修复（扩展最终指标丢失）
+
+修复 `Engine.closeSpider` 中"先关闭扩展再派发 `SpiderClosed` 信号"导致的最终指标丢失问题。
+
+- **问题背景**
+  - 原先的关闭顺序为：`scheduler.Close` → `extensions.Close` → `SpiderClosed` 信号 → `stats.Close`（dump）
+  - `CoreStatsExtension` / `LogStatsExtension` / `CloseSpiderExtension` 等扩展在自身 `Close` 中会注销 `SpiderClosed` 处理器
+  - 因此当信号派发时处理器已不存在，`finish_time`、`elapsed_time_seconds`、`finish_reason`、`responses_per_minute`、`items_per_minute` 等最终指标无法写入 stats
+  - 最终 stats dump 输出缺失这些指标
+
+- **修复内容**
+  - 调整 `pkg/engine/engine.go` 中 `closeSpider` 的执行顺序为：`scheduler.Close` → **`SpiderClosed` 信号派发** → `extensions.Close` → `stats.Close`（dump）
+  - 该顺序与 Scrapy 原版 `ExecutionEngine.close_spider` 保持一致
+  - 在关键位置添加详细注释说明顺序约束与 bug 背景，避免未来误改
+
+- **回归测试**
+  - 新增 `TestEngineCoreStatsFinalMetrics`，验证 `start_time` / `finish_time` / `elapsed_time_seconds` / `finish_reason` 在 Spider 结束后确实存在于 stats 中
+  - 测试显式断言关闭顺序错误时会立即暴露（`t.Fatal` 附带修复提示）
+
+### 质量
+
+- `go test ./pkg/engine/... -race`：全部通过
+- `go test ./... -race`：全量测试通过
+- `go vet ./...`：零告警
+
+---
+
 ## [v0.3.0-alpha.5] - 2026-04-28
 
 ### 修复
