@@ -24,10 +24,8 @@ func TestManagerProcessItemNormal(t *testing.T) {
 		t.Errorf("expected 'TEST', got '%v'", result["name"])
 	}
 
-	scraped := sc.GetValue("item_scraped_count", 0)
-	if scraped != 1 {
-		t.Errorf("expected item_scraped_count=1, got %v", scraped)
-	}
+	// 注意：item_scraped_count 由 CoreStats 扩展通过 ItemScraped 信号递增，
+	// Pipeline Manager 不再直接操作统计计数。
 }
 
 func TestManagerProcessItemChain(t *testing.T) {
@@ -50,8 +48,7 @@ func TestManagerProcessItemChain(t *testing.T) {
 }
 
 func TestManagerProcessItemDrop(t *testing.T) {
-	sc := stats.NewMemoryCollector(false, nil)
-	m := NewManager(nil, sc, nil)
+	m := NewManager(nil, nil, nil)
 
 	m.AddPipeline(&dropPipeline{}, "drop", 100)
 	m.AddPipeline(&addFieldPipeline{field: "after_drop", value: true}, "after", 200)
@@ -61,10 +58,8 @@ func TestManagerProcessItemDrop(t *testing.T) {
 		t.Errorf("expected ErrDropItem, got %v", err)
 	}
 
-	dropped := sc.GetValue("item_dropped_count", 0)
-	if dropped != 1 {
-		t.Errorf("expected item_dropped_count=1, got %v", dropped)
-	}
+	// 注意：item_dropped_count 由 CoreStats 扩展通过 ItemDropped 信号递增，
+	// Pipeline Manager 不再直接操作统计计数。
 }
 
 func TestManagerProcessItemError(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
 	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	"github.com/dplcz/scrapy-go/pkg/extension"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
@@ -240,12 +241,18 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector,
 
 	dlMW := downloader.NewMiddlewareManager(nil)
 	dlMW.AddMiddleware(dmiddle.NewUserAgentMiddleware("scrapy-go-test/0.1"), "UserAgent", 500)
+	// 下载层统计指标（downloader/*）由 DownloaderStats 中间件统一负责
+	dlMW.AddMiddleware(dmiddle.NewDownloaderStatsMiddleware(sc, nil), "DownloaderStats", 850)
 
 	spMW := smiddle.NewManager(nil)
 	pm := pipeline.NewManager(sm, sc, nil)
-	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
+	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000, 100)
 
-	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
+	// 核心指标（response_received_count 等）由 CoreStats 扩展监听信号后递增
+	extMgr := extension.NewManager(nil)
+	extMgr.AddExtension(extension.NewCoreStatsExtension(sc, sm, nil), "CoreStats", 0)
+
+	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, extMgr)
 }
 
 // ============================================================================
@@ -413,6 +420,59 @@ func TestEngineSignals(t *testing.T) {
 	}
 }
 
+// TestEngineCoreStatsFinalMetrics 是一个回归测试，验证 Spider 结束后
+// CoreStats 扩展写入的最终指标（finish_time、elapsed_time_seconds、finish_reason）
+// 确实存在于 stats 中，且在 stats dump 之前被写入。
+//
+// 该测试对应的 bug 背景：
+// 若 Engine.closeSpider 先关闭 extensions 再派发 SpiderClosed 信号，
+// CoreStatsExtension.Close 会提前注销 SpiderClosed 处理器，
+// 导致最终指标无法写入、dump 日志中缺失 finish_time/elapsed_time_seconds/finish_reason。
+func TestEngineCoreStatsFinalMetrics(t *testing.T) {
+	site := newTestSite()
+	defer site.Close()
+
+	sp := newSinglePageSpider(site.URL + "/")
+	sc := stats.NewMemoryCollector(false, nil)
+	eng := buildTestEngine(sp, nil, sc, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := eng.Start(ctx); err != nil && err != context.Canceled && err != context.DeadlineExceeded {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if v := sc.GetValue("start_time", nil); v == nil {
+		t.Error("expected start_time to be set by CoreStats extension")
+	}
+
+	finishTime := sc.GetValue("finish_time", nil)
+	if finishTime == nil {
+		t.Fatal("expected finish_time to be set by CoreStats extension; " +
+			"SpiderClosed signal must be dispatched before extensions.Close")
+	}
+	if _, ok := finishTime.(time.Time); !ok {
+		t.Errorf("expected finish_time to be time.Time, got %T", finishTime)
+	}
+
+	elapsed := sc.GetValue("elapsed_time_seconds", nil)
+	if elapsed == nil {
+		t.Fatal("expected elapsed_time_seconds to be set by CoreStats extension")
+	}
+	if v, ok := elapsed.(float64); !ok || v < 0 {
+		t.Errorf("expected elapsed_time_seconds to be non-negative float64, got %v (%T)", elapsed, elapsed)
+	}
+
+	reason := sc.GetValue("finish_reason", nil)
+	if reason == nil {
+		t.Fatal("expected finish_reason to be set by CoreStats extension")
+	}
+	if s, ok := reason.(string); !ok || s == "" {
+		t.Errorf("expected finish_reason to be non-empty string, got %v (%T)", reason, reason)
+	}
+}
+
 func TestEngineWithPipeline(t *testing.T) {
 	site := newTestSite()
 	defer site.Close()
@@ -441,7 +501,7 @@ func TestEngineWithPipeline(t *testing.T) {
 	pm := pipeline.NewManager(sm, sc, nil)
 	pm.AddPipeline(collector, "collector", 100)
 
-	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
+	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000, 100)
 
 	eng := NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
 

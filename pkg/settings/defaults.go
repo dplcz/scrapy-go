@@ -12,7 +12,7 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("BOT_NAME", "scrapybot", d)
-	s.Set("USER_AGENT", "scrapy-go/0.1.0 (+https://github.com/example/scrapy-go)", d)
+	s.Set("USER_AGENT", "scrapy-go/0.3.0 (+https://github.com/example/scrapy-go)", d)
 
 	// ========================================================================
 	// 并发控制
@@ -185,7 +185,13 @@ func (s *Settings) loadDefaults() {
 	// Spider 中间件（优先级字典）
 	// ========================================================================
 
-	s.Set("SPIDER_MIDDLEWARES_BASE", map[string]int{}, d)
+	s.Set("SPIDER_MIDDLEWARES_BASE", map[string]int{
+		"HttpError": 50,
+		"Offsite":   500,
+		"Referer":   700,
+		"UrlLength": 800,
+		"Depth":     900,
+	}, d)
 	s.Set("SPIDER_MIDDLEWARES", map[string]int{}, d)
 
 	// ========================================================================
@@ -199,7 +205,13 @@ func (s *Settings) loadDefaults() {
 	// 扩展（优先级字典）
 	// ========================================================================
 
-	s.Set("EXTENSIONS_BASE", map[string]int{}, d)
+	s.Set("EXTENSIONS_BASE", map[string]int{
+		"CoreStats":   0,
+		"CloseSpider": 0,
+		"LogStats":    0,
+		"MemoryUsage": 0,
+		"FeedExport":  0,
+	}, d)
 	s.Set("EXTENSIONS", map[string]int{}, d)
 
 	// ========================================================================
@@ -240,6 +252,23 @@ func (s *Settings) loadDefaults() {
 	s.Set("FEED_EXPORT_INDENT", 0, d)
 	s.Set("FEED_STORE_EMPTY", true, d)
 	s.Set("FEED_EXPORT_BATCH_ITEM_COUNT", 0, d)
+	// FEEDS: map[string]map[string]any 形式的多目标导出配置
+	// 示例：
+	//   s.Set("FEEDS", map[string]map[string]any{
+	//       "output.json": {"format": "json", "overwrite": true},
+	//       "output.csv":  {"format": "csv"},
+	//   }, settings.PriorityProject)
+	s.Set("FEEDS", map[string]map[string]any{}, d)
+	// 向后兼容字段（Scrapy 旧式单文件输出）
+	s.Set("FEED_URI", "", d)
+	s.Set("FEED_FORMAT", "", d)
+
+	// ========================================================================
+	// HTTP 错误过滤
+	// ========================================================================
+
+	s.Set("HTTPERROR_ALLOW_ALL", false, d)
+	s.Set("HTTPERROR_ALLOWED_CODES", []int{}, d)
 
 	// ========================================================================
 	// Referer 配置

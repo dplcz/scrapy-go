@@ -11,6 +11,28 @@ import (
 	"strings"
 )
 
+// noCallbackSentinel 是 NoCallback 哨兵值的内部标记类型。
+type noCallbackSentinel struct{}
+
+// NoCallback 是一个哨兵值，用于显式标记请求不需要回调函数。
+// 当 Request.Callback 设置为 NoCallback 时，中间件和 Engine 可以识别
+// 该请求不需要调用 Spider.Parse 作为默认回调。
+//
+// 对齐 Scrapy 的 NO_CALLBACK 哨兵值。
+//
+// 用法：
+//
+//	req, _ := http.NewRequest("https://example.com",
+//	    http.WithCallback(http.NoCallback),
+//	)
+var NoCallback CallbackFunc = noCallbackSentinel{}
+
+// IsNoCallback 检查给定的回调是否为 NoCallback 哨兵值。
+func IsNoCallback(cb CallbackFunc) bool {
+	_, ok := cb.(noCallbackSentinel)
+	return ok
+}
+
 // CallbackFunc 定义响应回调函数类型。
 // 使用 any 类型避免与 spider 包的循环依赖，实际类型为：
 //
@@ -206,6 +228,54 @@ func WithCbKwargs(kwargs map[string]any) RequestOption {
 func WithEncoding(encoding string) RequestOption {
 	return func(r *Request) {
 		r.Encoding = encoding
+	}
+}
+
+// WithRawBody 设置原始请求体（字节切片）。
+// 这是 WithBody 的别名，语义更明确地表示设置原始字节内容。
+func WithRawBody(body []byte) RequestOption {
+	return func(r *Request) {
+		r.Body = body
+	}
+}
+
+// WithBasicAuth 设置 HTTP Basic Authentication 请求头。
+// 等价于设置 Authorization: Basic base64(user:pass) 头。
+func WithBasicAuth(user, pass string) RequestOption {
+	return func(r *Request) {
+		if r.Meta == nil {
+			r.Meta = make(map[string]any)
+		}
+		r.Meta["http_user"] = user
+		r.Meta["http_pass"] = pass
+	}
+}
+
+// WithUserAgent 设置 User-Agent 请求头。
+func WithUserAgent(ua string) RequestOption {
+	return func(r *Request) {
+		r.Headers.Set("User-Agent", ua)
+	}
+}
+
+// WithFormData 设置表单数据作为请求体。
+// 自动设置 Content-Type 为 application/x-www-form-urlencoded。
+// 如果当前方法为 GET，则将表单数据编码为查询参数。
+func WithFormData(formdata map[string][]string) RequestOption {
+	return func(r *Request) {
+		encoded := url.Values(formdata).Encode()
+		if strings.ToUpper(r.Method) == "GET" {
+			if r.URL != nil {
+				if r.URL.RawQuery != "" {
+					r.URL.RawQuery += "&" + encoded
+				} else {
+					r.URL.RawQuery = encoded
+				}
+			}
+		} else {
+			r.Body = []byte(encoded)
+			r.Headers.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
 	}
 }
 

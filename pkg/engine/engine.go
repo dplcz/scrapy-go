@@ -12,9 +12,9 @@ import (
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	"github.com/dplcz/scrapy-go/pkg/extension"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
-	"github.com/dplcz/scrapy-go/pkg/extension"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
 	"github.com/dplcz/scrapy-go/pkg/signal"
@@ -206,20 +206,25 @@ func (e *Engine) closeSpider(ctx context.Context, reason string) {
 		e.logger.Error("failed to close scheduler", "error", err)
 	}
 
-	// 关闭扩展系统
+	// 发送 spider_closed 信号
+	// 注意：此信号必须在 extensions.Close 之前派发。
+	// 扩展在自身 Close 中会注销 SpiderClosed 处理器（如 CoreStats/LogStats/CloseSpider），
+	// 若先关闭扩展再发信号，处理器已不存在，会导致 finish_time、elapsed_time_seconds、
+	// finish_reason、responses_per_minute 等最终指标无法写入 stats，进而在 stats dump 中丢失。
+	// 该顺序与 Scrapy 原版 ExecutionEngine.close_spider 保持一致。
+	e.signals.SendCatchLog(signal.SpiderClosed, map[string]any{
+		"spider": e.spider,
+		"reason": reason,
+	})
+
+	// 关闭扩展系统（此时扩展已通过 SpiderClosed 信号完成最终统计写入）
 	if e.extensions != nil {
 		if err := e.extensions.Close(ctx); err != nil {
 			e.logger.Error("failed to close extensions", "error", err)
 		}
 	}
 
-	// 发送 spider_closed 信号
-	e.signals.SendCatchLog(signal.SpiderClosed, map[string]any{
-		"spider": e.spider,
-		"reason": reason,
-	})
-
-	// 关闭统计收集器
+	// 关闭统计收集器（触发 dump，此时 stats 已包含扩展写入的最终指标）
 	e.stats.Close(reason)
 
 	// 调用 Spider.Closed
@@ -390,13 +395,14 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 	}
 
 	// 发送 response_received 信号
+	// 注：下游核心指标（response_received_count）由 CoreStats 扩展监听该信号后递增，
+	// 下载层指标（downloader/response_count、downloader/response_status_count/{STATUS}、
+	// downloader/response_bytes 等）由 DownloaderStats 中间件统一负责。
+	// 引擎仅负责派发信号与引擎视角的调度日志，不直接写入下载层统计。
 	e.signals.SendCatchLog(signal.ResponseReceived, map[string]any{
 		"response": resp,
 		"request":  request,
 	})
-
-	e.stats.IncValue("response_received_count", 1, 0)
-	e.stats.IncValue(fmt.Sprintf("downloader/response_status_count/%d", resp.Status), 1, 0)
 
 	e.logger.Debug("response received",
 		"status", fmt.Sprintf("%s%d%s", sslog.ColorByStatusCode(resp.Status), resp.Status, sslog.ColorReset),

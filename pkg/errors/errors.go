@@ -1,7 +1,19 @@
-// Package errors 定义了 scrapy-go 框架的所有错误类型。
+// Package errors 定义了 scrapy-go 框架中跨包共享的错误类型。
 //
 // 包含 sentinel errors（哨兵错误）和带上下文信息的结构化错误类型，
 // 对应 Scrapy Python 版本中 scrapy.exceptions 模块的功能。
+//
+// # 职责边界
+//
+// 本包仅收纳需要在多个包之间共享语义契约的错误——即某个包抛出后，
+// 其他包（如中间件链、Engine、Signal、Pipeline 等）需要通过 errors.Is
+// 进行识别并据此改变行为的错误。典型示例包括 ErrCloseSpider、ErrDropItem、
+// ErrIgnoreRequest 等直接对应 Scrapy exceptions 模块的框架级语义错误。
+//
+// 对于仅在单个包内使用、由调用方在该包 API 边界处直接识别的局部错误
+// （例如 Runner 生命周期错误、Queue 满错误等），应遵循 Go 官方惯用法
+// 就近定义在其所属包中（参考标准库 io.EOF、sql.ErrNoRows、context.Canceled
+// 的放置方式），而不应集中到本包。
 package errors
 
 import (
