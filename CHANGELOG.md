@@ -5,6 +5,40 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 规划（迭代日程登记，尚未实现）
+
+基于 Scrapy 原版 Request API 的对比分析，新增以下三项 Request 便捷 API 规划到迭代日程（详见 `scrapy-go-iteration-schedule.md` v1.7）：
+
+- **P2-011 — Request 便捷 Option 与 JSON 支持**（Sprint 6，预估 3d）
+  - 便捷 Option：`WithForm` / `WithRawBody` / `WithBasicAuth` / `WithUserAgent`
+  - 独立构造函数：`NewJSONRequest(url, data, opts...) (*Request, error)`（错误显式返回，不以 Option 形式吞错）
+  - 独立构造函数：`NewFormRequest(url, formdata, opts...) (*Request, error)`（POST 写 body、GET 写 query）
+  - `NoCallback` 哨兵值（对齐 Scrapy `NO_CALLBACK`）
+- **P3-012 — FormRequestFromResponse 与 Multipart 支持**（Sprint 7，预估 3d）
+  - `FormRequestFromResponse(resp, opts...)`：基于 `pkg/selector` 自动提取 HTML `<form>` 的 action/method/inputs
+  - 支持 `formname` / `formid` / `formnumber` / `formxpath` / `formcss` 表单定位
+  - `NewMultipartFormRequest(url, fields, files, opts...) (*Request, error)`：基于 `mime/multipart` 标准库，支持文件上传
+- **P3-013 — Request 序列化与 curl 互操作**（Sprint 8，预估 2.5d，为 P3-003 磁盘队列前置）
+  - `Request.ToDict() map[string]any` / `FromDict(d map[string]any) (*Request, error)`（对齐 Scrapy `request_from_dict`）
+  - Callback/Errback 通过 Spider 方法名字符串反查，支撑磁盘队列跨进程恢复
+  - `Request.FromCURL(curl string, opts...) (*Request, error)`（对齐 Scrapy `Request.from_curl`）
+
+### 规划变更
+
+- **P3-003 磁盘队列**：工时由 8d 调整为 7d，依赖从"无"改为 P3-013；`P3-003b` 子任务改为"调度器层序列化封装（基于 `Request.ToDict/FromDict` + `encoding/json`）"，与 P3-013a 分层配合
+- **P3-004 v0.4.0 发布准备**：依赖追加 `P3-012, P3-013`
+- **Phase 2 关键路径**：新增 `P2-011 (Request 便捷 API, 3d)` 并行分支
+- **技术债务登记 TD-009**：`FormRequestFromResponse` 不覆盖 JavaScript 动态生成的表单（仅静态 `<form>`）；`from_curl` 不支持 `--data-urlencode` 等复杂选项（优先级：低）
+- **舍弃**：`XmlRpcRequest`（Go 生态 XML-RPC 场景稀缺，不纳入规划）
+
+### 依赖影响
+
+- P2-011 / P3-012 / P3-013 **仅依赖 Go 标准库**（`encoding/json` / `net/url` / `mime/multipart`），不引入新的外部依赖
+
+---
+
 ## [v0.3.0-alpha.6] - 2026-04-28
 
 ### 修复
