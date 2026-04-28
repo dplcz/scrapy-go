@@ -246,7 +246,7 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector,
 
 	spMW := smiddle.NewManager(nil)
 	pm := pipeline.NewManager(sm, sc, nil)
-	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
+	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000, 100)
 
 	// 核心指标（response_received_count 等）由 CoreStats 扩展监听信号后递增
 	extMgr := extension.NewManager(nil)
@@ -501,7 +501,7 @@ func TestEngineWithPipeline(t *testing.T) {
 	pm := pipeline.NewManager(sm, sc, nil)
 	pm.AddPipeline(collector, "collector", 100)
 
-	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
+	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000, 100)
 
 	eng := NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
 

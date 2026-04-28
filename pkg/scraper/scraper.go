@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
@@ -33,6 +34,17 @@ type Scraper struct {
 	// maxActiveSize 控制活跃响应的最大总大小（字节），用于回退机制。
 	maxActiveSize int64
 	activeSize    atomic.Int64
+
+	// concurrentItems 控制同时在 Pipeline 链中处理的 Item 上限。
+	// 对齐 Scrapy 的 CONCURRENT_ITEMS 配置（默认 100）。
+	concurrentItems int
+
+	// itemSem 是 Item 并发处理的信号量通道。
+	// 缓冲区大小等于 concurrentItems。
+	itemSem chan struct{}
+
+	// itemWg 用于等待所有 in-flight Item 处理完毕（优雅关闭）。
+	itemWg sync.WaitGroup
 }
 
 // NewScraper 创建一个新的 Scraper。
@@ -44,6 +56,7 @@ func NewScraper(
 	sc stats.Collector,
 	logger *slog.Logger,
 	maxActiveSize int,
+	concurrentItems int,
 ) *Scraper {
 	if spiderMW == nil {
 		spiderMW = smiddle.NewManager(nil)
@@ -63,15 +76,20 @@ func NewScraper(
 	if maxActiveSize <= 0 {
 		maxActiveSize = 5000000 // 5MB 默认值
 	}
+	if concurrentItems <= 0 {
+		concurrentItems = 100 // 对齐 Scrapy 默认值
+	}
 
 	return &Scraper{
-		spiderMW:      spiderMW,
-		itemProc:      itemProc,
-		spiderRef:     spiderRef,
-		signals:       signals,
-		stats:         sc,
-		logger:        logger,
-		maxActiveSize: int64(maxActiveSize),
+		spiderMW:        spiderMW,
+		itemProc:        itemProc,
+		spiderRef:       spiderRef,
+		signals:         signals,
+		stats:           sc,
+		logger:          logger,
+		maxActiveSize:   int64(maxActiveSize),
+		concurrentItems: concurrentItems,
+		itemSem:         make(chan struct{}, concurrentItems),
 	}
 }
 
@@ -80,8 +98,22 @@ func (s *Scraper) Open(ctx context.Context) error {
 	return s.itemProc.Open(ctx)
 }
 
-// Close 关闭 Scraper，释放 Pipeline 资源。
+// Close 关闭 Scraper，等待 in-flight Item 处理完毕后释放 Pipeline 资源。
 func (s *Scraper) Close(ctx context.Context) error {
+	// 等待所有 in-flight Item 处理完毕（优雅关闭）
+	done := make(chan struct{})
+	go func() {
+		s.itemWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 所有 Item 处理完毕
+	case <-ctx.Done():
+		s.logger.Warn("context cancelled while waiting for in-flight items to complete")
+	}
+
 	return s.itemProc.Close(ctx)
 }
 
@@ -165,6 +197,13 @@ func (s *Scraper) ScrapeError(ctx context.Context, err error, request *shttp.Req
 // resolveCallback 确定请求的回调函数。
 func (s *Scraper) resolveCallback(request *shttp.Request) spider.CallbackFunc {
 	if request.Callback != nil {
+		// 检查是否为 NoCallback 哨兵值
+		if shttp.IsNoCallback(request.Callback) {
+			// NoCallback 表示不需要回调，返回空操作
+			return func(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
+				return nil, nil
+			}
+		}
 		if cb, ok := request.Callback.(spider.CallbackFunc); ok {
 			return cb
 		}
@@ -175,6 +214,8 @@ func (s *Scraper) resolveCallback(request *shttp.Request) spider.CallbackFunc {
 
 // processOutputs 分发 Spider 输出。
 // 将 Request 收集返回给 Engine，将 Item 发送到 Pipeline。
+// Item 之间并发处理（受 CONCURRENT_ITEMS 上限控制），
+// 单个 Item 内 Pipeline 链仍按优先级串行（对齐 Scrapy 语义）。
 func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, response any) ([]*shttp.Request, error) {
 	var newRequests []*shttp.Request
 
@@ -188,13 +229,30 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 			newRequests = append(newRequests, output.Request)
 		} else if output.IsItem() {
 			s.logger.Debug("scraped item", "item", output.Item)
-			_, err := s.itemProc.ProcessItem(ctx, output.Item, response)
-			if err != nil && !errors.Is(err, serrors.ErrDropItem) {
-				// Pipeline 处理错误（非 DropItem），记录但不中断
-				s.logger.Error("pipeline failed to process item",
-					"error", err,
-				)
-			}
+			// 并发处理 Item：获取信号量后在 goroutine 中执行 Pipeline 链
+			item := output.Item
+			s.itemSem <- struct{}{} // 获取信号量（阻塞直到有空位）
+			s.itemWg.Add(1)         // 增加 WaitGroup 计数
+			go func(it any) {
+				defer s.itemWg.Done()
+				defer func() { <-s.itemSem }() // 释放信号量
+				// panic recovery: 防止 Pipeline 中的 panic 导致进程崩溃
+				defer func() {
+					if r := recover(); r != nil {
+						s.logger.Error("panic recovered in pipeline processing",
+							"panic", r,
+						)
+						s.stats.IncValue("spider_exceptions/panic", 1, 0)
+					}
+				}()
+				_, err := s.itemProc.ProcessItem(ctx, it, response)
+				if err != nil && !errors.Is(err, serrors.ErrDropItem) {
+					// Pipeline 处理错误（非 DropItem），记录但不中断
+					s.logger.Error("pipeline failed to process item",
+						"error", err,
+					)
+				}
+			}(item)
 		}
 	}
 

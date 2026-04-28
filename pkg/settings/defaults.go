@@ -12,7 +12,7 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("BOT_NAME", "scrapybot", d)
-	s.Set("USER_AGENT", "scrapy-go/0.1.0 (+https://github.com/example/scrapy-go)", d)
+	s.Set("USER_AGENT", "scrapy-go/0.3.0 (+https://github.com/example/scrapy-go)", d)
 
 	// ========================================================================
 	// 并发控制

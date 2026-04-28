@@ -406,7 +406,8 @@ func (c *Crawler) assembleComponents() {
 
 	// 7. Scraper
 	maxActiveSize := c.Settings.GetInt("SCRAPER_SLOT_MAX_ACTIVE_SIZE", 5000000)
-	c.scraper = scraper.NewScraper(c.spiderMW, c.pipelines, c.spider, c.Signals, c.Stats, c.Logger, maxActiveSize)
+	concurrentItems := c.Settings.GetInt("CONCURRENT_ITEMS", 100)
+	c.scraper = scraper.NewScraper(c.spiderMW, c.pipelines, c.spider, c.Signals, c.Stats, c.Logger, maxActiveSize, concurrentItems)
 
 	// 8. Engine
 	c.engine = engine.NewEngine(c.spider, c.scheduler, c.downloader, c.dlMW, c.scraper, c.Signals, c.Stats, c.Logger, c.extensions)

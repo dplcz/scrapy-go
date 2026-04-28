@@ -181,7 +181,7 @@ func buildTestEngineWithPipeline(sp spider.Spider, pm *pipeline.Manager, sc stat
 		pm = pipeline.NewManager(sm, sc, nil)
 	}
 
-	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
+	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000, 100)
 	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
 }
 
