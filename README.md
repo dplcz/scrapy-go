@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.3.0-alpha.4** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.3.0-alpha.8** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -734,10 +734,6 @@ req, _ := shttp.NewRequest("https://example.com/api",
 | 💾 磁盘队列 | Scheduler 仅支持内存队列，不支持磁盘持久化 |
 | 🗄️ HTTP 缓存 | 缓存中间件未实现 |
 | 🤖 Robots.txt | RobotsTxt 中间件未实现 |
-| 📏 深度控制 | DepthMiddleware 未实现 |
-| 📤 Feed Export | 不支持内置数据导出，需自定义 Pipeline |
-| 📈 内存监控 | 内存监控扩展未实现 |
-| 🛑 关闭条件 | CloseSpider 扩展未实现 |
 | 🗜️ Zstd | HttpCompression 暂不支持 zstd |
 | 🐚 Scrapy Shell | 不支持交互式调试 |
 | 🌍 分布式爬取 | 不支持分布式调度 |
@@ -746,7 +742,6 @@ req, _ := shttp.NewRequest("https://example.com/api",
 
 - **Go 版本要求** — 需要 Go 1.25.1+
 - **回调函数类型** — `Callback`/`Errback` 使用 `any` 类型，需运行时类型断言
-- **内置 Spider 中间件** — 当前无内置 Spider 中间件，需用户自行实现
 
 ---
 
@@ -773,7 +768,9 @@ scrapy-go/
 │   ├── spider/                     # Spider 接口 + 配置
 │   │   └── middleware/             # Spider 中间件
 │   ├── pipeline/                   # Item Pipeline
-│   ├── extension/                  # Extension 扩展系统（4 个内置扩展）
+│   ├── extension/                  # Extension 扩展系统（4 个内置扩展 + Feed Export）
+│   ├── feedexport/                 # Feed Export 数据导出（JSON/JSONL/CSV/XML）
+│   ├── item/                       # Item 体系与 ItemAdapter 统一访问抽象
 │   ├── http/                       # Request/Response 数据模型
 │   ├── selector/                   # CSS/XPath 选择器
 │   ├── settings/                   # 多优先级配置系统
@@ -789,6 +786,35 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v0.3.0-alpha.8
+
+- 📦 **Item 体系与 ItemAdapter**（P2-009） — 新增 `pkg/item` 包，提供统一的 Item 访问抽象
+  - `ItemAdapter` 接口：`FieldNames` / `GetField` / `SetField` / `HasField` / `AsMap` / `Len` / `FieldMeta`
+  - `MapAdapter`：适配 `map[string]any` / `map[string]string` / 其他 `key=string` 的 map
+  - `StructAdapter`：基于 `reflect` 适配任意 struct，支持 `item` tag → `json` tag → Go 字段名优先级解析
+  - `Adapt(item)` 自动检测工厂 + `Register(factory)` 自定义工厂注册
+  - `FieldMeta` 字段元数据（从 struct tag 自动解析）
+  - Feed Export 重写为 `item.Adapt` 的薄封装，所有 Exporter 通过 `ItemAdapter` 统一读取字段
+- 🐛 **修复 item_scraped_count / item_dropped_count 重复计数** — Pipeline 直接 IncValue + CoreStats 信号双写导致计数翻倍，统一由 CoreStatsExtension 通过信号机制完成
+
+### v0.3.0-alpha.7
+
+- 📤 **Feed Export 数据导出系统**（P2-008） — 新增 `pkg/feedexport` 包，对齐 Scrapy `feedexport` + `exporters`
+  - 四种内置格式：JSON / JSON Lines / CSV / XML
+  - 两种存储后端：本地文件（`FileStorage`）、标准输出（`StdoutStorage`）
+  - URI 模板占位符：`%(name)s` / `%(time)s` / `%(batch_id)d` / `%(batch_time)s`
+  - `FeedExportExtension` 通过信号系统接入 Spider 生命周期
+  - `Crawler.AddFeed()` 代码注入 + `Settings.FEEDS` 配置驱动
+- 📋 **Request 便捷 API 规划登记** — P2-011 / P3-012 / P3-013 三项规划纳入迭代日程
+
+### v0.3.0-alpha.6
+
+- 🐛 **Engine closeSpider 收尾顺序修复** — 修复"先关闭扩展再派发 SpiderClosed 信号"导致的最终指标丢失问题，调整为信号派发 → 扩展关闭 → stats dump
+
+### v0.3.0-alpha.5
+
+- 🐛 **下载层统计职责归位** — 移除 Engine 中越界的 `response_received_count` 和 `downloader/response_status_count` 直接写入，统一由 CoreStats 扩展和 DownloaderStats 中间件通过信号/中间件机制完成
 
 ### v0.3.0-alpha.4
 
