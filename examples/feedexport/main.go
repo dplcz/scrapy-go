@@ -134,7 +134,7 @@ func (s *productSpider) Parse(ctx context.Context, response *shttp.Response) ([]
 
 func main() {
 	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║          scrapy-go Feed Export 完整 API 示例               ║")
+	fmt.Println("║          scrapy-go Feed Export 完整 API 示例                 ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 
 	// Part A: 底层 API 直接使用（不依赖 Crawler）
@@ -666,7 +666,7 @@ func demoFeedSlotDirect() {
 	// ExportItem — 导出多个 Item
 	products := []*Product{
 		{Name: "Go in Action", Price: 39.99, InStock: true},
-		{Name: "Learning Go", Price: 42.00, InStock: false},  // 被 Filter 过滤
+		{Name: "Learning Go", Price: 42.00, InStock: false}, // 被 Filter 过滤
 		{Name: "100 Go Mistakes", Price: 35.50, InStock: true},
 	}
 	for _, p := range products {

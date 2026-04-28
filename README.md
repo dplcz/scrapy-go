@@ -227,7 +227,8 @@ func main() {
 | 🕷️ **quotes** | 多页爬取 + CSS/XPath 解析 | `go run examples/quotes/main.go` |
 | 📚 **books_json** | JSON API + Pipeline 数据处理 | `go run examples/books_json/main.go` |
 | 🔧 **custom_middleware** | 认证/日志/缓存中间件 | `go run examples/custom_middleware/main.go` |
-| 📤 **feedexport** | 同时导出 JSON/JSONL/CSV/XML 四种格式 + URI 模板 + Filter | `go run examples/feedexport/main.go` |
+| 📤 **feedexport** | Feed Export 全部核心 API 演示（格式/存储/序列化器/FeedSlot/Crawler 集成） | `go run examples/feedexport/main.go` |
+| 📦 **itemadapter** | ItemAdapter 全部核心 API 演示（MapAdapter/StructAdapter/FieldMeta/自定义工厂） | `go run examples/itemadapter/main.go` |
 
 此外，`examples/template/` 目录提供了对齐 Scrapy CLI 模板的 Go 代码模板，可直接复制到项目中使用：
 
@@ -761,6 +762,8 @@ scrapy-go/
 │   ├── quotes/                     # 基础爬取示例
 │   ├── books_json/                 # Pipeline + JSON API 示例
 │   ├── custom_middleware/          # 自定义中间件示例
+│   ├── feedexport/                 # Feed Export 全部 API 示例
+│   ├── itemadapter/                # ItemAdapter 全部 API 示例
 │   └── template/                   # 代码模板（对齐 Scrapy CLI 模板）
 │       ├── project/                # 项目级模板（settings/pipelines/middlewares）
 │       └── spiders/                # 爬虫模板（basic）
@@ -809,6 +812,7 @@ scrapy-go/
 - 🔍 **Spider 内置中间件** — HttpError / Offsite / Referer / UrlLength / Depth
 - 🏠 **Pipeline FromCrawler** — 工厂约定，对齐 Scrapy `from_crawler`
 - 📋 **626 个测试全部通过**，核心包覆盖率均 ≥85%
+- 📖 **完善示例** — 重写 `feedexport` 示例覆盖全部核心 API + 新增 `itemadapter` 示例覆盖全部核心 API
 
 ### v0.3.0-alpha.10
 
