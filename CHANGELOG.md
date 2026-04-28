@@ -5,6 +5,37 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v0.3.0-alpha.5] - 2026-04-28
+
+### 修复
+
+#### 下载层统计职责归位（Engine 去越界统计）
+
+对齐 Scrapy 原版"引擎派发信号 + 中间件统计下载层 + 扩展监听信号维护核心指标"的分层设计，修复 Engine 中直接写入下载层统计导致的重复计数问题。
+
+- **移除 `pkg/engine/engine.go` 中的两行越界统计**
+  - 删除 `e.stats.IncValue("response_received_count", 1, 0)` — 改由 `CoreStatsExtension` 监听 `ResponseReceived` 信号统一递增
+  - 删除 `e.stats.IncValue("downloader/response_status_count/%d", ...)` — 改由 `DownloaderStatsMiddleware.ProcessResponse` 统一统计
+- **收益**
+  - 消除双写：当 CoreStats 扩展与 DownloaderStats 中间件启用时，指标不再翻倍
+  - 职责收敛：Engine 仅负责调度 + 信号派发 + 引擎视角日志，不再穿透下载层抽象
+  - 配置生效：`DOWNLOADER_STATS=false` 禁用时，下载层统计能够被真正关闭
+
+### 变更
+
+- `pkg/engine/engine_test.go` `buildTestEngine` 测试夹具同步调整
+  - 新增注入 `DownloaderStatsMiddleware`（优先级 850）
+  - 新增注入 `CoreStatsExtension`（通过 `extension.Manager` 传入 Engine）
+  - 保证 `TestEngineBasicCrawl` 等测试对 `response_received_count` / `downloader/response_status_count/200` 的断言继续生效
+
+### 质量
+
+- 全量测试：442 个测试通过
+- `go test ./... -race`：竞态检测通过
+- `go vet ./...`：零告警
+
+---
+
 ## [v0.3.0-alpha.4] - 2026-04-27
 
 ### 新增
