@@ -395,6 +395,7 @@ func (c *Crawler) assembleComponents() {
 
 	// 5. Item Pipeline
 	c.pipelines = pipeline.NewManager(c.Signals, c.Stats, c.Logger)
+	c.pipelines.SetCrawler(c) // 传入 Crawler 引用，供 CrawlerAwarePipeline 使用
 	for _, entry := range c.userPipelines {
 		c.pipelines.AddPipeline(entry.Pipeline, entry.Name, entry.Priority)
 	}
@@ -939,4 +940,28 @@ func WithSignals(sm *sig.Manager) Option {
 	return func(c *Crawler) {
 		c.Signals = sm
 	}
+}
+
+// ============================================================================
+// pipeline.Crawler 接口实现
+// ============================================================================
+
+// GetSettings 实现 pipeline.Crawler 接口，返回当前 Settings。
+func (c *Crawler) GetSettings() *settings.Settings {
+	return c.Settings
+}
+
+// GetStats 实现 pipeline.Crawler 接口，返回当前统计收集器。
+func (c *Crawler) GetStats() stats.Collector {
+	return c.Stats
+}
+
+// GetSignals 实现 pipeline.Crawler 接口，返回当前信号管理器。
+func (c *Crawler) GetSignals() *sig.Manager {
+	return c.Signals
+}
+
+// GetLogger 实现 pipeline.Crawler 接口，返回当前日志记录器。
+func (c *Crawler) GetLogger() *slog.Logger {
+	return c.Logger
 }

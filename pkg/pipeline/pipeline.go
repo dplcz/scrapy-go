@@ -12,6 +12,7 @@ import (
 	"sort"
 
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
@@ -36,6 +37,49 @@ type ItemPipeline interface {
 }
 
 // ============================================================================
+// CrawlerAwarePipeline 可选接口
+// ============================================================================
+
+// Crawler 定义 Pipeline 可访问的 Crawler 能力子集。
+//
+// 此接口在 pipeline 包中定义（而非引用 crawler.Crawler 具体类型），
+// 以避免 pipeline → crawler 的循环依赖。crawler.Crawler 隐式满足此接口。
+//
+// 对齐 Scrapy 的 `from_crawler(cls, crawler)` 中 Pipeline 可访问的 Crawler 属性。
+type Crawler interface {
+	GetSettings() *settings.Settings
+	GetStats() stats.Collector
+	GetSignals() *signal.Manager
+	GetLogger() *slog.Logger
+}
+
+// CrawlerAwarePipeline 是一个可选接口，Pipeline 可以实现此接口以在初始化时
+// 获取 Crawler 引用，从而访问 Settings、Stats、Signals 等框架组件。
+//
+// 对齐 Scrapy 的 `from_crawler(cls, crawler)` 工厂方法约定（需求 13 验收标准 6）。
+//
+// 若 Pipeline 实现了此接口，Manager.Open 会在调用 Pipeline.Open 之前
+// 调用 FromCrawler 并传入 Crawler 引用。
+//
+// 用法：
+//
+//	type MyPipeline struct {
+//	    stats stats.Collector
+//	}
+//
+//	func (p *MyPipeline) FromCrawler(c pipeline.Crawler) error {
+//	    p.stats = c.GetStats()
+//	    return nil
+//	}
+type CrawlerAwarePipeline interface {
+	ItemPipeline
+	// FromCrawler 在 Open 之前调用，传入 Crawler 引用。
+	// Pipeline 可在此方法中获取 Settings、Stats、Signals 等框架组件。
+	// 返回 error 将阻止该 Pipeline 的 Open 调用。
+	FromCrawler(c Crawler) error
+}
+
+// ============================================================================
 // Entry
 // ============================================================================
 
@@ -57,6 +101,7 @@ type Manager struct {
 	signals   *signal.Manager
 	stats     stats.Collector
 	logger    *slog.Logger
+	crawler   Crawler // 可选的 Crawler 引用，供 CrawlerAwarePipeline 使用
 }
 
 // NewManager 创建一个新的 Pipeline 管理器。
@@ -95,9 +140,29 @@ func (m *Manager) Count() int {
 	return len(m.pipelines)
 }
 
+// SetCrawler 设置 Crawler 引用，供 CrawlerAwarePipeline 在 Open 时使用。
+// 必须在 Open 之前调用。
+func (m *Manager) SetCrawler(c Crawler) {
+	m.crawler = c
+}
+
 // Open 打开所有 Pipeline。
+// 若 Pipeline 实现了 CrawlerAwarePipeline 接口且 Crawler 引用已设置，
+// 会在调用 Open 之前先调用 FromCrawler。
 func (m *Manager) Open(ctx context.Context) error {
 	for _, entry := range m.pipelines {
+		// 若 Pipeline 实现了 CrawlerAwarePipeline，先调用 FromCrawler
+		if m.crawler != nil {
+			if cap, ok := entry.Pipeline.(CrawlerAwarePipeline); ok {
+				if err := cap.FromCrawler(m.crawler); err != nil {
+					m.logger.Error("pipeline FromCrawler failed",
+						"pipeline", entry.Name,
+						"error", err,
+					)
+					return err
+				}
+			}
+		}
 		if err := entry.Pipeline.Open(ctx); err != nil {
 			return err
 		}

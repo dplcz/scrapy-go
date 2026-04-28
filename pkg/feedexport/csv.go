@@ -70,7 +70,7 @@ func (e *CSVExporter) ExportItem(item any) error {
 		return errors.New("feedexport: CSVExporter already finished")
 	}
 
-	allFields, getField := extractItem(item)
+	allFields, getField := serializeItemFields(item, nil)
 
 	// 若首次导出且未预设字段，用当前 Item 的字段集合作为表头
 	if len(e.fields) == 0 {

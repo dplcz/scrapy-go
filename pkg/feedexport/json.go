@@ -134,8 +134,7 @@ func (e *JSONExporter) writeNewlineIfIndent() {
 // Go 的 encoding/json 在 marshal map 时会按 key 字典序排序（参见 encoding/json 文档），
 // 为了保持 fieldsToExport 指定的顺序或 struct 的声明顺序，我们手动构造 JSON。
 func buildItemDict(item any, fieldsToExport []string) json.RawMessage {
-	allFields, getField := extractItem(item)
-	fields := filterFields(allFields, fieldsToExport)
+	fields, getField := serializeItemFields(item, fieldsToExport)
 
 	if len(fields) == 0 {
 		return json.RawMessage("{}")

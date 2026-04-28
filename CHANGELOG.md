@@ -11,6 +11,79 @@
 
 ---
 
+## [v0.3.0-alpha.9] - 2026-04-28
+
+### 新增
+
+#### FieldMeta 驱动序列化（Sprint 6 / P2-009-ext1）
+
+对齐 Scrapy 的 `BaseItemExporter.serialize_field` 机制，让 `FieldMeta` 元数据
+真正驱动 Feed Export 的字段序列化行为。
+
+- **新增 `pkg/feedexport/serializer.go`**
+  - `SerializeFunc` 类型 — 字段序列化函数签名 `func(value any) any`
+  - `RegisterSerializer(name, fn)` — 注册命名序列化函数（线程安全，可覆盖）
+  - `LookupSerializer(name)` — 按名称查找已注册的序列化函数
+  - `ClearSerializers()` — 清空注册表（仅用于测试）
+  - `SerializeField(meta, name, value)` — 根据 `FieldMeta` 中的 `serializer` 键
+    查表调用，未命中回退原始值
+  - `serializeItemFields(item, fieldsToExport)` — 内部辅助函数，替代原有的
+    `extractItem`，在读取字段值时自动应用 serialize_field 钩子
+
+- **Exporter 集成**
+  - JSON / JSON Lines / CSV / XML 四种 Exporter 均已接入 `serializeItemFields`，
+    所有字段在写入前自动经过 serialize_field 钩子处理
+  - struct 类型的 Item 可通过 `item:"price,serializer=to_int"` tag 声明序列化器
+
+- **与 Scrapy 原版的差异**
+  - Scrapy 的 `serialize_field` 是 Exporter 的虚方法，子类可覆盖；Go 版本采用
+    注册表模式（`RegisterSerializer`），更符合 Go 的组合优于继承理念
+  - Scrapy 的 `serializer` 是 Field 中的 callable；Go 版本通过名称字符串查表，
+    避免 struct tag 中无法嵌入函数引用的限制
+
+- **测试**
+  - 新增 `pkg/feedexport/serializer_test.go`，21 个测试用例
+  - 覆盖：注册/查找/覆盖/清空、SerializeField 各分支、struct + FieldMeta 端到端、
+    四种 Exporter 集成验证
+  - `pkg/feedexport` 覆盖率 **85.6%**，满足 Phase 2 核心包 ≥85% 要求
+
+#### Pipeline FromCrawler 工厂约定（Sprint 6 / P2-009-ext2）
+
+对齐 Scrapy 的 `from_crawler(cls, crawler)` 工厂方法约定（需求 13 验收标准 6），
+允许 Pipeline 在初始化时获取 Crawler 引用以访问 Settings、Stats、Signals 等框架组件。
+
+- **新增 `pipeline.Crawler` 接口**（`pkg/pipeline/pipeline.go`）
+  - `GetSettings() *settings.Settings`
+  - `GetStats() stats.Collector`
+  - `GetSignals() *signal.Manager`
+  - `GetLogger() *slog.Logger`
+  - 在 pipeline 包中定义以避免 pipeline → crawler 循环依赖；`crawler.Crawler`
+    隐式满足此接口
+
+- **新增 `pipeline.CrawlerAwarePipeline` 可选接口**
+  - 嵌入 `ItemPipeline` + `FromCrawler(c Crawler) error`
+  - `Manager.Open` 时若 Pipeline 实现该接口且 Crawler 引用已设置，则在调用
+    `Pipeline.Open` 之前先调用 `FromCrawler`
+  - `FromCrawler` 返回 error 将阻止该 Pipeline 的 Open 调用
+
+- **`Manager.SetCrawler(c Crawler)`** — 设置 Crawler 引用，由 `crawler.Crawler`
+  在 `assembleComponents` 中自动调用
+
+- **`crawler.Crawler` 新增 Getter 方法**
+  - `GetSettings()` / `GetStats()` / `GetSignals()` / `GetLogger()`
+  - 满足 `pipeline.Crawler` 接口
+
+- **测试**
+  - 新增 `pkg/pipeline/fromcrawler_test.go`，7 个测试用例
+  - 覆盖：FromCrawler 调用、Settings/Stats 访问、非 CrawlerAware Pipeline 不受影响、
+    未设置 Crawler 时跳过、FromCrawler 错误传播、混合 Pipeline 执行顺序
+  - `pkg/pipeline` 覆盖率 **90.2%**，超过 Phase 2 核心包 ≥85% 要求
+
+- **依赖影响**
+  - 无新增外部依赖，仅使用 Go 标准库
+
+---
+
 ## [v0.3.0-alpha.8] - 2026-04-28
 
 ### 新增

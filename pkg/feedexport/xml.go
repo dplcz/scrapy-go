@@ -95,8 +95,7 @@ func (e *XMLExporter) ExportItem(item any) error {
 		return errors.New("feedexport: XMLExporter already finished")
 	}
 
-	allFields, getField := extractItem(item)
-	fields := filterFields(allFields, e.opts.FieldsToExport)
+	fields, getField := serializeItemFields(item, e.opts.FieldsToExport)
 
 	start := xml.StartElement{Name: xml.Name{Local: e.itemName}}
 	if err := e.encoder.EncodeToken(start); err != nil {
