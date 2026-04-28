@@ -12,6 +12,7 @@ import (
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
 	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	"github.com/dplcz/scrapy-go/pkg/extension"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
@@ -240,12 +241,18 @@ func buildTestEngine(sp spider.Spider, s *settings.Settings, sc stats.Collector,
 
 	dlMW := downloader.NewMiddlewareManager(nil)
 	dlMW.AddMiddleware(dmiddle.NewUserAgentMiddleware("scrapy-go-test/0.1"), "UserAgent", 500)
+	// 下载层统计指标（downloader/*）由 DownloaderStats 中间件统一负责
+	dlMW.AddMiddleware(dmiddle.NewDownloaderStatsMiddleware(sc, nil), "DownloaderStats", 850)
 
 	spMW := smiddle.NewManager(nil)
 	pm := pipeline.NewManager(sm, sc, nil)
 	sc2 := scraper.NewScraper(spMW, pm, sp, sm, sc, nil, 5000000)
 
-	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, nil)
+	// 核心指标（response_received_count 等）由 CoreStats 扩展监听信号后递增
+	extMgr := extension.NewManager(nil)
+	extMgr.AddExtension(extension.NewCoreStatsExtension(sc, sm, nil), "CoreStats", 0)
+
+	return NewEngine(sp, sched, dl, dlMW, sc2, sm, sc, nil, extMgr)
 }
 
 // ============================================================================

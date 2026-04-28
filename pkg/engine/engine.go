@@ -390,13 +390,14 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 	}
 
 	// 发送 response_received 信号
+	// 注：下游核心指标（response_received_count）由 CoreStats 扩展监听该信号后递增，
+	// 下载层指标（downloader/response_count、downloader/response_status_count/{STATUS}、
+	// downloader/response_bytes 等）由 DownloaderStats 中间件统一负责。
+	// 引擎仅负责派发信号与引擎视角的调度日志，不直接写入下载层统计。
 	e.signals.SendCatchLog(signal.ResponseReceived, map[string]any{
 		"response": resp,
 		"request":  request,
 	})
-
-	e.stats.IncValue("response_received_count", 1, 0)
-	e.stats.IncValue(fmt.Sprintf("downloader/response_status_count/%d", resp.Status), 1, 0)
 
 	e.logger.Debug("response received",
 		"status", fmt.Sprintf("%s%d%s", sslog.ColorByStatusCode(resp.Status), resp.Status, sslog.ColorReset),
