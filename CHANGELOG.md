@@ -54,6 +54,63 @@
   - 两条规则演示：跟踪分类页面（无回调）+ 提取文章数据（有回调）
   - CSS 选择器解析文章标题/作者/内容
 
+#### RobotsTxt 中间件（Phase 3 Sprint 7 — P3-002）
+
+- **`RobotsTxtMiddleware`** — robots.txt 遵守中间件，注册优先级 100
+  - 按 netloc（`scheme://host:port`）缓存 robots.txt 解析结果
+  - 使用 `sync.Once` + `sync.WaitGroup` 确保每个 netloc 只下载一次 robots.txt（替代 Scrapy Twisted Deferred）
+  - 被 robots.txt 禁止的请求返回 `ErrIgnoreRequest`
+  - 支持 `ROBOTSTXT_OBEY` 配置开关（默认 false）
+  - 支持 `ROBOTSTXT_USER_AGENT` 配置自定义匹配 User-Agent
+  - 支持 `Request.Meta["dont_obey_robotstxt"]` 跳过单个请求的检查
+  - 自动跳过 `data:` 和 `file:` 协议的请求
+  - 内置 robots.txt 解析器，支持 `User-agent`/`Disallow`/`Allow` 指令
+  - 支持通配符 `*` 和结尾锚定 `$` 的路径匹配
+  - 最长匹配原则：`Allow` 规则长度 ≥ `Disallow` 规则时优先允许
+  - 统计指标：`robotstxt/request_count`、`robotstxt/response_count`、`robotstxt/response_status_count/{status}`、`robotstxt/forbidden`、`robotstxt/exception_count`
+  - Functional Options 模式配置（`WithRobotsTxtUserAgent`/`WithRobotsTxtDefaultUserAgent`/`WithRobotsTxtHTTPClient`）
+  - 单元测试覆盖率 92.6%
+
+- **新增配置项** — `ROBOTSTXT_OBEY`（默认 false）、`ROBOTSTXT_USER_AGENT`（默认 ""）
+- **`DOWNLOADER_MIDDLEWARES_BASE`** — 新增 `RobotsTxt: 100`
+
+#### FormRequestFromResponse 与 Multipart 文件上传（Phase 3 Sprint 7 — P3-012）
+
+- **`FormRequestFromResponse(resp, opts...)`** — 从 HTTP 响应中自动提取 HTML `<form>` 信息并创建表单请求（对齐 Scrapy `FormRequest.from_response()`）
+  - 自动提取 `<form>` 的 action（URL）、method（HTTP 方法）
+  - 自动收集表单内所有 `<input>`、`<select>`、`<textarea>` 的 name/value
+  - 支持 `<input type="checkbox/radio">` 的 checked 状态检测
+  - 支持 `<select>` 的 `selected` 选项提取（无选中项时使用第一个 `<option>`，对齐浏览器行为）
+  - 自动跳过 `submit`/`image`/`reset` 类型的 input（不作为普通字段提取）
+  - 默认自动包含第一个提交按钮的 name/value（`WithDontClick()` 禁用）
+  - 支持 `WithClickButton(map[string]string{...})` 指定点击的提交按钮（舍弃 Scrapy 的坐标点击 `nr` 参数）
+  - 用户通过 `WithFormResponseData()` 提供的字段覆盖 HTML 中提取的同名字段
+  - 支持相对 URL 和绝对 URL 的 action 解析
+  - 无 action 属性时使用当前页面 URL（对齐 HTML 规范）
+  - 无 method 属性时默认 GET（对齐 HTML 规范）
+  - 无效 method（非 GET/POST）回退为 GET（对齐 Scrapy）
+  - 通过 `WithRequestOptions()` 传递底层 Request 选项（Callback/Meta/Priority 等）
+  - 单元测试覆盖率 96.4%
+
+- **表单定位选项**（`FormOption`）— 支持 5 种表单定位方式
+  - `WithFormName(name)` — 按 `<form name="...">` 属性定位
+  - `WithFormID(id)` — 按 `<form id="...">` 属性定位
+  - `WithFormNumber(n)` — 按表单在页面中的出现顺序定位（从 0 开始，默认 0）
+  - `WithFormXPath(xpath)` — 按 XPath 表达式定位（支持 ancestor 轴向上查找 `<form>` 祖先）
+  - `WithFormCSS(css)` — 按 CSS 选择器定位（支持匹配表单内部元素后向上查找 `<form>`）
+  - 定位优先级：formname > formid > formcss > formxpath > formnumber
+
+- **`NewMultipartFormRequest(url, fields, files, opts...)`** — multipart/form-data 文件上传请求构造器
+  - 基于 Go 标准库 `mime/multipart` 实现
+  - `FormField` — 普通文本字段（Name/Value）
+  - `FormFile` — 文件字段（FieldName/FileName/Content/ContentType）
+  - 支持多文件上传（同一 FieldName 多个文件）
+  - 支持自定义文件 Content-Type（`FormFile.ContentType`）
+  - 内置 MIME 类型自动推断（30+ 种常见扩展名映射）
+  - 默认 POST 方法，自动设置 `Content-Type: multipart/form-data; boundary=...`
+  - `MustNewMultipartFormRequest` — panic 版本（用于确定参数有效的场景）
+  - 单元测试覆盖率 92.0%
+
 ### 文档
 
 - **完善 Feed Export 示例** — 重写 `examples/feedexport/main.go`，覆盖 `pkg/feedexport` 全部核心 API
