@@ -7,111 +7,73 @@
 
 ## [Unreleased]
 
+---
+
+## [v0.4.0-alpha.5] - 2026-04-29
+
 ### 新增
 
-#### CrawlSpider 基于规则的自动爬取（Phase 3 Sprint 7 — P3-001）
+#### 磁盘队列与断点续爬（Phase 3 Sprint 8 — P3-003）
 
-- **`pkg/linkextractor` 包** — 链接提取器接口与实现
-  - `LinkExtractor` 接口 — 定义 `ExtractLinks(response) []Link` 契约
-  - `Link` 数据模型 — URL/Text/Fragment/NoFollow 四字段
-  - `HTMLLinkExtractor` 基于 goquery 的链接提取器（对应 Scrapy `LxmlLinkExtractor`，Go 中重命名）
-  - 支持 `allow`/`deny` 正则过滤（`WithAllow`/`WithDeny`）
-  - 支持 `allowDomains`/`denyDomains` 域名过滤（含子域名匹配）
-  - 支持 `restrictCSS`/`restrictXPath` 限制提取范围
-  - 支持 `restrictText` 锚文本正则过滤
-  - 支持自定义标签/属性扫描（`WithTags`/`WithAttrs`，默认 `a`/`area` + `href`）
-  - 支持 URL 去重（`WithUnique`，默认 true）
-  - 支持 Fragment 去除（`WithStripFragment`，默认 true）
-  - 支持文件扩展名过滤（`WithDenyExtensions`，默认过滤 90+ 种非网页扩展名）
-  - 支持 `<base>` 标签解析
-  - 支持 `rel="nofollow"` 检测
-  - 全部使用 Functional Options 模式配置
-  - `Matches(url)` 方法 — 快速判断 URL 是否匹配过滤规则
+- **`Queue` 接口** — 统一的队列抽象（`pkg/scheduler/queue.go`）
+  - 操作原始字节切片（`[]byte`），序列化职责上移到调度器层（替代 Scrapy `queuelib` 直接存储 Python 对象）
+  - `Push`/`Pop`/`Peek`/`Len`/`Close` 五个方法
+  - `MemoryQueue` 内置内存 LIFO 队列实现
 
-- **`Rule` 结构体** — CrawlSpider 爬取规则定义
-  - `LinkExtractor` — 链接提取器（nil 时使用默认 HTMLLinkExtractor）
-  - `Callback` — 直接接受函数值（舍弃 Scrapy 字符串方法名反射）
-  - `Errback` — 错误回调函数
-  - `CbKwargs` — 传递给回调的额外参数
-  - `Follow` — 是否跟踪链接（nil 时：无 Callback 默认 true，有 Callback 默认 false）
-  - `ProcessLinks` — 链接后处理钩子
-  - `ProcessRequest` — 请求后处理钩子（返回 nil 丢弃请求）
+- **`DiskQueue` 基于文件系统的持久化队列** — `pkg/scheduler/diskqueue.go`
+  - JSON 格式存储（替代 Scrapy pickle 格式，更安全且跨平台）
+  - 按优先级分桶存储，每个优先级对应独立文件（`p{priority}.json`）
+  - `os.Rename` 原子写入确保数据一致性
+  - `PushWithPriority`/`PopWithPriority` 支持优先级感知的入队/出队
+  - 按优先级从高到低出队，相同优先级 LIFO（后进先出）
+  - `state.json` 状态文件记录所有桶的元数据
+  - 自动加载已有数据（用于断点续爬）
+  - 自动清理空桶文件
+  - `Flush` 方法支持手动持久化
 
-- **`CrawlSpider` 结构体** — 基于规则的自动爬取 Spider
-  - 嵌入 `spider.Base`，实现 `spider.Spider` 接口
-  - `Rules` — 多规则列表，按顺序匹配，同一链接只被第一个匹配规则处理（跨规则去重）
-  - `FollowLinks` — 全局链接跟踪开关（对应 Scrapy `CRAWLSPIDER_FOLLOW_LINKS`）
-  - `ParseStartURL` — 初始 URL 响应回调（对应 Scrapy `parse_start_url`）
-  - `ProcessResults` — 回调结果后处理钩子（对应 Scrapy `process_results`）
-  - 内部回调机制 — 通过 `Request.Meta["rule"]` 索引规则，`ruleCallback`/`ruleErrback` 分发
-  - 非 HTML 响应自动跳过链接提取（检查 Content-Type）
-  - `sync.Once` 确保规则只编译一次
+- **`RequestSerializer` 请求序列化器** — `pkg/scheduler/serializer.go`
+  - `Serialize(req) ([]byte, error)` — Request → ToDict → JSON → []byte
+  - `Deserialize(data) (*Request, error)` — []byte → JSON → FromDict → Request
+  - 通过 `CallbackRegistry` 注册表自动查找 Callback/Errback 的注册名称
+  - 不可序列化的 Meta 值自动跳过（由 ToDict 处理）
 
-- **新增配置项** — `CRAWLSPIDER_FOLLOW_LINKS`（默认 true）
+- **`DefaultScheduler` 扩展支持磁盘队列**
+  - `WithJobDir(dir)` — 启用磁盘队列，支持断点续爬（对应 Scrapy `JOBDIR` 配置）
+  - `WithCallbackRegistry(registry)` — 设置回调注册表，用于磁盘队列序列化/反序列化
+  - 入队策略：磁盘队列优先，序列化失败回退内存队列（对齐 Scrapy 行为）
+  - 出队策略：内存队列优先于磁盘队列（对齐 Scrapy 行为）
+  - `HasDiskQueue()` — 查询是否启用了磁盘队列
+  - 统计指标：`scheduler/enqueued/disk`、`scheduler/dequeued/disk`、`scheduler/unserializable`
+  - `Open` 时自动初始化磁盘队列并加载已有数据
+  - `Close` 时持久化磁盘队列状态
 
-- **新增示例** — `examples/crawlspider/main.go`
-  - 本地测试网站模拟多层级站点（首页 → 分类 → 文章）
-  - 两条规则演示：跟踪分类页面（无回调）+ 提取文章数据（有回调）
-  - CSS 选择器解析文章标题/作者/内容
+- **`RFPDupeFilter` 持久化支持**
+  - `NewPersistentRFPDupeFilter(logger, debug, jobDir)` — 创建支持持久化的去重过滤器
+  - `Open` 时从磁盘加载已有指纹集合（`requests.seen` 文件，每行一个 SHA1 指纹）
+  - `Close` 时将指纹集合保存到磁盘（原子写入）
+  - `DupeFilterStats()` — 返回去重过滤器统计信息
+  - `ExportState()` — 导出状态为 JSON（用于调试）
 
-#### RobotsTxt 中间件（Phase 3 Sprint 7 — P3-002）
+- **`Crawler` 集成 JOBDIR**
+  - 当 `JOBDIR` 配置非空时，自动创建 `CallbackRegistry` 并通过 `RegisterSpider` 注册 Spider 回调
+  - 自动使用 `PersistentRFPDupeFilter` 替代内存去重过滤器
+  - 日志输出磁盘队列启用状态
 
-- **`RobotsTxtMiddleware`** — robots.txt 遵守中间件，注册优先级 100
-  - 按 netloc（`scheme://host:port`）缓存 robots.txt 解析结果
-  - 使用 `sync.Once` + `sync.WaitGroup` 确保每个 netloc 只下载一次 robots.txt（替代 Scrapy Twisted Deferred）
-  - 被 robots.txt 禁止的请求返回 `ErrIgnoreRequest`
-  - 支持 `ROBOTSTXT_OBEY` 配置开关（默认 false）
-  - 支持 `ROBOTSTXT_USER_AGENT` 配置自定义匹配 User-Agent
-  - 支持 `Request.Meta["dont_obey_robotstxt"]` 跳过单个请求的检查
-  - 自动跳过 `data:` 和 `file:` 协议的请求
-  - 内置 robots.txt 解析器，支持 `User-agent`/`Disallow`/`Allow` 指令
-  - 支持通配符 `*` 和结尾锚定 `$` 的路径匹配
-  - 最长匹配原则：`Allow` 规则长度 ≥ `Disallow` 规则时优先允许
-  - 统计指标：`robotstxt/request_count`、`robotstxt/response_count`、`robotstxt/response_status_count/{status}`、`robotstxt/forbidden`、`robotstxt/exception_count`
-  - Functional Options 模式配置（`WithRobotsTxtUserAgent`/`WithRobotsTxtDefaultUserAgent`/`WithRobotsTxtHTTPClient`）
-  - 单元测试覆盖率 92.6%
+- **断点续爬完整流程**
+  - 启动 → 入队请求到磁盘队列 → 消费部分请求 → 中断（Close）→ 持久化队列 + 指纹
+  - 重启 → 加载磁盘队列 + 指纹 → 从断点继续 → 不重复爬取已完成 URL
+  - 单元测试覆盖率 84.9%，58 个测试全部通过，`go test -race` 无竞态，`go vet` 无告警
 
-- **新增配置项** — `ROBOTSTXT_OBEY`（默认 false）、`ROBOTSTXT_USER_AGENT`（默认 ""）
-- **`DOWNLOADER_MIDDLEWARES_BASE`** — 新增 `RobotsTxt: 100`
+---
 
-#### FormRequestFromResponse 与 Multipart 文件上传（Phase 3 Sprint 7 — P3-012）
+<details>
+<summary>📦 v0.4.0 预发布版本历史（alpha.1 ~ alpha.4）</summary>
 
-- **`FormRequestFromResponse(resp, opts...)`** — 从 HTTP 响应中自动提取 HTML `<form>` 信息并创建表单请求（对齐 Scrapy `FormRequest.from_response()`）
-  - 自动提取 `<form>` 的 action（URL）、method（HTTP 方法）
-  - 自动收集表单内所有 `<input>`、`<select>`、`<textarea>` 的 name/value
-  - 支持 `<input type="checkbox/radio">` 的 checked 状态检测
-  - 支持 `<select>` 的 `selected` 选项提取（无选中项时使用第一个 `<option>`，对齐浏览器行为）
-  - 自动跳过 `submit`/`image`/`reset` 类型的 input（不作为普通字段提取）
-  - 默认自动包含第一个提交按钮的 name/value（`WithDontClick()` 禁用）
-  - 支持 `WithClickButton(map[string]string{...})` 指定点击的提交按钮（舍弃 Scrapy 的坐标点击 `nr` 参数）
-  - 用户通过 `WithFormResponseData()` 提供的字段覆盖 HTML 中提取的同名字段
-  - 支持相对 URL 和绝对 URL 的 action 解析
-  - 无 action 属性时使用当前页面 URL（对齐 HTML 规范）
-  - 无 method 属性时默认 GET（对齐 HTML 规范）
-  - 无效 method（非 GET/POST）回退为 GET（对齐 Scrapy）
-  - 通过 `WithRequestOptions()` 传递底层 Request 选项（Callback/Meta/Priority 等）
-  - 单元测试覆盖率 96.4%
+## [v0.4.0-alpha.4] - 2026-04-29
 
-- **表单定位选项**（`FormOption`）— 支持 5 种表单定位方式
-  - `WithFormName(name)` — 按 `<form name="...">` 属性定位
-  - `WithFormID(id)` — 按 `<form id="...">` 属性定位
-  - `WithFormNumber(n)` — 按表单在页面中的出现顺序定位（从 0 开始，默认 0）
-  - `WithFormXPath(xpath)` — 按 XPath 表达式定位（支持 ancestor 轴向上查找 `<form>` 祖先）
-  - `WithFormCSS(css)` — 按 CSS 选择器定位（支持匹配表单内部元素后向上查找 `<form>`）
-  - 定位优先级：formname > formid > formcss > formxpath > formnumber
+### 新增
 
-- **`NewMultipartFormRequest(url, fields, files, opts...)`** — multipart/form-data 文件上传请求构造器
-  - 基于 Go 标准库 `mime/multipart` 实现
-  - `FormField` — 普通文本字段（Name/Value）
-  - `FormFile` — 文件字段（FieldName/FileName/Content/ContentType）
-  - 支持多文件上传（同一 FieldName 多个文件）
-  - 支持自定义文件 Content-Type（`FormFile.ContentType`）
-  - 内置 MIME 类型自动推断（30+ 种常见扩展名映射）
-  - 默认 POST 方法，自动设置 `Content-Type: multipart/form-data; boundary=...`
-  - `MustNewMultipartFormRequest` — panic 版本（用于确定参数有效的场景）
-  - 单元测试覆盖率 92.0%
-
-#### Request 序列化与 curl 互操作（Phase 3 Sprint 8 — P3-013）
+#### Request 序列化与 curl 互操作（Sprint 8 / P3-013）
 
 - **`Request.ToDict(callbackName, errbackName) map[string]any`** — 将 Request 转换为可序列化的字典（对齐 Scrapy `Request.to_dict()`）
   - 所有核心字段序列化：URL/Method/Headers/Body/Cookies/Meta/Priority/DontFilter/Flags/CbKwargs/Encoding
@@ -160,6 +122,141 @@
 - **`ToCURL` → `FromCURL` 往返测试** — 验证 curl 命令互转正确性
 - **pkg/http 整体覆盖率 91.8%**，全部测试通过，`go test -race` 无竞态
 
+### 质量
+
+- `go test ./pkg/http/... -race`：全部通过
+- `go vet ./...`：零告警
+
+---
+
+## [v0.4.0-alpha.3] - 2026-04-29
+
+### 新增
+
+#### FormRequestFromResponse 与 Multipart 文件上传（Sprint 7 / P3-012）
+
+- **`FormRequestFromResponse(resp, opts...)`** — 从 HTTP 响应中自动提取 HTML `<form>` 信息并创建表单请求（对齐 Scrapy `FormRequest.from_response()`）
+  - 自动提取 `<form>` 的 action（URL）、method（HTTP 方法）
+  - 自动收集表单内所有 `<input>`、`<select>`、`<textarea>` 的 name/value
+  - 支持 `<input type="checkbox/radio">` 的 checked 状态检测
+  - 支持 `<select>` 的 `selected` 选项提取（无选中项时使用第一个 `<option>`，对齐浏览器行为）
+  - 自动跳过 `submit`/`image`/`reset` 类型的 input（不作为普通字段提取）
+  - 默认自动包含第一个提交按钮的 name/value（`WithDontClick()` 禁用）
+  - 支持 `WithClickButton(map[string]string{...})` 指定点击的提交按钮（舍弃 Scrapy 的坐标点击 `nr` 参数）
+  - 用户通过 `WithFormResponseData()` 提供的字段覆盖 HTML 中提取的同名字段
+  - 支持相对 URL 和绝对 URL 的 action 解析
+  - 无 action 属性时使用当前页面 URL（对齐 HTML 规范）
+  - 无 method 属性时默认 GET（对齐 HTML 规范）
+  - 无效 method（非 GET/POST）回退为 GET（对齐 Scrapy）
+  - 通过 `WithRequestOptions()` 传递底层 Request 选项（Callback/Meta/Priority 等）
+  - 单元测试覆盖率 96.4%
+
+- **表单定位选项**（`FormOption`）— 支持 5 种表单定位方式
+  - `WithFormName(name)` — 按 `<form name="...">` 属性定位
+  - `WithFormID(id)` — 按 `<form id="...">` 属性定位
+  - `WithFormNumber(n)` — 按表单在页面中的出现顺序定位（从 0 开始，默认 0）
+  - `WithFormXPath(xpath)` — 按 XPath 表达式定位（支持 ancestor 轴向上查找 `<form>` 祖先）
+  - `WithFormCSS(css)` — 按 CSS 选择器定位（支持匹配表单内部元素后向上查找 `<form>`）
+  - 定位优先级：formname > formid > formcss > formxpath > formnumber
+
+- **`NewMultipartFormRequest(url, fields, files, opts...)`** — multipart/form-data 文件上传请求构造器
+  - 基于 Go 标准库 `mime/multipart` 实现
+  - `FormField` — 普通文本字段（Name/Value）
+  - `FormFile` — 文件字段（FieldName/FileName/Content/ContentType）
+  - 支持多文件上传（同一 FieldName 多个文件）
+  - 支持自定义文件 Content-Type（`FormFile.ContentType`）
+  - 内置 MIME 类型自动推断（30+ 种常见扩展名映射）
+  - 默认 POST 方法，自动设置 `Content-Type: multipart/form-data; boundary=...`
+  - `MustNewMultipartFormRequest` — panic 版本（用于确定参数有效的场景）
+  - 单元测试覆盖率 92.0%
+
+### 质量
+
+- `go test ./pkg/http/... -race`：全部通过
+- `go vet ./...`：零告警
+
+---
+
+## [v0.4.0-alpha.2] - 2026-04-29
+
+### 新增
+
+#### RobotsTxt 中间件（Sprint 7 / P3-002）
+
+- **`RobotsTxtMiddleware`** — robots.txt 遵守中间件，注册优先级 100
+  - 按 netloc（`scheme://host:port`）缓存 robots.txt 解析结果
+  - 使用 `sync.Once` + `sync.WaitGroup` 确保每个 netloc 只下载一次 robots.txt（替代 Scrapy Twisted Deferred）
+  - 被 robots.txt 禁止的请求返回 `ErrIgnoreRequest`
+  - 支持 `ROBOTSTXT_OBEY` 配置开关（默认 false）
+  - 支持 `ROBOTSTXT_USER_AGENT` 配置自定义匹配 User-Agent
+  - 支持 `Request.Meta["dont_obey_robotstxt"]` 跳过单个请求的检查
+  - 自动跳过 `data:` 和 `file:` 协议的请求
+  - 内置 robots.txt 解析器，支持 `User-agent`/`Disallow`/`Allow` 指令
+  - 支持通配符 `*` 和结尾锚定 `$` 的路径匹配
+  - 最长匹配原则：`Allow` 规则长度 ≥ `Disallow` 规则时优先允许
+  - 统计指标：`robotstxt/request_count`、`robotstxt/response_count`、`robotstxt/response_status_count/{status}`、`robotstxt/forbidden`、`robotstxt/exception_count`
+  - Functional Options 模式配置（`WithRobotsTxtUserAgent`/`WithRobotsTxtDefaultUserAgent`/`WithRobotsTxtHTTPClient`）
+  - 单元测试覆盖率 92.6%
+
+- **新增配置项** — `ROBOTSTXT_OBEY`（默认 false）、`ROBOTSTXT_USER_AGENT`（默认 ""）
+- **`DOWNLOADER_MIDDLEWARES_BASE`** — 新增 `RobotsTxt: 100`
+
+### 质量
+
+- `go test ./pkg/downloader/... -race`：全部通过
+- `go vet ./...`：零告警
+
+---
+
+## [v0.4.0-alpha.1] - 2026-04-29
+
+### 新增
+
+#### CrawlSpider 基于规则的自动爬取（Sprint 7 / P3-001）
+
+- **`pkg/linkextractor` 包** — 链接提取器接口与实现
+  - `LinkExtractor` 接口 — 定义 `ExtractLinks(response) []Link` 契约
+  - `Link` 数据模型 — URL/Text/Fragment/NoFollow 四字段
+  - `HTMLLinkExtractor` 基于 goquery 的链接提取器（对应 Scrapy `LxmlLinkExtractor`，Go 中重命名）
+  - 支持 `allow`/`deny` 正则过滤（`WithAllow`/`WithDeny`）
+  - 支持 `allowDomains`/`denyDomains` 域名过滤（含子域名匹配）
+  - 支持 `restrictCSS`/`restrictXPath` 限制提取范围
+  - 支持 `restrictText` 锚文本正则过滤
+  - 支持自定义标签/属性扫描（`WithTags`/`WithAttrs`，默认 `a`/`area` + `href`）
+  - 支持 URL 去重（`WithUnique`，默认 true）
+  - 支持 Fragment 去除（`WithStripFragment`，默认 true）
+  - 支持文件扩展名过滤（`WithDenyExtensions`，默认过滤 90+ 种非网页扩展名）
+  - 支持 `<base>` 标签解析
+  - 支持 `rel="nofollow"` 检测
+  - 全部使用 Functional Options 模式配置
+  - `Matches(url)` 方法 — 快速判断 URL 是否匹配过滤规则
+
+- **`Rule` 结构体** — CrawlSpider 爬取规则定义
+  - `LinkExtractor` — 链接提取器（nil 时使用默认 HTMLLinkExtractor）
+  - `Callback` — 直接接受函数值（舍弃 Scrapy 字符串方法名反射）
+  - `Errback` — 错误回调函数
+  - `CbKwargs` — 传递给回调的额外参数
+  - `Follow` — 是否跟踪链接（nil 时：无 Callback 默认 true，有 Callback 默认 false）
+  - `ProcessLinks` — 链接后处理钩子
+  - `ProcessRequest` — 请求后处理钩子（返回 nil 丢弃请求）
+
+- **`CrawlSpider` 结构体** — 基于规则的自动爬取 Spider
+  - 嵌入 `spider.Base`，实现 `spider.Spider` 接口
+  - `Rules` — 多规则列表，按顺序匹配，同一链接只被第一个匹配规则处理（跨规则去重）
+  - `FollowLinks` — 全局链接跟踪开关（对应 Scrapy `CRAWLSPIDER_FOLLOW_LINKS`）
+  - `ParseStartURL` — 初始 URL 响应回调（对应 Scrapy `parse_start_url`）
+  - `ProcessResults` — 回调结果后处理钩子（对应 Scrapy `process_results`）
+  - 内部回调机制 — 通过 `Request.Meta["rule"]` 索引规则，`ruleCallback`/`ruleErrback` 分发
+  - 非 HTML 响应自动跳过链接提取（检查 Content-Type）
+  - `sync.Once` 确保规则只编译一次
+
+- **新增配置项** — `CRAWLSPIDER_FOLLOW_LINKS`（默认 true）
+
+- **新增示例** — `examples/crawlspider/main.go`
+  - 本地测试网站模拟多层级站点（首页 → 分类 → 文章）
+  - 两条规则演示：跟踪分类页面（无回调）+ 提取文章数据（有回调）
+  - CSS 选择器解析文章标题/作者/内容
+
 ### 文档
 
 - **完善 Feed Export 示例** — 重写 `examples/feedexport/main.go`，覆盖 `pkg/feedexport` 全部核心 API
@@ -181,6 +278,13 @@
   - 顶层便捷函数（Adapt/MustAdapt/AsMap/FieldNames）
   - 自定义 `ItemAdapter` 接口实现（OrderedItem）
   - `Register` 自定义 `AdapterFactory`（CSVRow 适配）
+
+### 质量
+
+- `go test ./... -race`：全部通过
+- `go vet ./...`：零告警
+
+</details>
 
 ---
 

@@ -1,8 +1,13 @@
 package scheduler
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/dplcz/scrapy-go/internal/utils"
@@ -37,13 +42,18 @@ type DupeFilter interface {
 // RFPDupeFilter 基于请求指纹的去重过滤器。
 // 使用请求的 URL（规范化后）、Method 和 Body 计算 SHA1 指纹进行去重。
 //
+// 当配置了 jobDir 时，支持指纹集合的持久化：
+//   - Open 时从磁盘加载已有指纹（用于断点续爬）
+//   - Close 时将指纹集合保存到磁盘
+//
 // 对应 Scrapy 的 RFPDupeFilter 类。
 type RFPDupeFilter struct {
 	mu           sync.Mutex
 	fingerprints map[string]struct{}
 	logger       *slog.Logger
-	debug        bool // 是否输出调试日志（对应 DUPEFILTER_DEBUG）
-	logDupes     bool // 是否已输出过重复日志（仅输出一次提示）
+	debug        bool   // 是否输出调试日志（对应 DUPEFILTER_DEBUG）
+	logDupes     bool   // 是否已输出过重复日志（仅输出一次提示）
+	jobDir       string // 持久化目录（空字符串表示不持久化）
 }
 
 // NewRFPDupeFilter 创建一个新的基于请求指纹的去重过滤器。
@@ -63,16 +73,54 @@ func NewRFPDupeFilter(logger *slog.Logger, debug bool) *RFPDupeFilter {
 	}
 }
 
+// NewPersistentRFPDupeFilter 创建一个支持持久化的请求指纹去重过滤器。
+//
+// 当 jobDir 非空时，指纹集合会在 Open 时从磁盘加载，
+// 在 Close 时保存到磁盘，实现断点续爬时的去重状态恢复。
+//
+// 参数：
+//   - logger: 日志记录器，为 nil 时使用默认 logger
+//   - debug: 是否输出每个被过滤请求的调试日志
+//   - jobDir: 持久化目录路径
+func NewPersistentRFPDupeFilter(logger *slog.Logger, debug bool, jobDir string) *RFPDupeFilter {
+	df := NewRFPDupeFilter(logger, debug)
+	df.jobDir = jobDir
+	return df
+}
+
 // Open 初始化过滤器。
+// 如果配置了 jobDir，会从磁盘加载已有的指纹集合。
 func (f *RFPDupeFilter) Open(ctx context.Context) error {
-	// 内存过滤器无需特殊初始化
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.jobDir != "" {
+		if err := f.loadFingerprints(); err != nil {
+			return fmt.Errorf("failed to load dupefilter state: %w", err)
+		}
+		if len(f.fingerprints) > 0 {
+			f.logger.Info("loaded dupefilter fingerprints from disk",
+				"count", len(f.fingerprints),
+				"jobdir", f.jobDir,
+			)
+		}
+	}
+
 	return nil
 }
 
 // Close 关闭过滤器。
+// 如果配置了 jobDir，会将指纹集合保存到磁盘。
 func (f *RFPDupeFilter) Close(reason string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	if f.jobDir != "" && f.fingerprints != nil {
+		if err := f.saveFingerprints(); err != nil {
+			f.logger.Error("failed to save dupefilter state", "error", err)
+			return err
+		}
+	}
 
 	// 清空指纹集合释放内存
 	f.fingerprints = nil
@@ -124,6 +172,119 @@ func (f *RFPDupeFilter) logDupe(request *shttp.Request) {
 		)
 		f.logDupes = false
 	}
+}
+
+// ============================================================================
+// RFPDupeFilter 持久化方法
+// ============================================================================
+
+// fingerprintFile 返回指纹持久化文件路径。
+func (f *RFPDupeFilter) fingerprintFile() string {
+	return filepath.Join(f.jobDir, "requests.seen")
+}
+
+// loadFingerprints 从磁盘加载指纹集合。
+// 文件格式：每行一个指纹（SHA1 十六进制字符串）。
+func (f *RFPDupeFilter) loadFingerprints() error {
+	filename := f.fingerprintFile()
+	file, err := os.Open(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // 文件不存在，正常启动
+		}
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fp := scanner.Text()
+		if fp != "" {
+			f.fingerprints[fp] = struct{}{}
+		}
+	}
+
+	return scanner.Err()
+}
+
+// saveFingerprints 将指纹集合保存到磁盘。
+// 使用临时文件 + os.Rename 实现原子写入。
+func (f *RFPDupeFilter) saveFingerprints() error {
+	if err := os.MkdirAll(f.jobDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create jobdir: %w", err)
+	}
+
+	filename := f.fingerprintFile()
+	tmpFile := filename + ".tmp"
+
+	file, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("failed to create temp fingerprint file: %w", err)
+	}
+
+	writer := bufio.NewWriter(file)
+	for fp := range f.fingerprints {
+		if _, err := writer.WriteString(fp + "\n"); err != nil {
+			file.Close()
+			os.Remove(tmpFile)
+			return fmt.Errorf("failed to write fingerprint: %w", err)
+		}
+	}
+
+	if err := writer.Flush(); err != nil {
+		file.Close()
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to flush fingerprint file: %w", err)
+	}
+
+	if err := file.Close(); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to close fingerprint file: %w", err)
+	}
+
+	if err := os.Rename(tmpFile, filename); err != nil {
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to rename fingerprint file: %w", err)
+	}
+
+	return nil
+}
+
+// ============================================================================
+// PersistentDupeFilter 状态序列化（JSON 格式，用于调试和监控）
+// ============================================================================
+
+// DupeFilterStats 返回去重过滤器的统计信息。
+func (f *RFPDupeFilter) DupeFilterStats() map[string]any {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	stats := map[string]any{
+		"seen_count": len(f.fingerprints),
+		"persistent": f.jobDir != "",
+	}
+	if f.jobDir != "" {
+		stats["jobdir"] = f.jobDir
+	}
+	return stats
+}
+
+// ExportState 导出去重过滤器状态为 JSON（用于调试）。
+func (f *RFPDupeFilter) ExportState() ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	state := struct {
+		SeenCount  int    `json:"seen_count"`
+		Persistent bool   `json:"persistent"`
+		JobDir     string `json:"jobdir,omitempty"`
+	}{
+		SeenCount:  len(f.fingerprints),
+		Persistent: f.jobDir != "",
+		JobDir:     f.jobDir,
+	}
+
+	return json.Marshal(state)
 }
 
 // ============================================================================

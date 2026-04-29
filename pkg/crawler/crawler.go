@@ -24,6 +24,7 @@ import (
 	"github.com/dplcz/scrapy-go/pkg/engine"
 	"github.com/dplcz/scrapy-go/pkg/extension"
 	"github.com/dplcz/scrapy-go/pkg/feedexport"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
@@ -376,11 +377,36 @@ func (c *Crawler) onBeforeStart(hook func(*Crawler)) {
 // assembleComponents 组装所有组件。
 func (c *Crawler) assembleComponents() {
 	// 1. 调度器
-	c.scheduler = scheduler.NewDefaultScheduler(
+	schedulerOpts := []scheduler.DefaultSchedulerOption{
 		scheduler.WithStats(c.Stats),
 		scheduler.WithSchedulerLogger(c.Logger),
 		scheduler.WithDebug(c.Settings.GetBool("SCHEDULER_DEBUG", false)),
-	)
+	}
+
+	// 配置 JOBDIR（断点续爬）
+	jobDir := c.Settings.GetString("JOBDIR", "")
+	if jobDir != "" {
+		schedulerOpts = append(schedulerOpts, scheduler.WithJobDir(jobDir))
+
+		// 创建 CallbackRegistry 并注册 Spider 的回调方法
+		registry := shttp.NewCallbackRegistry()
+		registry.RegisterSpider(c.spider)
+		schedulerOpts = append(schedulerOpts, scheduler.WithCallbackRegistry(registry))
+
+		// 使用持久化的去重过滤器
+		dupeFilter := scheduler.NewPersistentRFPDupeFilter(
+			c.Logger,
+			c.Settings.GetBool("DUPEFILTER_DEBUG", false),
+			jobDir,
+		)
+		schedulerOpts = append(schedulerOpts, scheduler.WithDupeFilter(dupeFilter))
+
+		c.Logger.Info("disk queue enabled for resume crawling",
+			"jobdir", jobDir,
+		)
+	}
+
+	c.scheduler = scheduler.NewDefaultScheduler(schedulerOpts...)
 
 	// 2. 下载器
 	timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
