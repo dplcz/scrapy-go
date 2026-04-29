@@ -111,6 +111,55 @@
   - `MustNewMultipartFormRequest` — panic 版本（用于确定参数有效的场景）
   - 单元测试覆盖率 92.0%
 
+#### Request 序列化与 curl 互操作（Phase 3 Sprint 8 — P3-013）
+
+- **`Request.ToDict(callbackName, errbackName) map[string]any`** — 将 Request 转换为可序列化的字典（对齐 Scrapy `Request.to_dict()`）
+  - 所有核心字段序列化：URL/Method/Headers/Body/Cookies/Meta/Priority/DontFilter/Flags/CbKwargs/Encoding
+  - Body 使用 base64 编码以支持二进制内容
+  - Cookies 转换为 `[]map[string]any`，保留 Name/Value/Domain/Path/Secure/HttpOnly
+  - Meta 中不可 JSON 序列化的值（函数、channel 等）自动跳过
+  - Callback/Errback 通过字符串名称存储（支撑磁盘队列跨进程恢复）
+  - 默认值字段不写入字典（零值 Priority、默认 utf-8 Encoding 等）
+
+- **`FromDict(d map[string]any, registry *CallbackRegistry) (*Request, error)`** — 从字典创建 Request（对齐 Scrapy `request_from_dict()`）
+  - 支持 JSON 反序列化后的类型（`float64` → `int` 优先级、`[]any` → `[]string` Flags 等）
+  - 支持 `map[string]any` 和 `map[string][]string` 两种 Headers 格式
+  - 支持 `[]any` 和 `[]map[string]any` 两种 Cookies 格式
+  - Body 自动 base64 解码
+  - 通过 `CallbackRegistry` 注册表恢复 Callback/Errback 函数引用（registry 可为 nil）
+  - 当 registry 非空但找不到对应回调名称时，直接返回明确错误（包含已注册名称列表，便于排查）
+
+- **`CallbackRegistry`** — 回调函数注册表（替代 Scrapy `getattr(spider, method_name)` 反射）
+  - `RegisterSpider(spider any)` — **通过 Go reflect 自动扫描** Spider 实例上所有符合 Callback/Errback 签名的导出方法并注册（推荐方式，用户无需手动注册）
+  - Callback 签名匹配：`func(context.Context, *Response) ([]T, error)`
+  - Errback 签名匹配：`func(context.Context, error, *Request) ([]T, error)`
+  - 方法命名规范：遵循 Go PascalCase 导出命名（如 `ParseDetail`、`HandleError`），方法名即为注册表键
+  - `Register(name, cb)` / `RegisterErrback(name, eb)` — 手动注册回调/错误回调
+  - `Lookup(name)` / `LookupErrback(name)` — 按名称查找
+  - `MustLookup(name)` / `MustLookupErrback(name)` — 查找失败时 panic
+  - `Names()` / `ErrbackNames()` — 列出所有已注册名称
+  - `sync.RWMutex` 保护并发安全
+  - 单元测试覆盖率 100%
+
+- **`Request.ToCURL() string`** — 将 Request 转换为 curl 命令字符串（对齐 Scrapy `request_to_curl()`）
+  - 输出包含 Method/URL/Headers/Cookies/Body
+  - 使用单引号 shell 引用（正确处理特殊字符）
+
+- **`FromCURL(curlCommand string, opts...) (*Request, error)`** — 从 curl 命令创建 Request（对齐 Scrapy `Request.from_curl()`）
+  - 自实现轻量级 shell 词法分析器（替代 Scrapy `shlex.split` + `argparse`）
+  - 支持单引号、双引号和反斜杠转义
+  - 支持 `-X`/`--request`（方法）、`-H`/`--header`（请求头）、`-b`/`--cookie`（Cookie）、`-d`/`--data`/`--data-raw`（请求体）、`-u`/`--user`（Basic Auth）、`-A`/`--user-agent`（UA）
+  - Cookie Header 中的值自动解析为独立 Cookie
+  - 有 `--data` 但无 `-X` 时默认 POST（对齐 curl 行为）
+  - URL 缺少 scheme 时自动添加 `http://`
+  - `--compressed`/`-s`/`-v`/`-k`/`-L` 等安全忽略（对齐 Scrapy `ignore_unknown_options=True`）
+  - 用户 `RequestOption` 可覆盖 curl 解析出的值
+  - 单元测试覆盖率 89.2%~94.1%
+
+- **`ToDict` → JSON → `FromDict` 往返测试** — 验证序列化/反序列化循环不丢失字段
+- **`ToCURL` → `FromCURL` 往返测试** — 验证 curl 命令互转正确性
+- **pkg/http 整体覆盖率 91.8%**，全部测试通过，`go test -race` 无竞态
+
 ### 文档
 
 - **完善 Feed Export 示例** — 重写 `examples/feedexport/main.go`，覆盖 `pkg/feedexport` 全部核心 API
