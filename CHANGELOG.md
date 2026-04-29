@@ -9,6 +9,110 @@
 
 ---
 
+## [v0.4.0] - 2026-04-29
+
+> **Phase 3 Sprint 8 正式发布** — CrawlSpider、RobotsTxt、磁盘队列与断点续爬、Request 序列化
+
+### 概览
+
+v0.4.0 是 scrapy-go 的 Phase 3 Sprint 8 里程碑版本，实现了 CrawlSpider 基于规则的自动爬取、
+RobotsTxt 中间件、FormRequest 系列增强、Request 序列化与 curl 互操作、磁盘队列与断点续爬等核心功能。
+本版本包含 6 个 alpha 预发布版本的全部变更。
+
+### 新增
+
+#### CrawlSpider 基于规则的自动爬取（P3-001）
+
+- **`HTMLLinkExtractor`** — 基于 goquery 的链接提取器（`pkg/linkextractor/`）
+  - 支持 `allow`/`deny` 正则过滤、`allowDomains`/`denyDomains` 域名过滤
+  - `restrictCSS`/`restrictXPath` 限定提取范围
+  - `canonicalize`/`unique`/`stripFragment` 链接规范化
+- **`Rule` 结构体** — Callback/Errback 直接接受函数值（舍弃 Scrapy 字符串方法名反射）
+- **`CrawlSpider`** — 基于规则的自动爬取 Spider（`pkg/spider/crawlspider.go`）
+  - `parseWithRules` 同步返回 `[]Output`（舍弃 AsyncIterator）
+  - 支持 `Follow` 自动跟踪、`ProcessLinks`/`ProcessResults` 钩子
+
+#### RobotsTxt 中间件（P3-002）
+
+- **`RobotsTxtMiddleware`** — robots.txt 遵守中间件，注册优先级 100
+  - 内置 robots.txt 解析器（自实现，替代外部依赖）
+  - 按 netloc 缓存解析结果（`sync.Once` + `sync.WaitGroup` 替代 Twisted Deferred）
+  - 支持通配符 `*` 和 `$` 锚定，最长匹配原则
+  - 支持 `ROBOTSTXT_OBEY`/`ROBOTSTXT_USER_AGENT` 配置 + `dont_obey_robotstxt` Meta
+
+#### FormRequest 系列增强（P3-012）
+
+- **`FormRequestFromResponse`** — 从 HTML `<form>` 自动提取 action/method/inputs
+  - 5 种表单定位：`WithFormName`/`WithFormID`/`WithFormNumber`/`WithFormXPath`/`WithFormCSS`
+  - `WithClickButton` 简化 clickdata（舍弃 Scrapy 坐标点击）
+- **`NewMultipartFormRequest`** — multipart/form-data 文件上传
+  - 基于 `mime/multipart` 标准库，支持多文件上传、MIME 类型自动推断
+
+#### Request 序列化与 curl 互操作（P3-013）
+
+- **`Request.ToDict` / `FromDict`** — Request 序列化与反序列化（对齐 Scrapy `to_dict`/`request_from_dict`）
+  - Body base64 编码、Cookie 完整属性保留、不可序列化 Meta 自动跳过
+- **`CallbackRegistry`** — 回调函数注册表
+  - `RegisterSpider(spider)` — 通过 reflect 自动扫描注册 Callback/Errback（推荐方式）
+  - `FromDict` 回调恢复严格模式 — registry 非空时找不到回调名称直接返回 error
+- **`FromCURL` / `ToCURL`** — curl 命令与 Request 互转，自实现 shell 词法分析器
+
+#### 磁盘队列与断点续爬（P3-003）
+
+- **`Queue` 接口** — 统一内存/磁盘队列抽象（`pkg/scheduler/queue.go`）
+  - 操作 `[]byte`，序列化职责上移到调度器层（替代 Scrapy `queuelib` 直接存储 Python 对象）
+  - `MemoryQueue` 内置内存 LIFO 队列实现
+- **`PriorityAwareQueue` 接口** — 优先级感知队列扩展，支持 Redis 等外部队列无缝接入
+- **`DiskQueue` 基于文件系统的持久化队列** — `pkg/scheduler/diskqueue.go`
+  - JSON 格式存储（替代 Scrapy pickle，更安全且跨平台）
+  - 按优先级分桶多文件方案，`os.Rename` 原子写入
+  - **每次 Push/Pop 立即写盘**，进程异常退出时数据零丢失（对齐 Scrapy `LifoDiskQueue` 行为）
+  - 写盘失败时自动回滚内存状态，保证一致性
+- **`RequestSerializer`** — 基于 `ToDict`/`FromDict` + `encoding/json` 的请求序列化器
+- **`DefaultScheduler` 扩展** — `WithJobDir` 启用磁盘队列；入队磁盘优先、出队内存优先
+- **`RFPDupeFilter` 持久化** — `requests.seen` 文件持久化指纹集合，原子写入
+- **`Crawler` 集成 JOBDIR** — 自动创建 `CallbackRegistry` + `PersistentRFPDupeFilter`
+- **断点续爬完整流程** — 中断后重启从断点继续，不重复爬取已完成 URL
+
+### 质量
+
+- 全部 **873** 个测试通过
+- `go test ./... -race` 无竞态报告
+- `go vet ./...` 无告警
+- 核心包覆盖率（均 ≥82%）：
+  - `selector` 98.0%、`item` 94.9%、`http` 91.8%、`scraper` 91.6%
+  - `pipeline` 90.2%、`extension` 89.3%、`spider/middleware` 88.0%
+  - `linkextractor` 87.3%、`downloader/middleware` 87.4%、`errors` 87.0%
+  - `spider` 85.6%、`feedexport` 85.6%、`signal` 85.4%
+  - `scheduler` 82.6%
+
+### 依赖
+
+- 无新增外部依赖（Phase 3 Sprint 8 全部功能仅使用 Go 标准库）
+
+---
+
+<details>
+<summary>📦 v0.4.0 预发布版本历史（alpha.1 ~ alpha.6）</summary>
+
+## [v0.4.0-alpha.6] - 2026-04-29
+
+### 改进
+
+#### DiskQueue 即时写盘优化
+
+- **每次 Push/Pop 操作立即写盘** — 替代之前的延迟写入（dirty 标记 + Close 时批量 flush）模式
+  - `PushWithPriority` 写入后立即调用 `persistBucketAndState()` 持久化桶数据和状态文件
+  - `PopWithPriority` 弹出后立即调用 `persistAfterPop()` 持久化变更，空桶自动删除桶文件
+  - 写盘失败时自动回滚内存状态（items + count + buckets map），保证内存与磁盘一致性
+- **移除 `dirty` 标记** — `bucket` 结构体不再需要 `dirty bool` 字段
+- **移除 `Flush()` 公开方法** — 不再需要手动 flush，每次操作已保证数据安全
+- **简化 `Close()` 方法** — 仅做残留空桶文件清理，不再需要批量写盘
+- **新增内部方法** — `persistBucketAndState()`、`persistAfterPop()`、`writeCurrentState()` 替代原有 `flush()`
+- **新增测试** — `TestDiskQueueImmediatePersist`（模拟崩溃恢复）、`TestDiskQueueImmediatePersistAfterPop`
+
+---
+
 ## [v0.4.0-alpha.5] - 2026-04-29
 
 ### 新增
@@ -16,58 +120,12 @@
 #### 磁盘队列与断点续爬（Phase 3 Sprint 8 — P3-003）
 
 - **`Queue` 接口** — 统一的队列抽象（`pkg/scheduler/queue.go`）
-  - 操作原始字节切片（`[]byte`），序列化职责上移到调度器层（替代 Scrapy `queuelib` 直接存储 Python 对象）
-  - `Push`/`Pop`/`Peek`/`Len`/`Close` 五个方法
-  - `MemoryQueue` 内置内存 LIFO 队列实现
-
-- **`DiskQueue` 基于文件系统的持久化队列** — `pkg/scheduler/diskqueue.go`
-  - JSON 格式存储（替代 Scrapy pickle 格式，更安全且跨平台）
-  - 按优先级分桶存储，每个优先级对应独立文件（`p{priority}.json`）
-  - `os.Rename` 原子写入确保数据一致性
-  - `PushWithPriority`/`PopWithPriority` 支持优先级感知的入队/出队
-  - 按优先级从高到低出队，相同优先级 LIFO（后进先出）
-  - `state.json` 状态文件记录所有桶的元数据
-  - 自动加载已有数据（用于断点续爬）
-  - 自动清理空桶文件
-  - `Flush` 方法支持手动持久化
-
-- **`RequestSerializer` 请求序列化器** — `pkg/scheduler/serializer.go`
-  - `Serialize(req) ([]byte, error)` — Request → ToDict → JSON → []byte
-  - `Deserialize(data) (*Request, error)` — []byte → JSON → FromDict → Request
-  - 通过 `CallbackRegistry` 注册表自动查找 Callback/Errback 的注册名称
-  - 不可序列化的 Meta 值自动跳过（由 ToDict 处理）
-
-- **`DefaultScheduler` 扩展支持磁盘队列**
-  - `WithJobDir(dir)` — 启用磁盘队列，支持断点续爬（对应 Scrapy `JOBDIR` 配置）
-  - `WithCallbackRegistry(registry)` — 设置回调注册表，用于磁盘队列序列化/反序列化
-  - 入队策略：磁盘队列优先，序列化失败回退内存队列（对齐 Scrapy 行为）
-  - 出队策略：内存队列优先于磁盘队列（对齐 Scrapy 行为）
-  - `HasDiskQueue()` — 查询是否启用了磁盘队列
-  - 统计指标：`scheduler/enqueued/disk`、`scheduler/dequeued/disk`、`scheduler/unserializable`
-  - `Open` 时自动初始化磁盘队列并加载已有数据
-  - `Close` 时持久化磁盘队列状态
-
-- **`RFPDupeFilter` 持久化支持**
-  - `NewPersistentRFPDupeFilter(logger, debug, jobDir)` — 创建支持持久化的去重过滤器
-  - `Open` 时从磁盘加载已有指纹集合（`requests.seen` 文件，每行一个 SHA1 指纹）
-  - `Close` 时将指纹集合保存到磁盘（原子写入）
-  - `DupeFilterStats()` — 返回去重过滤器统计信息
-  - `ExportState()` — 导出状态为 JSON（用于调试）
-
-- **`Crawler` 集成 JOBDIR**
-  - 当 `JOBDIR` 配置非空时，自动创建 `CallbackRegistry` 并通过 `RegisterSpider` 注册 Spider 回调
-  - 自动使用 `PersistentRFPDupeFilter` 替代内存去重过滤器
-  - 日志输出磁盘队列启用状态
-
-- **断点续爬完整流程**
-  - 启动 → 入队请求到磁盘队列 → 消费部分请求 → 中断（Close）→ 持久化队列 + 指纹
-  - 重启 → 加载磁盘队列 + 指纹 → 从断点继续 → 不重复爬取已完成 URL
-  - 单元测试覆盖率 84.9%，58 个测试全部通过，`go test -race` 无竞态，`go vet` 无告警
-
----
-
-<details>
-<summary>📦 v0.4.0 预发布版本历史（alpha.1 ~ alpha.4）</summary>
+- **`DiskQueue` 基于文件系统的持久化队列** — JSON + 按优先级分桶多文件方案
+- **`RequestSerializer` 请求序列化器** — 基于 `ToDict`/`FromDict` + `encoding/json`
+- **`DefaultScheduler` 扩展支持磁盘队列** — `WithJobDir` 启用断点续爬
+- **`RFPDupeFilter` 持久化支持** — `requests.seen` 文件持久化指纹集合
+- **`Crawler` 集成 JOBDIR** — 自动创建 `CallbackRegistry` + `PersistentRFPDupeFilter`
+- **断点续爬完整流程** — 中断后重启从断点继续，不重复爬取已完成 URL
 
 ## [v0.4.0-alpha.4] - 2026-04-29
 

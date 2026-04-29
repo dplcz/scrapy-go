@@ -283,7 +283,7 @@ func TestDiskQueueNegativePriority(t *testing.T) {
 	}
 }
 
-func TestDiskQueueFlush(t *testing.T) {
+func TestDiskQueueImmediatePersist(t *testing.T) {
 	dir := t.TempDir()
 
 	dq, err := NewDiskQueue(dir)
@@ -292,17 +292,73 @@ func TestDiskQueueFlush(t *testing.T) {
 	}
 	defer dq.Close()
 
+	// Push 后无需手动 Flush，数据应立即持久化
 	dq.Push([]byte(`"test"`))
 
-	// 手动 Flush
-	if err := dq.Flush(); err != nil {
-		t.Fatalf("flush failed: %v", err)
-	}
-
-	// 验证文件存在
+	// 验证 state.json 在 Push 后立即存在
 	stateFile := filepath.Join(dir, "state.json")
 	if _, err := os.Stat(stateFile); os.IsNotExist(err) {
-		t.Fatal("state.json should exist after flush")
+		t.Fatal("state.json should exist immediately after push")
+	}
+
+	// 验证桶文件在 Push 后立即存在
+	bucketFile := filepath.Join(dir, "p0.json")
+	if _, err := os.Stat(bucketFile); os.IsNotExist(err) {
+		t.Fatal("p0.json should exist immediately after push")
+	}
+
+	// 不调用 Close，直接重新打开队列模拟进程崩溃后恢复
+	dq2, err := NewDiskQueue(dir)
+	if err != nil {
+		t.Fatalf("failed to reopen disk queue: %v", err)
+	}
+	defer dq2.Close()
+
+	if dq2.Len() != 1 {
+		t.Errorf("expected 1 item after crash recovery, got %d", dq2.Len())
+	}
+
+	data, err := dq2.Pop()
+	if err != nil {
+		t.Fatalf("pop failed: %v", err)
+	}
+	if string(data) != `"test"` {
+		t.Errorf("expected '\"test\"', got %q", string(data))
+	}
+}
+
+func TestDiskQueueImmediatePersistAfterPop(t *testing.T) {
+	dir := t.TempDir()
+
+	dq, err := NewDiskQueue(dir)
+	if err != nil {
+		t.Fatalf("failed to create disk queue: %v", err)
+	}
+
+	dq.Push([]byte(`"first"`))
+	dq.Push([]byte(`"second"`))
+
+	// Pop 一个元素
+	dq.Pop()
+
+	// 不调用 Close，直接重新打开模拟崩溃恢复
+	dq2, err := NewDiskQueue(dir)
+	if err != nil {
+		t.Fatalf("failed to reopen disk queue: %v", err)
+	}
+	defer dq2.Close()
+
+	// 应该只剩 1 个元素
+	if dq2.Len() != 1 {
+		t.Errorf("expected 1 item after crash recovery, got %d", dq2.Len())
+	}
+
+	data, err := dq2.Pop()
+	if err != nil {
+		t.Fatalf("pop failed: %v", err)
+	}
+	if string(data) != `"first"` {
+		t.Errorf("expected '\"first\"', got %q", string(data))
 	}
 }
 

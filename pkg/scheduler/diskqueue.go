@@ -17,7 +17,8 @@ import (
 // 设计决策：
 //   - 使用 JSON 格式替代 Scrapy 的 pickle 格式，更安全且跨平台
 //   - 使用多文件方案替代 Scrapy 的单文件追加方案，便于按优先级管理
-//   - 每次 Push/Pop 操作都会触发文件写入，确保数据持久化
+//   - 每次 Push/Pop 操作立即写盘，确保进程异常退出时数据不丢失
+//   - 无需手动 Flush，Close 仅做清理工作
 //
 // 对应 Scrapy 的 LifoDiskQueue（通过 queuelib 实现）。
 type DiskQueue struct {
@@ -31,7 +32,6 @@ type DiskQueue struct {
 type bucket struct {
 	priority int
 	items    []json.RawMessage
-	dirty    bool // 是否有未持久化的变更
 }
 
 // NewDiskQueue 创建一个新的磁盘队列。
@@ -56,7 +56,7 @@ func NewDiskQueue(dir string) (*DiskQueue, error) {
 }
 
 // PushWithPriority 将数据推入指定优先级的桶中。
-// 磁盘队列需要知道优先级以便按优先级文件存储。
+// 每次 Push 操作立即将变更持久化到磁盘，确保数据安全。
 func (dq *DiskQueue) PushWithPriority(data []byte, priority int) error {
 	dq.mu.Lock()
 	defer dq.mu.Unlock()
@@ -68,8 +68,18 @@ func (dq *DiskQueue) PushWithPriority(data []byte, priority int) error {
 	}
 
 	b.items = append(b.items, data)
-	b.dirty = true
 	dq.count++
+
+	// 立即持久化变更的桶和状态
+	if err := dq.persistBucketAndState(b); err != nil {
+		// 回滚内存状态
+		b.items = b.items[:len(b.items)-1]
+		dq.count--
+		if len(b.items) == 0 {
+			delete(dq.buckets, priority)
+		}
+		return fmt.Errorf("failed to persist after push: %w", err)
+	}
 
 	return nil
 }
@@ -81,6 +91,7 @@ func (dq *DiskQueue) Push(data []byte) error {
 }
 
 // PopWithPriority 从最高优先级的桶中弹出数据（LIFO）。
+// 每次 Pop 操作立即将变更持久化到磁盘，确保数据安全。
 // 返回数据和对应的优先级。
 func (dq *DiskQueue) PopWithPriority() ([]byte, int, error) {
 	dq.mu.Lock()
@@ -107,12 +118,24 @@ func (dq *DiskQueue) PopWithPriority() ([]byte, int, error) {
 		data := b.items[n-1]
 		b.items[n-1] = nil // 避免内存泄漏
 		b.items = b.items[:n-1]
-		b.dirty = true
 		dq.count--
 
+		bucketRemoved := false
 		// 清理空桶
 		if len(b.items) == 0 {
 			delete(dq.buckets, p)
+			bucketRemoved = true
+		}
+
+		// 立即持久化变更
+		if err := dq.persistAfterPop(b, bucketRemoved); err != nil {
+			// 回滚内存状态
+			if bucketRemoved {
+				dq.buckets[p] = b
+			}
+			b.items = append(b.items, data)
+			dq.count++
+			return nil, 0, fmt.Errorf("failed to persist after pop: %w", err)
 		}
 
 		return []byte(data), p, nil
@@ -155,20 +178,14 @@ func (dq *DiskQueue) Len() int {
 	return dq.count
 }
 
-// Close 关闭队列，将所有脏数据持久化到磁盘。
+// Close 关闭队列。
+// 由于每次 Push/Pop 都已立即持久化，Close 仅做最终的清理工作。
 func (dq *DiskQueue) Close() error {
 	dq.mu.Lock()
 	defer dq.mu.Unlock()
 
-	return dq.flush()
-}
-
-// Flush 将所有脏数据持久化到磁盘。
-func (dq *DiskQueue) Flush() error {
-	dq.mu.Lock()
-	defer dq.mu.Unlock()
-
-	return dq.flush()
+	// 清理可能残留的空桶文件
+	return dq.cleanupBucketFiles()
 }
 
 // ============================================================================
@@ -221,7 +238,6 @@ func (dq *DiskQueue) load() error {
 			dq.buckets[bp.Priority] = &bucket{
 				priority: bp.Priority,
 				items:    items,
-				dirty:    false,
 			}
 			dq.count += len(items)
 		}
@@ -230,33 +246,44 @@ func (dq *DiskQueue) load() error {
 	return nil
 }
 
-// flush 将所有脏数据写入磁盘。
-func (dq *DiskQueue) flush() error {
+// persistBucketAndState 将指定桶和状态文件持久化到磁盘。
+// 用于 Push 操作后的立即写盘。
+func (dq *DiskQueue) persistBucketAndState(b *bucket) error {
+	if err := dq.writeBucket(b); err != nil {
+		return err
+	}
+	return dq.writeCurrentState()
+}
+
+// persistAfterPop 在 Pop 操作后持久化变更。
+// 如果桶已被移除，还需要清理对应的桶文件。
+func (dq *DiskQueue) persistAfterPop(b *bucket, bucketRemoved bool) error {
+	if bucketRemoved {
+		// 桶已空，删除桶文件
+		filename := filepath.Join(dq.dir, fmt.Sprintf("p%d.json", b.priority))
+		if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove empty bucket file: %w", err)
+		}
+	} else {
+		if err := dq.writeBucket(b); err != nil {
+			return err
+		}
+	}
+	return dq.writeCurrentState()
+}
+
+// writeCurrentState 根据当前内存中的 buckets 写入状态文件。
+func (dq *DiskQueue) writeCurrentState() error {
 	state := diskQueueState{
 		Version: 1,
 		Buckets: make([]bucketMeta, 0, len(dq.buckets)),
 	}
-
 	for p, b := range dq.buckets {
 		state.Buckets = append(state.Buckets, bucketMeta{
 			Priority: p,
 			Count:    len(b.items),
 		})
-
-		if b.dirty {
-			if err := dq.writeBucket(b); err != nil {
-				return err
-			}
-			b.dirty = false
-		}
 	}
-
-	// 清理已删除的桶文件
-	if err := dq.cleanupBucketFiles(); err != nil {
-		return err
-	}
-
-	// 写入状态文件
 	return dq.writeState(state)
 }
 

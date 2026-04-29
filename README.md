@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.4.0-alpha.5** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.4.0** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -837,59 +837,14 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### v0.4.0-alpha.5
+### v0.4.0 🎉
 
-- 💾 **磁盘队列与断点续爬**（P3-003）
-  - `Queue` 接口 — 统一内存/磁盘队列抽象，操作 `[]byte`，序列化职责上移到调度器层
-  - `DiskQueue` — 基于文件系统的持久化队列，JSON + 按优先级分桶多文件方案，`os.Rename` 原子写入
-  - `PriorityAwareQueue` — 优先级感知队列扩展接口，支持 Redis 等外部队列无缝接入
-  - `RequestSerializer` — 基于 `ToDict`/`FromDict` + `encoding/json` 的请求序列化器
-  - `DefaultScheduler` 扩展 — `WithJobDir` 启用磁盘队列；入队磁盘优先、出队内存优先
-  - `RFPDupeFilter` 持久化 — `requests.seen` 文件持久化指纹集合，原子写入
-  - `Crawler` 集成 JOBDIR — 自动创建 `CallbackRegistry` + `PersistentRFPDupeFilter`
-  - 断点续爬完整流程 — 中断后重启从断点继续，不重复爬取已完成 URL
-  - pkg/scheduler 覆盖率 84.9%，58 个测试全部通过
-
-### v0.4.0-alpha.4
-
-- 🔄 **Request 序列化与 curl 互操作**（P3-013）
-  - `Request.ToDict()` / `FromDict()` — 序列化与反序列化，支撑磁盘队列断点续爬
-  - `CallbackRegistry` — 回调函数注册表，支持 `RegisterSpider` 通过 reflect 自动扫描注册
-  - `RegisterSpider(spider)` — 自动扫描 Spider 导出方法，按签名匹配注册 Callback/Errback（推荐方式）
-  - `FromDict` 回调恢复严格模式 — registry 非空时找不到回调名称将直接返回明确错误
-  - 方法命名规范：遵循 Go PascalCase 导出命名（如 `ParseDetail`、`HandleError`）
-  - `FromCURL()` — 从 curl 命令创建 Request，自实现 shell 词法分析器
-  - `Request.ToCURL()` — 将 Request 转换为 curl 命令字符串
-  - Body base64 编码、不可序列化 Meta 自动跳过、Cookie 完整属性保留
-  - pkg/http 覆盖率 91.8%，全部测试通过
-
-### v0.4.0-alpha.3
-
-- 📝 **FormRequestFromResponse 与 Multipart 文件上传**（P3-012）
-  - `FormRequestFromResponse(resp, opts...)` — 从 HTML 响应自动提取 `<form>` 信息创建表单请求（对齐 Scrapy `FormRequest.from_response()`）
-  - 5 种表单定位方式：`WithFormName` / `WithFormID` / `WithFormNumber` / `WithFormXPath` / `WithFormCSS`
-  - 自动收集 `<input>` / `<select>` / `<textarea>` 字段，支持 checkbox/radio checked 状态
-  - `WithClickButton` 指定提交按钮（舍弃 Scrapy 坐标点击）、`WithDontClick` 禁用自动点击
-  - `NewMultipartFormRequest` — multipart/form-data 文件上传（基于 `mime/multipart` 标准库）
-  - 支持多文件上传、自定义 Content-Type、30+ 种 MIME 类型自动推断
-  - 单元测试覆盖率：form_from_response 96.4%、multipart 92.0%
-
-### v0.4.0-alpha.2
-
-- 🤖 **RobotsTxt 中间件**（P3-002）
-  - `RobotsTxtMiddleware` — robots.txt 遵守中间件，注册优先级 100
-  - 按 netloc 缓存解析结果（`sync.Once` + `sync.WaitGroup` 替代 Twisted Deferred）
-  - 内置 robots.txt 解析器，支持通配符 `*` 和 `$` 锚定，最长匹配原则
-  - 支持 `ROBOTSTXT_OBEY` / `ROBOTSTXT_USER_AGENT` 配置 + `dont_obey_robotstxt` Meta
-  - 统计指标 5 种，单元测试覆盖率 92.6%
-
-### v0.4.0-alpha.1
-
-- 🕷️ **CrawlSpider 基于规则的自动爬取**（P3-001）
-  - `HTMLLinkExtractor` — 基于 goquery 的链接提取器，支持 allow/deny 正则、域名过滤、restrict CSS/XPath
-  - `Rule` 结构体 — Callback/Errback 直接接受函数值（舍弃 Scrapy 字符串方法名反射）
-  - `CrawlSpider` — 多规则列表、跨规则去重、非 HTML 自动跳过
-  - 新增示例 `examples/crawlspider/`
+- 🕷️ **CrawlSpider 基于规则的自动爬取**（P3-001）— `HTMLLinkExtractor` + `Rule` + `CrawlSpider`
+- 🤖 **RobotsTxt 中间件**（P3-002）— 内置解析器，通配符支持，按 netloc 缓存
+- 📝 **FormRequest 系列增强**（P3-012）— `FormRequestFromResponse` + `NewMultipartFormRequest`
+- 🔄 **Request 序列化与 curl 互操作**（P3-013）— `ToDict`/`FromDict` + `CallbackRegistry` + `FromCURL`/`ToCURL`
+- 💾 **磁盘队列与断点续爬**（P3-003）— `DiskQueue` 即时写盘 + `RFPDupeFilter` 持久化 + JOBDIR 集成
+- 873 个测试全部通过，`go test -race` 无竞态，核心包覆盖率 ≥82%
 
 ### v0.3.0 🎉
 
