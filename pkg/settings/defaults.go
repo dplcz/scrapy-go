@@ -282,4 +282,10 @@ func (s *Settings) loadDefaults() {
 
 	s.Set("METAREFRESH_ENABLED", true, d)
 	s.Set("METAREFRESH_MAXDELAY", 100, d)
+
+	// ========================================================================
+	// CrawlSpider 配置
+	// ========================================================================
+
+	s.Set("CRAWLSPIDER_FOLLOW_LINKS", true, d)
 }

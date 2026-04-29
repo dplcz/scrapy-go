@@ -7,6 +7,53 @@
 
 ## [Unreleased]
 
+### 新增
+
+#### CrawlSpider 基于规则的自动爬取（Phase 3 Sprint 7 — P3-001）
+
+- **`pkg/linkextractor` 包** — 链接提取器接口与实现
+  - `LinkExtractor` 接口 — 定义 `ExtractLinks(response) []Link` 契约
+  - `Link` 数据模型 — URL/Text/Fragment/NoFollow 四字段
+  - `HTMLLinkExtractor` 基于 goquery 的链接提取器（对应 Scrapy `LxmlLinkExtractor`，Go 中重命名）
+  - 支持 `allow`/`deny` 正则过滤（`WithAllow`/`WithDeny`）
+  - 支持 `allowDomains`/`denyDomains` 域名过滤（含子域名匹配）
+  - 支持 `restrictCSS`/`restrictXPath` 限制提取范围
+  - 支持 `restrictText` 锚文本正则过滤
+  - 支持自定义标签/属性扫描（`WithTags`/`WithAttrs`，默认 `a`/`area` + `href`）
+  - 支持 URL 去重（`WithUnique`，默认 true）
+  - 支持 Fragment 去除（`WithStripFragment`，默认 true）
+  - 支持文件扩展名过滤（`WithDenyExtensions`，默认过滤 90+ 种非网页扩展名）
+  - 支持 `<base>` 标签解析
+  - 支持 `rel="nofollow"` 检测
+  - 全部使用 Functional Options 模式配置
+  - `Matches(url)` 方法 — 快速判断 URL 是否匹配过滤规则
+
+- **`Rule` 结构体** — CrawlSpider 爬取规则定义
+  - `LinkExtractor` — 链接提取器（nil 时使用默认 HTMLLinkExtractor）
+  - `Callback` — 直接接受函数值（舍弃 Scrapy 字符串方法名反射）
+  - `Errback` — 错误回调函数
+  - `CbKwargs` — 传递给回调的额外参数
+  - `Follow` — 是否跟踪链接（nil 时：无 Callback 默认 true，有 Callback 默认 false）
+  - `ProcessLinks` — 链接后处理钩子
+  - `ProcessRequest` — 请求后处理钩子（返回 nil 丢弃请求）
+
+- **`CrawlSpider` 结构体** — 基于规则的自动爬取 Spider
+  - 嵌入 `spider.Base`，实现 `spider.Spider` 接口
+  - `Rules` — 多规则列表，按顺序匹配，同一链接只被第一个匹配规则处理（跨规则去重）
+  - `FollowLinks` — 全局链接跟踪开关（对应 Scrapy `CRAWLSPIDER_FOLLOW_LINKS`）
+  - `ParseStartURL` — 初始 URL 响应回调（对应 Scrapy `parse_start_url`）
+  - `ProcessResults` — 回调结果后处理钩子（对应 Scrapy `process_results`）
+  - 内部回调机制 — 通过 `Request.Meta["rule"]` 索引规则，`ruleCallback`/`ruleErrback` 分发
+  - 非 HTML 响应自动跳过链接提取（检查 Content-Type）
+  - `sync.Once` 确保规则只编译一次
+
+- **新增配置项** — `CRAWLSPIDER_FOLLOW_LINKS`（默认 true）
+
+- **新增示例** — `examples/crawlspider/main.go`
+  - 本地测试网站模拟多层级站点（首页 → 分类 → 文章）
+  - 两条规则演示：跟踪分类页面（无回调）+ 提取文章数据（有回调）
+  - CSS 选择器解析文章标题/作者/内容
+
 ### 文档
 
 - **完善 Feed Export 示例** — 重写 `examples/feedexport/main.go`，覆盖 `pkg/feedexport` 全部核心 API
