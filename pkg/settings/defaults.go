@@ -26,12 +26,12 @@ func (s *Settings) loadDefaults() {
 	// 下载配置
 	// ========================================================================
 
-	s.Set("DOWNLOAD_DELAY", 0, d)                  // 下载延迟（秒），0 表示无延迟
-	s.Set("DOWNLOAD_TIMEOUT", 180, d)               // 下载超时（秒）
-	s.Set("DOWNLOAD_MAXSIZE", 1024*1024*1024, d)    // 最大下载大小（1GB）
-	s.Set("DOWNLOAD_WARNSIZE", 32*1024*1024, d)     // 下载大小警告阈值（32MB）
-	s.Set("DOWNLOAD_FAIL_ON_DATALOSS", true, d)     // 数据丢失时是否失败
-	s.Set("RANDOMIZE_DOWNLOAD_DELAY", true, d)      // 是否随机化下载延迟
+	s.Set("DOWNLOAD_DELAY", 0, d)                // 下载延迟（秒），0 表示无延迟
+	s.Set("DOWNLOAD_TIMEOUT", 180, d)            // 下载超时（秒）
+	s.Set("DOWNLOAD_MAXSIZE", 1024*1024*1024, d) // 最大下载大小（1GB）
+	s.Set("DOWNLOAD_WARNSIZE", 32*1024*1024, d)  // 下载大小警告阈值（32MB）
+	s.Set("DOWNLOAD_FAIL_ON_DATALOSS", true, d)  // 数据丢失时是否失败
+	s.Set("RANDOMIZE_DOWNLOAD_DELAY", true, d)   // 是否随机化下载延迟
 
 	// ========================================================================
 	// 默认请求头
@@ -47,23 +47,23 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("RETRY_ENABLED", true, d)
-	s.Set("RETRY_TIMES", 2, d)                     // 初始请求 + 2 次重试 = 3 次请求
+	s.Set("RETRY_TIMES", 2, d) // 初始请求 + 2 次重试 = 3 次请求
 	s.Set("RETRY_HTTP_CODES", []int{500, 502, 503, 504, 522, 524, 408, 429}, d)
-	s.Set("RETRY_PRIORITY_ADJUST", -1, d)           // 重试请求优先级调整
+	s.Set("RETRY_PRIORITY_ADJUST", -1, d) // 重试请求优先级调整
 
 	// ========================================================================
 	// 重定向配置
 	// ========================================================================
 
 	s.Set("REDIRECT_ENABLED", true, d)
-	s.Set("REDIRECT_MAX_TIMES", 20, d)              // 最大重定向次数
-	s.Set("REDIRECT_PRIORITY_ADJUST", 2, d)         // 重定向请求优先级调整
+	s.Set("REDIRECT_MAX_TIMES", 20, d)      // 最大重定向次数
+	s.Set("REDIRECT_PRIORITY_ADJUST", 2, d) // 重定向请求优先级调整
 
 	// ========================================================================
 	// 深度控制
 	// ========================================================================
 
-	s.Set("DEPTH_LIMIT", 0, d)                      // 爬取深度限制，0 表示无限制
+	s.Set("DEPTH_LIMIT", 0, d) // 爬取深度限制，0 表示无限制
 	s.Set("DEPTH_PRIORITY", 0, d)
 	s.Set("DEPTH_STATS_VERBOSE", false, d)
 
@@ -115,7 +115,8 @@ func (s *Settings) loadDefaults() {
 	// Robots.txt
 	// ========================================================================
 
-	s.Set("ROBOTSTXT_OBEY", false, d)
+	s.Set("ROBOTSTXT_OBEY", true, d)
+	s.Set("ROBOTSTXT_USER_AGENT", "", d)
 
 	// ========================================================================
 	// 调度器配置
@@ -168,16 +169,17 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("DOWNLOADER_MIDDLEWARES_BASE", map[string]int{
-		"DownloadTimeout":  300,
-		"DefaultHeaders":   400,
-		"HttpAuth":         410,
-		"UserAgent":        500,
-		"Retry":            550,
-		"HttpCompression":  590,
-		"Redirect":         600,
-		"Cookies":          700,
-		"HttpProxy":        750,
-		"DownloaderStats":  850,
+		"RobotsTxt":       100,
+		"DownloadTimeout": 300,
+		"DefaultHeaders":  400,
+		"HttpAuth":        410,
+		"UserAgent":       500,
+		"Retry":           550,
+		"HttpCompression": 590,
+		"Redirect":        600,
+		"Cookies":         700,
+		"HttpProxy":       750,
+		"DownloaderStats": 850,
 	}, d)
 	s.Set("DOWNLOADER_MIDDLEWARES", map[string]int{}, d)
 

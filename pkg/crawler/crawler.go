@@ -426,6 +426,18 @@ type componentEntry struct {
 // builtinMiddlewareFactories 是内置下载器中间件的注册表。
 // key 为中间件名称，与 DOWNLOADER_MIDDLEWARES_BASE 中的名称一一对应。
 var builtinMiddlewareFactories = map[string]MiddlewareFactory{
+	"RobotsTxt": func(c *Crawler) dmiddle.DownloaderMiddleware {
+		if !c.Settings.GetBool("ROBOTSTXT_OBEY", false) {
+			return nil
+		}
+		opts := []dmiddle.RobotsTxtOption{
+			dmiddle.WithRobotsTxtDefaultUserAgent(c.Settings.GetString("USER_AGENT", "scrapy-go")),
+		}
+		if ua := c.Settings.GetString("ROBOTSTXT_USER_AGENT", ""); ua != "" {
+			opts = append(opts, dmiddle.WithRobotsTxtUserAgent(ua))
+		}
+		return dmiddle.NewRobotsTxtMiddleware(c.Stats, c.Logger, opts...)
+	},
 	"DownloadTimeout": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
 		if timeout <= 0 {
