@@ -21,6 +21,7 @@ import (
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
 	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	"github.com/dplcz/scrapy-go/pkg/downloader/middleware/httpcache"
 	"github.com/dplcz/scrapy-go/pkg/engine"
 	"github.com/dplcz/scrapy-go/pkg/extension"
 	"github.com/dplcz/scrapy-go/pkg/feedexport"
@@ -536,6 +537,67 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		}
 		return dmiddle.NewDownloaderStatsMiddleware(c.Stats, c.Logger)
 	},
+	"HttpCache": func(c *Crawler) dmiddle.DownloaderMiddleware {
+		if !c.Settings.GetBool("HTTPCACHE_ENABLED", false) {
+			return nil
+		}
+
+		// 构建缓存存储后端
+		cacheDir := c.Settings.GetString("HTTPCACHE_DIR", "httpcache")
+		storageOpts := []httpcache.FilesystemOption{
+			httpcache.WithExpirationSecs(c.Settings.GetInt("HTTPCACHE_EXPIRATION_SECS", 0)),
+			httpcache.WithGzip(c.Settings.GetBool("HTTPCACHE_GZIP", false)),
+			httpcache.WithStorageLogger(c.Logger),
+		}
+		storage := httpcache.NewFilesystemCacheStorage(cacheDir, storageOpts...)
+
+		// 构建缓存策略
+		var policy httpcache.CachePolicy
+		policyName := c.Settings.GetString("HTTPCACHE_POLICY", "dummy")
+		switch policyName {
+		case "rfc2616":
+			rfcOpts := []httpcache.RFC2616PolicyOption{
+				httpcache.WithAlwaysStore(c.Settings.GetBool("HTTPCACHE_ALWAYS_STORE", false)),
+			}
+			if schemes := c.getStringSlice("HTTPCACHE_IGNORE_SCHEMES", []string{"file"}); len(schemes) > 0 {
+				rfcOpts = append(rfcOpts, httpcache.WithRFC2616IgnoreSchemes(schemes))
+			}
+			if controls := c.getStringSlice("HTTPCACHE_IGNORE_RESPONSE_CACHE_CONTROLS", nil); len(controls) > 0 {
+				rfcOpts = append(rfcOpts, httpcache.WithIgnoreResponseCacheControls(controls))
+			}
+			policy = httpcache.NewRFC2616Policy(rfcOpts...)
+		default: // "dummy"
+			dummyOpts := []httpcache.DummyPolicyOption{}
+			if schemes := c.getStringSlice("HTTPCACHE_IGNORE_SCHEMES", []string{"file"}); len(schemes) > 0 {
+				dummyOpts = append(dummyOpts, httpcache.WithIgnoreSchemes(schemes))
+			}
+			if codes := c.getIntSlice("HTTPCACHE_IGNORE_HTTP_CODES", nil); len(codes) > 0 {
+				dummyOpts = append(dummyOpts, httpcache.WithIgnoreHTTPCodes(codes))
+			}
+			policy = httpcache.NewDummyPolicy(dummyOpts...)
+		}
+
+		// 构建中间件
+		mwOpts := []httpcache.MiddlewareOption{
+			httpcache.WithIgnoreMissing(c.Settings.GetBool("HTTPCACHE_IGNORE_MISSING", false)),
+			httpcache.WithMiddlewareLogger(c.Logger),
+		}
+		mw := httpcache.NewHttpCacheMiddleware(policy, storage, c.Stats, mwOpts...)
+
+		// 注册 Spider 打开/关闭信号以初始化/关闭缓存存储
+		c.Signals.Connect(func(params map[string]any) error {
+			spiderName := ""
+			if c.spider != nil {
+				spiderName = c.spider.Name()
+			}
+			return mw.Open(spiderName)
+		}, sig.SpiderOpened)
+		c.Signals.Connect(func(params map[string]any) error {
+			return mw.Close()
+		}, sig.SpiderClosed)
+
+		return mw
+	},
 }
 
 // buildDownloaderMiddlewares 构建下载器中间件链。
@@ -940,6 +1002,18 @@ func (c *Crawler) getIntSlice(key string, defaultVal []int) []int {
 	}
 	if codes, ok := v.([]int); ok {
 		return codes
+	}
+	return defaultVal
+}
+
+// getStringSlice 从配置中获取 string 切片。
+func (c *Crawler) getStringSlice(key string, defaultVal []string) []string {
+	v := c.Settings.Get(key, nil)
+	if v == nil {
+		return defaultVal
+	}
+	if strs, ok := v.([]string); ok {
+		return strs
 	}
 	return defaultVal
 }
