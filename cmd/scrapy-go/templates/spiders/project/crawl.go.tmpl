@@ -1,11 +1,10 @@
 // 爬虫: {{.Name}}
 // 基于规则的 CrawlSpider，自动提取和跟踪链接。
-package main
+package spiders
 
 import (
 	"context"
 
-	"github.com/dplcz/scrapy-go/pkg/crawler"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/linkextractor"
 	"github.com/dplcz/scrapy-go/pkg/spider"
@@ -47,14 +46,4 @@ func (s *{{.ClassName}}) parseItem(ctx context.Context, response *shttp.Response
 	return []spider.Output{
 		{Item: item},
 	}, nil
-}
-
-func main() {
-	sp := New{{.ClassName}}()
-	c := crawler.NewDefault()
-
-	ctx := context.Background()
-	if err := c.Run(ctx, sp); err != nil {
-		panic(err)
-	}
 }

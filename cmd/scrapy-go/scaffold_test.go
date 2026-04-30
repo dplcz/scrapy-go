@@ -81,11 +81,14 @@ func TestRunStartProject_MainGoContent(t *testing.T) {
 	if !strings.Contains(mainGo, "package main") {
 		t.Errorf("main.go 应包含 'package main'")
 	}
-	if !strings.Contains(mainGo, "crawler.NewDefault()") {
-		t.Errorf("main.go 应包含 crawler.NewDefault()")
+	if !strings.Contains(mainGo, "crawler.New(crawler.WithSettings(projectSettings))") {
+		t.Errorf("main.go 应包含 crawler.New(crawler.WithSettings(projectSettings))")
 	}
 	if !strings.Contains(mainGo, `"demo/project"`) {
 		t.Errorf("main.go 应包含 project 子包导入")
+	}
+	if !strings.Contains(mainGo, "project.NewProjectSettings()") {
+		t.Errorf("main.go 应包含 project.NewProjectSettings() 调用")
 	}
 }
 
@@ -188,12 +191,15 @@ func TestRunGenSpider_Basic(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
 
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+
 	err := runGenSpider([]string{"quotes", "quotes.toscrape.com"})
 	if err != nil {
 		t.Fatalf("runGenSpider 失败: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "quotes.go"))
+	content, err := os.ReadFile(filepath.Join(dir, "spiders", "quotes.go"))
 	if err != nil {
 		t.Fatalf("读取生成的文件失败: %v", err)
 	}
@@ -208,6 +214,9 @@ func TestRunGenSpider_Basic(t *testing.T) {
 	if !strings.Contains(code, "https://quotes.toscrape.com") {
 		t.Errorf("生成的代码应包含完整 URL")
 	}
+	if !strings.Contains(code, "package spiders") {
+		t.Errorf("生成的代码应使用 'package spiders'")
+	}
 }
 
 func TestRunGenSpider_CrawlTemplate(t *testing.T) {
@@ -216,12 +225,15 @@ func TestRunGenSpider_CrawlTemplate(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
 
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+
 	err := runGenSpider([]string{"-t", "crawl", "articles", "blog.example.com"})
 	if err != nil {
 		t.Fatalf("runGenSpider 失败: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "articles.go"))
+	content, err := os.ReadFile(filepath.Join(dir, "spiders", "articles.go"))
 	if err != nil {
 		t.Fatalf("读取生成的文件失败: %v", err)
 	}
@@ -247,6 +259,9 @@ func TestRunGenSpider_InvalidTemplate(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
 
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+
 	err := runGenSpider([]string{"-t", "nonexistent", "test", "example.com"})
 	if err == nil {
 		t.Error("期望无效模板返回错误")
@@ -259,8 +274,11 @@ func TestRunGenSpider_FileExists(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
 
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
 	// 创建已有文件
-	os.WriteFile(filepath.Join(dir, "existing.go"), []byte("package main"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "spiders"), 0o755)
+	os.WriteFile(filepath.Join(dir, "spiders", "existing.go"), []byte("package spiders"), 0o644)
 
 	err := runGenSpider([]string{"existing", "example.com"})
 	if err == nil {
@@ -286,12 +304,15 @@ func TestRunGenSpider_URLSchemeCompletion(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
 
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+
 	err := runGenSpider([]string{"test_spider", "example.com"})
 	if err != nil {
 		t.Fatalf("runGenSpider 失败: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "test_spider.go"))
+	content, err := os.ReadFile(filepath.Join(dir, "spiders", "test_spider.go"))
 	if err != nil {
 		t.Fatalf("读取生成的文件失败: %v", err)
 	}
@@ -519,12 +540,15 @@ func TestGenSpider_EndToEnd_WithFullURL(t *testing.T) {
 	defer os.Chdir(origDir)
 	os.Chdir(dir)
 
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+
 	err := runGenSpider([]string{"books", "https://books.toscrape.com/catalogue/"})
 	if err != nil {
 		t.Fatalf("runGenSpider 失败: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "books.go"))
+	content, err := os.ReadFile(filepath.Join(dir, "spiders", "books.go"))
 	if err != nil {
 		t.Fatalf("读取生成的文件失败: %v", err)
 	}
@@ -637,7 +661,7 @@ func TestRenderSpiderTemplate_InvalidPath(t *testing.T) {
 	}
 
 	// 测试写入不存在的目录
-	err := renderSpiderTemplate("templates/spiders/basic.go.tmpl", "/nonexistent/dir/file.go", data)
+	err := renderSpiderTemplate("templates/spiders/project/basic.go.tmpl", "/nonexistent/dir/file.go", data)
 	if err == nil {
 		t.Error("期望写入不存在的目录时返回错误")
 	}
@@ -692,5 +716,172 @@ func TestToSpiderClassName_AlreadyHasSpider(t *testing.T) {
 	got := toSpiderClassName("my_spider")
 	if got != "MySpider" {
 		t.Errorf("toSpiderClassName(\"my_spider\") = %q, want \"MySpider\"", got)
+	}
+}
+
+// ============================================================================
+// genspider 项目内检测测试
+// ============================================================================
+
+func TestRunGenSpider_InProject(t *testing.T) {
+	// 模拟在 scrapy-go 项目中执行 genspider
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+	os.Chdir(dir)
+
+	err := runGenSpider([]string{"quotes", "quotes.toscrape.com"})
+	if err != nil {
+		t.Fatalf("runGenSpider 失败: %v", err)
+	}
+
+	// 验证文件生成到 spiders/ 目录
+	spiderFile := filepath.Join(dir, "spiders", "quotes.go")
+	if _, err := os.Stat(spiderFile); os.IsNotExist(err) {
+		t.Fatalf("期望爬虫文件生成到 spiders/quotes.go，但未找到")
+	}
+
+	// 验证内容使用 package spiders
+	content, err := os.ReadFile(spiderFile)
+	if err != nil {
+		t.Fatalf("读取生成的文件失败: %v", err)
+	}
+
+	code := string(content)
+	if !strings.Contains(code, "package spiders") {
+		t.Errorf("项目内生成的爬虫应使用 'package spiders'，实际内容:\n%s", code)
+	}
+	if strings.Contains(code, "func main()") {
+		t.Errorf("项目内生成的爬虫不应包含 'func main()'")
+	}
+	if !strings.Contains(code, "QuotesSpider") {
+		t.Errorf("生成的代码应包含 'QuotesSpider'")
+	}
+	if !strings.Contains(code, "https://quotes.toscrape.com") {
+		t.Errorf("生成的代码应包含完整 URL")
+	}
+}
+
+func TestRunGenSpider_InProject_CrawlTemplate(t *testing.T) {
+	// 模拟在 scrapy-go 项目中使用 crawl 模板
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+
+	// 创建 scrapy-go.toml 标记为项目目录
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+	os.Chdir(dir)
+
+	err := runGenSpider([]string{"-t", "crawl", "articles", "blog.example.com"})
+	if err != nil {
+		t.Fatalf("runGenSpider 失败: %v", err)
+	}
+
+	// 验证文件生成到 spiders/ 目录
+	spiderFile := filepath.Join(dir, "spiders", "articles.go")
+	content, err := os.ReadFile(spiderFile)
+	if err != nil {
+		t.Fatalf("读取生成的文件失败: %v", err)
+	}
+
+	code := string(content)
+	if !strings.Contains(code, "package spiders") {
+		t.Errorf("项目内生成的爬虫应使用 'package spiders'")
+	}
+	if strings.Contains(code, "func main()") {
+		t.Errorf("项目内生成的爬虫不应包含 'func main()'")
+	}
+	if !strings.Contains(code, "spider.CrawlSpider") {
+		t.Errorf("生成的代码应包含 'spider.CrawlSpider'")
+	}
+	if !strings.Contains(code, "ArticlesSpider") {
+		t.Errorf("生成的代码应包含 'ArticlesSpider'")
+	}
+}
+
+func TestRunGenSpider_InProject_FileExists(t *testing.T) {
+	// 在项目中，文件已存在时应报错
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "spiders"), 0o755)
+	os.WriteFile(filepath.Join(dir, "spiders", "existing.go"), []byte("package spiders"), 0o644)
+	os.Chdir(dir)
+
+	err := runGenSpider([]string{"existing", "example.com"})
+	if err == nil {
+		t.Error("期望文件已存在时返回错误")
+	}
+}
+
+func TestRunGenSpider_NotInProject(t *testing.T) {
+	// 不在项目中时，应直接报错
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+	os.Chdir(dir)
+
+	err := runGenSpider([]string{"standalone", "example.com"})
+	if err == nil {
+		t.Fatal("期望不在项目中时返回错误")
+	}
+	if !strings.Contains(err.Error(), "scrapy-go.toml") {
+		t.Errorf("错误信息应提及 scrapy-go.toml，实际: %v", err)
+	}
+}
+
+func TestIsInProject(t *testing.T) {
+	// 无 scrapy-go.toml 时不在项目中
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+	os.Chdir(dir)
+
+	if isInProject() {
+		t.Error("无 scrapy-go.toml 时不应检测为项目")
+	}
+
+	// 有 scrapy-go.toml 时在项目中
+	os.WriteFile(filepath.Join(dir, "scrapy-go.toml"), []byte("# test"), 0o644)
+	if !isInProject() {
+		t.Error("有 scrapy-go.toml 时应检测为项目")
+	}
+}
+
+func TestStartProject_SettingsContent(t *testing.T) {
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "myapp")
+
+	err := runStartProject([]string{"myapp", projectDir})
+	if err != nil {
+		t.Fatalf("runStartProject 失败: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(projectDir, "project", "settings.go"))
+	if err != nil {
+		t.Fatalf("读取 project/settings.go 失败: %v", err)
+	}
+
+	settingsCode := string(content)
+	// 验证使用项目级配置系统
+	if !strings.Contains(settingsCode, "settings.New()") {
+		t.Errorf("settings.go 应使用 settings.New() 创建配置实例")
+	}
+	if !strings.Contains(settingsCode, "settings.PriorityProject") {
+		t.Errorf("settings.go 应使用 settings.PriorityProject 优先级")
+	}
+	if !strings.Contains(settingsCode, `"BOT_NAME"`) {
+		t.Errorf("settings.go 应包含 BOT_NAME 配置")
+	}
+	if !strings.Contains(settingsCode, `"myapp"`) {
+		t.Errorf("settings.go 应包含项目名称 'myapp'")
+	}
+	if !strings.Contains(settingsCode, "*settings.Settings") {
+		t.Errorf("settings.go 应返回 *settings.Settings 类型")
 	}
 }

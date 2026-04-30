@@ -7,6 +7,51 @@
 
 ## [Unreleased]
 
+## [v0.5.0-alpha.4] - 2026-04-30
+
+> **Phase 3 Sprint 9** — genspider 项目检测强制化 + settings 模板升级
+
+### 概览
+
+v0.5.0-alpha.4 强制要求 `genspider` 命令必须在 scrapy-go 项目中执行（检测 `scrapy-go.toml`），
+移除 standalone 模式，同时将 `settings.go` 模板从爬虫级配置（`spider.Settings`）升级为
+项目级配置（`settings.Settings` + `PriorityProject`），使配置体系更符合 Scrapy 的多层级设计。
+
+### 变更
+
+#### genspider 项目检测强制化
+
+- **必须在项目中执行** — 检测当前目录是否存在 `scrapy-go.toml`，不存在则直接报错退出
+- **移除 standalone 模式** — 删除 `templates/spiders/standalone/` 目录及相关逻辑
+- **爬虫文件固定输出到 `spiders/`** — 使用 `package spiders`，无 `func main()`
+- **错误提示清晰** — `"当前目录不是 scrapy-go 项目（未找到 scrapy-go.toml），请在项目根目录下执行此命令"`
+
+#### settings 模板升级为项目级配置
+
+- **配置系统切换** — 从 `spider.Settings`（结构体指针字段）改为 `settings.New()` + `s.Set(key, value, priority)` 模式
+- **使用 `PriorityProject` 优先级** — 正确对齐 Scrapy 的 default < project < spider < cmdline 优先级链
+- **配置项丰富化** — 包含 BOT_NAME / CONCURRENT_REQUESTS / CONCURRENT_REQUESTS_PER_DOMAIN / ROBOTSTXT_OBEY / LOG_LEVEL 等项目级配置
+- **注释引导** — 提供 DOWNLOAD_TIMEOUT / RETRY / DOWNLOADER_MIDDLEWARES / ITEM_PIPELINES 等配置的注释模板
+
+#### main.go 模板更新
+
+- **显式使用项目配置** — `project.NewProjectSettings()` 获取配置实例
+- **Crawler 创建方式** — `crawler.New(crawler.WithSettings(projectSettings))`
+- **信号处理** — 内置 `signal.NotifyContext` 支持优雅关闭
+
+### 质量
+
+- 全部 **46** 个测试通过（cmd/scrapy-go 包）
+- `go test -race` 无竞态报告
+- `go vet` 无告警
+- cmd/scrapy-go 包覆盖率 **81.3%**（目标 ≥ 80%）
+
+### 依赖
+
+- 无新增外部依赖
+
+---
+
 ## [v0.5.0-alpha.3] - 2026-04-30
 
 > **Phase 3 Sprint 9** — 脚手架项目结构重构
