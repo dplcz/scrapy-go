@@ -7,6 +7,55 @@
 
 ## [Unreleased]
 
+## [v0.5.0-alpha.3] - 2026-04-30
+
+> **Phase 3 Sprint 9** — 脚手架项目结构重构
+
+### 概览
+
+v0.5.0-alpha.3 将脚手架生成的项目组件文件（settings.go / middlewares.go / pipelines.go / items.go）
+从 `package main`（根目录）分离到 `package project`（`project/` 子目录），使生成的项目结构更符合
+Go 多包组织规范，职责分离更清晰。
+
+### 变更
+
+#### 脚手架项目结构重构
+
+- **组件文件迁移到 `project/` 子包** — `settings.go`、`middlewares.go`、`pipelines.go`、`items.go` 的包声明从 `package main` 改为 `package project`，输出路径从项目根目录改为 `project/` 子目录
+- **`main.go` 模板更新** — 新增 `_ "{{.ModulePath}}/project"` 空白导入，确保项目级组件包可达
+- **注释示例更新** — 中间件和 Pipeline 注册示例中的类型引用添加 `project.` 包前缀（如 `&project.MyPipeline{}`）
+- **`startproject.go` 逻辑更新** — 新增 `project/` 子目录创建，模板输出路径同步调整
+- **帮助信息更新** — `startproject -h` 输出的项目结构树同步更新
+
+#### 生成的项目结构（变更后）
+
+```
+<project_dir>/
+├── main.go              入口文件（package main）
+├── project/             项目级组件（package project）
+│   ├── settings.go      项目配置
+│   ├── middlewares.go   自定义中间件模板
+│   ├── pipelines.go     自定义 Pipeline 模板
+│   └── items.go         Item 定义
+├── spiders/             爬虫目录
+│   └── .gitkeep
+├── go.mod               Go 模块文件
+└── scrapy-go.toml       框架配置文件
+```
+
+### 质量
+
+- 全部 **42** 个测试通过（cmd/scrapy-go 包）
+- `go test -race` 无竞态报告
+- `go vet` 无告警
+- cmd/scrapy-go 包覆盖率 **81.0%**（目标 ≥ 80%）
+
+### 依赖
+
+- 无新增外部依赖
+
+---
+
 ## [v0.5.0-alpha.2] - 2026-04-30
 
 > **Phase 3 Sprint 9** — 项目脚手架工具

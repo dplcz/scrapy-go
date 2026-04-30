@@ -23,10 +23,10 @@ func TestRunStartProject_Basic(t *testing.T) {
 	// 验证生成的文件
 	expectedFiles := []string{
 		"main.go",
-		"settings.go",
-		"middlewares.go",
-		"pipelines.go",
-		"items.go",
+		"project/settings.go",
+		"project/middlewares.go",
+		"project/pipelines.go",
+		"project/items.go",
 		"go.mod",
 		"scrapy-go.toml",
 		"spiders/.gitkeep",
@@ -84,6 +84,9 @@ func TestRunStartProject_MainGoContent(t *testing.T) {
 	if !strings.Contains(mainGo, "crawler.NewDefault()") {
 		t.Errorf("main.go 应包含 crawler.NewDefault()")
 	}
+	if !strings.Contains(mainGo, `"demo/project"`) {
+		t.Errorf("main.go 应包含 project 子包导入")
+	}
 }
 
 func TestRunStartProject_MiddlewaresContent(t *testing.T) {
@@ -95,9 +98,9 @@ func TestRunStartProject_MiddlewaresContent(t *testing.T) {
 		t.Fatalf("runStartProject 失败: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(projectDir, "middlewares.go"))
+	content, err := os.ReadFile(filepath.Join(projectDir, "project", "middlewares.go"))
 	if err != nil {
-		t.Fatalf("读取 middlewares.go 失败: %v", err)
+		t.Fatalf("读取 project/middlewares.go 失败: %v", err)
 	}
 
 	mw := string(content)
@@ -489,20 +492,20 @@ func TestStartProject_EndToEnd(t *testing.T) {
 		t.Errorf("scrapy-go.toml 应包含并发配置项")
 	}
 
-	// 验证 pipelines.go 内容
-	pipeContent, err := os.ReadFile(filepath.Join(projectDir, "pipelines.go"))
+	// 验证 project/pipelines.go 内容
+	pipeContent, err := os.ReadFile(filepath.Join(projectDir, "project", "pipelines.go"))
 	if err != nil {
-		t.Fatalf("读取 pipelines.go 失败: %v", err)
+		t.Fatalf("读取 project/pipelines.go 失败: %v", err)
 	}
 	pipe := string(pipeContent)
 	if !strings.Contains(pipe, "E2eProjectPipeline") {
 		t.Errorf("pipelines.go 应包含 'E2eProjectPipeline'，实际内容:\n%s", pipe)
 	}
 
-	// 验证 items.go 内容
-	itemsContent, err := os.ReadFile(filepath.Join(projectDir, "items.go"))
+	// 验证 project/items.go 内容
+	itemsContent, err := os.ReadFile(filepath.Join(projectDir, "project", "items.go"))
 	if err != nil {
-		t.Fatalf("读取 items.go 失败: %v", err)
+		t.Fatalf("读取 project/items.go 失败: %v", err)
 	}
 	items := string(itemsContent)
 	if !strings.Contains(items, "ExampleItem") {

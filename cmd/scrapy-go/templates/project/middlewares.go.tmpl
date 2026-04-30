@@ -3,9 +3,9 @@
 // 在此处定义自定义的下载器中间件和 Spider 中间件。
 // 注册方式：
 //   c := crawler.NewDefault()
-//   c.AddDownloaderMiddleware(&MyDownloaderMiddleware{}, "MyDL", 543)
-//   c.AddSpiderMiddleware(&MySpiderMiddleware{}, "MySM", 543)
-package main
+//   c.AddDownloaderMiddleware(&project.MyDownloaderMiddleware{}, "MyDL", 543)
+//   c.AddSpiderMiddleware(&project.MySpiderMiddleware{}, "MySM", 543)
+package project
 
 import (
 	"context"
