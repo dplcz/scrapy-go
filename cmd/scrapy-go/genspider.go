@@ -23,6 +23,12 @@ type spiderTemplateData struct {
 	Module    string // 模块名（文件名安全）
 }
 
+// isInProject 检测当前目录是否为 scrapy-go 项目（存在 scrapy-go.toml）。
+func isInProject() bool {
+	_, err := os.Stat("scrapy-go.toml")
+	return err == nil
+}
+
 // runGenSpider 执行 genspider 命令，使用模板生成新的爬虫文件。
 //
 // 用法：
@@ -33,6 +39,9 @@ type spiderTemplateData struct {
 //
 //	-t <template>  指定模板（basic 或 crawl，默认 basic）
 //	-l             列出可用模板
+//
+// 必须在 scrapy-go 项目中（当前目录存在 scrapy-go.toml）执行，
+// 爬虫文件将生成到 spiders/ 目录，使用 package spiders。
 func runGenSpider(args []string) error {
 	fs := flag.NewFlagSet("genspider", flag.ContinueOnError)
 	fs.Usage = printGenSpiderUsage
@@ -73,14 +82,26 @@ func runGenSpider(args []string) error {
 	domainStr := extractDomain(domain)
 	fullURL := verifyURLScheme(domain)
 
+	// 检测是否在 scrapy-go 项目中
+	if !isInProject() {
+		return fmt.Errorf("当前目录不是 scrapy-go 项目（未找到 scrapy-go.toml），请在项目根目录下执行此命令")
+	}
+
+	// 确定输出路径：输出到 spiders/ 目录
+	fileName := sanitizeFileName(name) + ".go"
+	spidersDir := "spiders"
+	if err := os.MkdirAll(spidersDir, 0o755); err != nil {
+		return fmt.Errorf("创建 spiders 目录失败: %w", err)
+	}
+	outputFile := filepath.Join(spidersDir, fileName)
+
 	// 检查文件是否已存在
-	outputFile := sanitizeFileName(name) + ".go"
 	if _, err := os.Stat(outputFile); err == nil {
 		return fmt.Errorf("文件 %s 已存在，使用其他名称或删除已有文件", outputFile)
 	}
 
-	// 验证模板是否存在
-	tmplPath := fmt.Sprintf("templates/spiders/%s.go.tmpl", *templateName)
+	// 确定模板路径
+	tmplPath := fmt.Sprintf("templates/spiders/project/%s.go.tmpl", *templateName)
 	if _, err := spiderTemplates.ReadFile(tmplPath); err != nil {
 		return fmt.Errorf("模板 %q 不存在，使用 -l 查看可用模板", *templateName)
 	}
@@ -180,6 +201,9 @@ func printGenSpiderUsage() {
 	fmt.Println(`用法: scrapy-go genspider [options] <name> <domain>
 
 使用模板生成新的爬虫文件。
+
+必须在 scrapy-go 项目根目录下（存在 scrapy-go.toml）执行，
+爬虫文件将生成到 spiders/ 目录，使用 package spiders。
 
 参数:
   name      爬虫名称（必须以字母或下划线开头，只能包含字母、数字和下划线）
