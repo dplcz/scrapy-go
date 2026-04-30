@@ -25,10 +25,11 @@ var projectTemplates embed.FS
 //
 //	<project_dir>/
 //	├── main.go              # 入口文件
-//	├── settings.go          # 项目配置
-//	├── middlewares.go       # 自定义中间件
-//	├── pipelines.go         # 自定义 Pipeline
-//	├── items.go             # Item 定义
+//	├── project/             # 项目级组件
+//	│   ├── settings.go      # 项目配置
+//	│   ├── middlewares.go   # 自定义中间件
+//	│   ├── pipelines.go     # 自定义 Pipeline
+//	│   └── items.go         # Item 定义
 //	├── spiders/             # 爬虫目录
 //	│   └── .gitkeep
 //	├── go.mod               # Go 模块文件
@@ -73,6 +74,12 @@ func runStartProject(args []string) error {
 		return fmt.Errorf("创建项目目录失败: %w", err)
 	}
 
+	// 创建 project 子目录（项目级组件）
+	projectPkgDir := filepath.Join(projectDir, "project")
+	if err := os.MkdirAll(projectPkgDir, 0o755); err != nil {
+		return fmt.Errorf("创建 project 目录失败: %w", err)
+	}
+
 	// 创建 spiders 子目录
 	spidersDir := filepath.Join(projectDir, "spiders")
 	if err := os.MkdirAll(spidersDir, 0o755); err != nil {
@@ -98,10 +105,10 @@ func runStartProject(args []string) error {
 		outPath  string
 	}{
 		{"templates/project/main.go.tmpl", filepath.Join(projectDir, "main.go")},
-		{"templates/project/settings.go.tmpl", filepath.Join(projectDir, "settings.go")},
-		{"templates/project/middlewares.go.tmpl", filepath.Join(projectDir, "middlewares.go")},
-		{"templates/project/pipelines.go.tmpl", filepath.Join(projectDir, "pipelines.go")},
-		{"templates/project/items.go.tmpl", filepath.Join(projectDir, "items.go")},
+		{"templates/project/settings.go.tmpl", filepath.Join(projectPkgDir, "settings.go")},
+		{"templates/project/middlewares.go.tmpl", filepath.Join(projectPkgDir, "middlewares.go")},
+		{"templates/project/pipelines.go.tmpl", filepath.Join(projectPkgDir, "pipelines.go")},
+		{"templates/project/items.go.tmpl", filepath.Join(projectPkgDir, "items.go")},
 		{"templates/project/go.mod.tmpl", filepath.Join(projectDir, "go.mod")},
 		{"templates/project/scrapy-go.toml.tmpl", filepath.Join(projectDir, "scrapy-go.toml")},
 	}
@@ -194,10 +201,11 @@ func printStartProjectUsage() {
 生成的项目结构:
   <project_dir>/
   ├── main.go              入口文件
-  ├── settings.go          项目配置
-  ├── middlewares.go       自定义中间件模板
-  ├── pipelines.go         自定义 Pipeline 模板
-  ├── items.go             Item 定义
+  ├── project/             项目级组件
+  │   ├── settings.go      项目配置
+  │   ├── middlewares.go   自定义中间件模板
+  │   ├── pipelines.go     自定义 Pipeline 模板
+  │   └── items.go         Item 定义
   ├── spiders/             爬虫目录
   │   └── .gitkeep
   ├── go.mod               Go 模块文件

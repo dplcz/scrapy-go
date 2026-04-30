@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.5.0-alpha.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.5.0-alpha.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -867,10 +867,19 @@ scrapy-go/
 
 ## 📝 更新日志
 
+### v0.5.0-alpha.3
+
+- 🏗️ **脚手架项目结构重构** — 将组件文件分离到 `project/` 子包
+  - `settings.go` / `middlewares.go` / `pipelines.go` / `items.go` 从 `package main` 迁移到 `package project`
+  - `main.go` 新增 `_ "<module>/project"` 导入，保持组件可达
+  - 注释中的注册示例同步更新为 `project.` 前缀（如 `&project.MyPipeline{}`）
+  - 生成的项目结构更符合 Go 多包组织规范，职责分离更清晰
+- 42 个测试全部通过，`go test -race` 无竞态，cmd/scrapy-go 包覆盖率 81.0%
+
 ### v0.5.0-alpha.2
 
 - 🛠️ **项目脚手架工具**（P3-006）— 命令行工具 `cmd/scrapy-go`，零外部依赖
-  - `scrapy-go startproject <name> [dir]` — 创建完整项目骨架（main.go / settings.go / middlewares.go / pipelines.go / items.go / go.mod / scrapy-go.toml）
+  - `scrapy-go startproject <name> [dir]` — 创建完整项目骨架（main.go / project/ / spiders/ / go.mod / scrapy-go.toml）
   - `scrapy-go genspider <name> <domain>` — 生成爬虫文件，支持 basic（默认）和 crawl 两种模板
   - `scrapy-go version [-v]` — 打印版本信息（支持 Go 版本/平台详情）
   - `go:embed` 嵌入模板 + `text/template` 渲染，编译期打包无需运行时文件系统
