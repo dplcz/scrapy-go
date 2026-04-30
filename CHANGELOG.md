@@ -7,6 +7,62 @@
 
 ## [Unreleased]
 
+## [v0.5.0-alpha.2] - 2026-04-30
+
+> **Phase 3 Sprint 9** — 项目脚手架工具
+
+### 概览
+
+v0.5.0-alpha.2 实现了项目脚手架工具（`cmd/scrapy-go`），提供 `startproject`、`genspider`、`version` 三个命令，
+使用标准库 `os.Args` + `go:embed` + `text/template` 实现，保持零外部依赖。
+
+### 新增
+
+#### 项目脚手架工具（P3-006）
+
+- **`scrapy-go startproject <name> [dir]`** — 创建新的 scrapy-go 项目骨架
+  - 使用 `go:embed` 嵌入模板 + `text/template` 渲染
+  - 生成 `main.go` / `settings.go` / `middlewares.go` / `pipelines.go` / `items.go` / `go.mod` / `scrapy-go.toml` 等项目文件
+  - 自动创建 `spiders/` 目录
+  - 项目名称验证（必须以字母或下划线开头，只能包含字母、数字和下划线）
+  - 自动检测已有 `go.mod` 防止覆盖
+  - `scrapy-go.toml` 包含带注释的常用配置项模板（并发/超时/重试/缓存/日志等）
+- **`scrapy-go genspider <name> <domain>`** — 使用模板生成新的爬虫文件
+  - 支持 `-t basic`（默认）和 `-t crawl` 两种模板
+  - 支持 `-l` 列出可用模板
+  - 域名自动提取与 URL scheme 补全（无 scheme 时自动添加 `https://`）
+  - 爬虫名称自动转换为 Go 大驼峰类型名（如 `quotes` → `QuotesSpider`）
+  - 文件名安全处理（连字符和点替换为下划线）
+  - 检测文件已存在防止覆盖
+- **`scrapy-go version [-v]`** — 打印版本信息
+  - `-v` 显示详细信息（Go 版本、操作系统、架构）
+- **子命令分发框架** — 使用标准库 `os.Args` 手动分发（保持零外部依赖）
+  - 支持 `-h` / `--help` 帮助信息
+  - 兼容 `go generate` 调用（为 Sprint 10 的 `generate-adapter` 子命令预留入口）
+
+### 设计决策
+
+| 决策 | 说明 |
+|------|------|
+| 零外部依赖 | 使用标准库 `os.Args` 替代 cobra/urfave/cli，保持最小依赖 |
+| 舍弃 `crawl`/`list`/`settings` 命令 | Go 静态编译语言无法动态加载 Spider，这些命令在 Go 中无意义 |
+| `go:embed` 模板 | 编译期嵌入模板文件，无需运行时文件系统访问 |
+| 通过 `go.mod` 检测项目 | 替代 Scrapy 的 `scrapy.cfg` 项目检测机制 |
+| 驼峰命名自动转换 | 遵循 Go 命名规范，`my_spider` → `MySpider` |
+
+### 质量
+
+- 新增 **42** 个测试（cmd/scrapy-go 包）
+- `go test -race` 无竞态报告
+- `go vet` 无告警
+- cmd/scrapy-go 包覆盖率 **82.1%**（目标 ≥ 80%）
+
+### 依赖
+
+- 无新增外部依赖（纯标准库实现）
+
+---
+
 ## [v0.5.0-alpha.1] - 2026-04-30
 
 > **Phase 3 Sprint 9** — HttpCache 中间件实现

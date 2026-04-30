@@ -1,0 +1,35 @@
+// {{.ProjectName}} - scrapy-go 爬虫项目入口
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/dplcz/scrapy-go/pkg/crawler"
+)
+
+func main() {
+	// 创建 Crawler 实例
+	c := crawler.NewDefault()
+
+	// 设置信号处理：支持优雅关闭
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// TODO: 在此处创建你的 Spider 实例并运行
+	// 示例：
+	//   sp := spiders.NewMySpider()
+	//   if err := c.Run(ctx, sp); err != nil && !errors.Is(err, context.Canceled) {
+	//       fmt.Fprintf(os.Stderr, "爬取错误: %v\n", err)
+	//       os.Exit(1)
+	//   }
+	_ = c
+	_ = ctx
+	_ = errors.New
+	_ = fmt.Sprintf
+	_ = os.Exit
+}

@@ -1,0 +1,14 @@
+// {{.ProjectName}} Item 定义
+//
+// 在此处定义爬取的数据结构。
+// 使用 Go struct 定义 Item，通过 struct tag 指定字段元数据。
+package main
+
+// ExampleItem 是一个示例 Item 定义。
+// 使用 `json` tag 指定 JSON 序列化字段名。
+// 使用 `item` tag 指定 scrapy-go 字段元数据（可选）。
+type ExampleItem struct {
+	Title       string `json:"title" item:"title"`
+	URL         string `json:"url" item:"url"`
+	Description string `json:"description,omitempty" item:"description"`
+}

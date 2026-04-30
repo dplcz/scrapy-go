@@ -1,0 +1,50 @@
+// {{.ProjectName}} 自定义中间件
+//
+// 在此处定义自定义的下载器中间件和 Spider 中间件。
+// 注册方式：
+//   c := crawler.NewDefault()
+//   c.AddDownloaderMiddleware(&MyDownloaderMiddleware{}, "MyDL", 543)
+//   c.AddSpiderMiddleware(&MySpiderMiddleware{}, "MySM", 543)
+package main
+
+import (
+	"context"
+
+	dmiddle "github.com/dplcz/scrapy-go/pkg/downloader/middleware"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
+)
+
+// ============================================================================
+// 下载器中间件
+// ============================================================================
+
+// {{.ClassName}}DownloaderMiddleware 是自定义下载器中间件。
+type {{.ClassName}}DownloaderMiddleware struct {
+	dmiddle.BaseDownloaderMiddleware
+}
+
+// ProcessRequest 在请求发送到下载器之前调用。
+func (m *{{.ClassName}}DownloaderMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
+	return nil, nil
+}
+
+// ProcessResponse 在下载器返回响应后调用。
+func (m *{{.ClassName}}DownloaderMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
+	return response, nil
+}
+
+// ============================================================================
+// Spider 中间件
+// ============================================================================
+
+// {{.ClassName}}SpiderMiddleware 是自定义 Spider 中间件。
+type {{.ClassName}}SpiderMiddleware struct {
+	smiddle.BaseSpiderMiddleware
+}
+
+// ProcessOutput 在 Spider 回调产出结果后调用。
+func (m *{{.ClassName}}SpiderMiddleware) ProcessOutput(ctx context.Context, response *shttp.Response, result []spider.Output) ([]spider.Output, error) {
+	return result, nil
+}
