@@ -7,6 +7,23 @@
 
 ## [Unreleased]
 
+## [v0.5.0-alpha.5] - 2026-04-30
+
+> **Phase 3 Sprint 9** — 爬虫模板增强
+
+### 变更
+
+#### 爬虫模板增强
+
+- **新增包注释** — basic/crawl 模板顶部添加 `// Package spiders` 注释，符合 Go 文档规范
+- **新增 `CustomSettings()` 方法** — 支持 Spider 级别的配置覆盖，默认返回 nil（不覆盖任何配置）
+
+### 质量
+
+- 无逻辑变更，仅模板内容增强
+
+---
+
 ## [v0.5.0-alpha.4] - 2026-04-30
 
 > **Phase 3 Sprint 9** — genspider 项目检测强制化 + settings 模板升级

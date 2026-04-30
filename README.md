@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.5.0-alpha.4** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.5.0-alpha.5** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -866,6 +866,12 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v0.5.0-alpha.5
+
+- 📝 **爬虫模板增强** — basic/crawl 模板新增 `CustomSettings()` 方法和包注释
+  - 新增 `// Package spiders` 包注释，符合 Go 文档规范
+  - 新增 `CustomSettings() *spider.Settings` 方法，支持 Spider 级别配置覆盖（默认返回 nil）
 
 ### v0.5.0-alpha.4
 
