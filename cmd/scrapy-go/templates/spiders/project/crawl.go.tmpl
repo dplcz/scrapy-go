@@ -1,3 +1,4 @@
+// Package spiders
 // 爬虫: {{.Name}}
 // 基于规则的 CrawlSpider，自动提取和跟踪链接。
 package spiders
@@ -46,4 +47,10 @@ func (s *{{.ClassName}}) parseItem(ctx context.Context, response *shttp.Response
 	return []spider.Output{
 		{Item: item},
 	}, nil
+}
+
+// CustomSettings 返回 Spider 级别的配置覆盖。
+// 返回 nil 表示不覆盖任何配置。
+func (s *{{.ClassName}}) CustomSettings() *spider.Settings{
+    return nil
 }

@@ -1,3 +1,4 @@
+// Package spiders
 // 爬虫: {{.Name}}
 package spiders
 
@@ -35,4 +36,10 @@ func (s *{{.ClassName}}) Parse(ctx context.Context, response *shttp.Response) ([
 	//   outputs = append(outputs, spider.Output{Item: map[string]any{"title": title}})
 
 	return outputs, nil
+}
+
+// CustomSettings 返回 Spider 级别的配置覆盖。
+// 返回 nil 表示不覆盖任何配置。
+func (s *{{.ClassName}}) CustomSettings() *spider.Settings{
+    return nil
 }
