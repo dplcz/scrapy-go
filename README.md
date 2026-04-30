@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.5.0-alpha.5** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.5.0-beta.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -866,6 +866,17 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v0.5.0-beta.1 🎉
+
+> **首个公开体验版** — Phase 3 核心功能全部可用
+
+- 🗄️ **HttpCache 中间件**（P3-005）— 可插拔缓存存储 + 缓存策略，支持 DummyPolicy / RFC2616Policy
+- 🛠️ **项目脚手架工具**（P3-006）— `startproject` / `genspider` / `version` 命令，零外部依赖
+- 🔒 **genspider 项目检测强制化** — 必须在项目中执行，settings 升级为项目级配置
+- 🏗️ **项目结构重构** — 组件文件分离到 `project/` 子包，符合 Go 多包规范
+- 📝 **爬虫模板增强** — 新增 `CustomSettings()` 方法和包注释
+- 📋 全部测试通过，`go test -race` 无竞态，核心包覆盖率 ≥80%
 
 ### v0.5.0-alpha.5
 

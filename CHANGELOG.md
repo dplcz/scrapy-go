@@ -7,6 +7,44 @@
 
 ## [Unreleased]
 
+## [v0.5.0-beta.1] - 2026-04-30
+
+> **Phase 3 公开体验版** — 高级爬虫功能 + 工程化工具全部可用
+
+### 概览
+
+v0.5.0-beta.1 是 scrapy-go 的首个公开体验版，标志着 Phase 3 核心功能全部完成并进入公测阶段。
+本版本包含 CrawlSpider 基于规则的自动爬取、RobotsTxt 中间件、磁盘队列与断点续爬、HttpCache 中间件、
+项目脚手架工具等全部高级特性，适合开发者提前试用并反馈。
+
+### 包含功能（自 v0.4.0 以来）
+
+#### HttpCache 中间件（P3-005）
+- 可插拔的 `CacheStorage` + `CachePolicy` 接口设计
+- `FilesystemCacheStorage` — JSON 元数据 + gzip 压缩 + 原子写入
+- `DummyPolicy`（无条件缓存）+ `RFC2616Policy`（HTTP 缓存语义）
+- 9 种统计指标 + `dont_cache` Meta + 下载异常错误恢复
+
+#### 项目脚手架工具（P3-006）
+- `scrapy-go startproject <name>` — 创建完整项目骨架
+- `scrapy-go genspider <name> <domain>` — 生成爬虫文件（basic/crawl 模板）
+- `scrapy-go version [-v]` — 版本信息
+- 零外部依赖，`go:embed` + `text/template` 实现
+- 强制项目检测（`scrapy-go.toml`）+ 项目级 settings 模板
+
+### 质量
+
+- 全部测试通过（`go test ./... -race` 无竞态）
+- `go vet ./...` 无告警
+- 核心包覆盖率均 ≥80%
+
+### 已知限制
+
+- 并发优化（Phase 3 剩余任务）尚未完成，将在 v0.5.0 正式版中交付
+- 本版本为体验版，API 可能在正式版发布前有微调
+
+---
+
 ## [v0.5.0-alpha.5] - 2026-04-30
 
 > **Phase 3 Sprint 9** — 爬虫模板增强
