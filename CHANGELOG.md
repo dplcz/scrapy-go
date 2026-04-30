@@ -7,6 +7,80 @@
 
 ## [Unreleased]
 
+## [v0.5.0-alpha.1] - 2026-04-30
+
+> **Phase 3 Sprint 9** — HttpCache 中间件实现
+
+### 概览
+
+v0.5.0-alpha.1 实现了 HttpCache 中间件，提供可插拔的缓存存储后端和缓存策略接口，
+支持文件系统缓存存储和两种缓存策略（DummyPolicy 无条件缓存、RFC2616Policy HTTP 缓存语义）。
+
+### 新增
+
+#### HttpCache 中间件（P3-005）
+
+- **`CacheStorage` 接口** — 缓存存储后端抽象（`pkg/downloader/middleware/httpcache/interface.go`）
+  - `Open(spiderName)` / `Close()` 生命周期管理
+  - `RetrieveResponse(request)` / `StoreResponse(request, response)` 缓存操作
+- **`CachePolicy` 接口** — 缓存策略抽象
+  - `ShouldCacheRequest` / `ShouldCacheResponse` 缓存决策
+  - `IsCachedResponseFresh` / `IsCachedResponseValid` 新鲜度和有效性判断
+- **`FilesystemCacheStorage`** — 基于文件系统的缓存存储后端
+  - JSON 元数据格式（替代 Scrapy 的 pickle，更安全且跨平台）
+  - 支持 gzip 压缩存储（`HTTPCACHE_GZIP` 配置）
+  - 原子写入（临时文件 + `os.Rename`）
+  - 按请求指纹分桶目录结构：`{cacheDir}/{spiderName}/{fp[0:2]}/{fp}/`
+  - 支持过期时间（`HTTPCACHE_EXPIRATION_SECS`）
+- **`DummyPolicy`** — 无条件缓存策略
+  - 排除指定 scheme（`HTTPCACHE_IGNORE_SCHEMES`，默认 `["file"]`）
+  - 排除指定 HTTP 状态码（`HTTPCACHE_IGNORE_HTTP_CODES`）
+  - 缓存永不过期，始终使用缓存响应
+- **`RFC2616Policy`** — HTTP 缓存语义策略（实验性）
+  - Cache-Control 指令完整支持（max-age、no-cache、no-store、must-revalidate、max-stale）
+  - Expires 头解析
+  - ETag / If-None-Match 条件验证
+  - Last-Modified / If-Modified-Since 条件验证
+  - 304 Not Modified 响应处理
+  - 启发式新鲜度计算（Last-Modified 回退）
+  - 永久重定向（300/301/308）无限期缓存
+  - `HTTPCACHE_ALWAYS_STORE` 无条件存储模式
+  - `HTTPCACHE_IGNORE_RESPONSE_CACHE_CONTROLS` 忽略指定响应 Cache-Control 指令
+- **`HttpCacheMiddleware`** — HTTP 缓存中间件，注册优先级 900
+  - ProcessRequest：缓存查找 + 命中短路
+  - ProcessResponse：缓存存储 + 条件验证
+  - ProcessException：下载异常时使用缓存恢复
+  - 9 种统计指标（hit/miss/store/firsthand/revalidate/invalidate/uncacheable/errorrecovery/ignore）
+  - `dont_cache` Meta 跳过缓存
+  - `HTTPCACHE_IGNORE_MISSING` 模式（缓存未命中时忽略请求）
+  - 通过 Spider 信号（SpiderOpened/SpiderClosed）管理存储生命周期
+
+### 新增配置项
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `HTTPCACHE_ENABLED` | `false` | 是否启用 HTTP 缓存 |
+| `HTTPCACHE_DIR` | `"httpcache"` | 缓存目录 |
+| `HTTPCACHE_EXPIRATION_SECS` | `0` | 缓存过期时间（秒），0 不过期 |
+| `HTTPCACHE_GZIP` | `false` | 是否使用 gzip 压缩存储 |
+| `HTTPCACHE_IGNORE_HTTP_CODES` | `[]` | 不缓存的 HTTP 状态码 |
+| `HTTPCACHE_IGNORE_SCHEMES` | `["file"]` | 不缓存的 URL scheme |
+| `HTTPCACHE_IGNORE_MISSING` | `false` | 缓存未命中时是否忽略请求 |
+| `HTTPCACHE_POLICY` | `"dummy"` | 缓存策略（"dummy" 或 "rfc2616"） |
+| `HTTPCACHE_ALWAYS_STORE` | `false` | RFC2616 策略下是否始终存储 |
+| `HTTPCACHE_IGNORE_RESPONSE_CACHE_CONTROLS` | `[]` | RFC2616 策略下忽略的 Cache-Control 指令 |
+
+### 质量
+
+- 新增 **72** 个测试（httpcache 包）
+- `go test ./... -race` 无竞态报告
+- `go vet ./...` 无告警
+- httpcache 包覆盖率 **88.9%**（目标 ≥ 85%）
+
+### 依赖
+
+- 无新增外部依赖（全部功能仅使用 Go 标准库）
+
 ---
 
 ## [v0.4.0] - 2026-04-29

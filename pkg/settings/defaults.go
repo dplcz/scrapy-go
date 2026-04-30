@@ -12,7 +12,7 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("BOT_NAME", "scrapybot", d)
-	s.Set("USER_AGENT", "scrapy-go/0.3.0 (+https://github.com/example/scrapy-go)", d)
+	s.Set("USER_AGENT", "scrapy-go/0.5.0 (+https://github.com/example/scrapy-go)", d)
 
 	// ========================================================================
 	// 并发控制
@@ -110,6 +110,11 @@ func (s *Settings) loadDefaults() {
 	s.Set("HTTPCACHE_EXPIRATION_SECS", 0, d)
 	s.Set("HTTPCACHE_GZIP", false, d)
 	s.Set("HTTPCACHE_IGNORE_HTTP_CODES", []int{}, d)
+	s.Set("HTTPCACHE_IGNORE_SCHEMES", []string{"file"}, d)
+	s.Set("HTTPCACHE_IGNORE_MISSING", false, d)
+	s.Set("HTTPCACHE_POLICY", "dummy", d)
+	s.Set("HTTPCACHE_ALWAYS_STORE", false, d)
+	s.Set("HTTPCACHE_IGNORE_RESPONSE_CACHE_CONTROLS", []string{}, d)
 
 	// ========================================================================
 	// Robots.txt
@@ -180,6 +185,7 @@ func (s *Settings) loadDefaults() {
 		"Cookies":         700,
 		"HttpProxy":       750,
 		"DownloaderStats": 850,
+		"HttpCache":       900,
 	}, d)
 	s.Set("DOWNLOADER_MIDDLEWARES", map[string]int{}, d)
 
