@@ -1,0 +1,49 @@
+// {{.ProjectName}} 项目配置
+//
+// 本文件包含项目级别的配置。
+// 可以在 Spider 的 CustomSettings() 方法中覆盖这些配置。
+package main
+
+import (
+	"github.com/dplcz/scrapy-go/pkg/spider"
+)
+
+// NewProjectSettings 返回项目级别的配置。
+// 在创建 Crawler 时通过 WithSettings 传入。
+func NewProjectSettings() *spider.Settings {
+	return &spider.Settings{
+		// ====================================================================
+		// 并发与限速
+		// ====================================================================
+
+		// 全局最大并发请求数（默认 16）
+		ConcurrentRequests: spider.IntPtr(16),
+
+		// 每个域名的最大并发请求数（默认 8）
+		ConcurrentRequestsPerDomain: spider.IntPtr(8),
+
+		// 下载延迟（默认 0，无延迟）
+		// DownloadDelay: spider.DurationPtr(0),
+
+		// ====================================================================
+		// 下载配置
+		// ====================================================================
+
+		// 自定义 User-Agent
+		// UserAgent: spider.StringPtr("{{.ProjectName}} (+http://www.yourdomain.com)"),
+
+		// ====================================================================
+		// 日志配置
+		// ====================================================================
+
+		// 日志级别：DEBUG、INFO、WARN、ERROR（默认 DEBUG）
+		LogLevel: spider.StringPtr("INFO"),
+
+		// ====================================================================
+		// Robots.txt
+		// ====================================================================
+
+		// 是否遵守 robots.txt（默认 false）
+		// RobotsTxtObey: spider.BoolPtr(true),
+	}
+}

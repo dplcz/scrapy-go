@@ -1,0 +1,49 @@
+// 爬虫: {{.Name}}
+package main
+
+import (
+	"context"
+
+	"github.com/dplcz/scrapy-go/pkg/crawler"
+	shttp "github.com/dplcz/scrapy-go/pkg/http"
+	"github.com/dplcz/scrapy-go/pkg/spider"
+)
+
+// {{.ClassName}} 爬虫实现。
+type {{.ClassName}} struct {
+	spider.Base
+}
+
+// New{{.ClassName}} 创建一个新的 {{.ClassName}} 实例。
+func New{{.ClassName}}() *{{.ClassName}} {
+	return &{{.ClassName}}{
+		Base: spider.Base{
+			SpiderName: "{{.Name}}",
+			StartURLs: []string{
+				"{{.URL}}",
+			},
+		},
+	}
+}
+
+// Parse 是默认的响应回调函数。
+func (s *{{.ClassName}}) Parse(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
+	var outputs []spider.Output
+
+	// TODO: 在此处实现页面解析逻辑
+	// 示例：
+	//   title := response.CSS("title::text").Get("")
+	//   outputs = append(outputs, spider.Output{Item: map[string]any{"title": title}})
+
+	return outputs, nil
+}
+
+func main() {
+	sp := New{{.ClassName}}()
+	c := crawler.NewDefault()
+
+	ctx := context.Background()
+	if err := c.Run(ctx, sp); err != nil {
+		panic(err)
+	}
+}

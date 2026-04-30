@@ -1,0 +1,33 @@
+// {{.ProjectName}} 自定义 Pipeline
+//
+// 在此处定义 Item Pipeline，负责处理 Spider 产出的数据项。
+// 注册方式：
+//   c := crawler.NewDefault()
+//   c.AddPipeline(&{{.ClassName}}Pipeline{}, "{{.ClassName}}Pipeline", 300)
+package main
+
+import (
+	"context"
+)
+
+// {{.ClassName}}Pipeline 是自定义 Item Pipeline。
+type {{.ClassName}}Pipeline struct{}
+
+// Open 在 Spider 打开时调用，用于初始化资源。
+func (p *{{.ClassName}}Pipeline) Open(ctx context.Context) error {
+	return nil
+}
+
+// Close 在 Spider 关闭时调用，用于释放资源。
+func (p *{{.ClassName}}Pipeline) Close(ctx context.Context) error {
+	return nil
+}
+
+// ProcessItem 处理单个 Item。
+//
+// 返回值：
+//   - (item, nil)         — 继续传递给下一个 Pipeline
+//   - (nil, ErrDropItem)  — 丢弃该 Item
+func (p *{{.ClassName}}Pipeline) ProcessItem(ctx context.Context, item any) (any, error) {
+	return item, nil
+}
