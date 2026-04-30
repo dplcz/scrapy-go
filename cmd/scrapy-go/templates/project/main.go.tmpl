@@ -10,6 +10,9 @@ import (
 	"syscall"
 
 	"github.com/dplcz/scrapy-go/pkg/crawler"
+
+	// 导入项目级组件（中间件、Pipeline、Item 定义、配置等）
+	_ "{{.ModulePath}}/project"
 )
 
 func main() {

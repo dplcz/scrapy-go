@@ -3,8 +3,8 @@
 // 在此处定义 Item Pipeline，负责处理 Spider 产出的数据项。
 // 注册方式：
 //   c := crawler.NewDefault()
-//   c.AddPipeline(&{{.ClassName}}Pipeline{}, "{{.ClassName}}Pipeline", 300)
-package main
+//   c.AddPipeline(&project.{{.ClassName}}Pipeline{}, "{{.ClassName}}Pipeline", 300)
+package project
 
 import (
 	"context"
