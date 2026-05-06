@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.5.0-beta.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.5.0-beta.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -906,6 +906,22 @@ scrapy-go/
 - ⚙️ **go generate 代码生成器** — `scrapy-go generate-adapter` 自动生成 ItemAdapter 实现
 - 🚧 TOML 配置文件加载（待完成）
 - 🚧 Phase 3 集成测试套件（待完成）
+
+### v0.5.0-beta.2
+
+> **Sprint 10 功能交付** — 并发模型优化 + 接口隔离 + 泛型 Pipeline + Item 体系增强
+
+- ⚡ **errgroup 生命周期管理** — Engine 使用 `errgroup` 统一管理多 goroutine，任一出错自动取消 context
+- 🔒 **semaphore.Weighted** — 替代 channel 信号量，Slot 并发控制 + CONCURRENT_ITEMS 均支持 context 取消
+- 🏊 **sync.Pool 对象池** — 新增 `pkg/pool` 包，Request/Response/Bytes 对象复用减少 GC 压力
+- 🛑 **两阶段优雅关闭** — 第一次 SIGINT 等待 in-flight + Pipeline 排空，第二次强制退出
+- 🔍 **pprof 调试端点** — 新增 `pkg/debug` 包，`PPROF_ENABLED` 配置控制 pprof HTTP 端点
+- 📊 **DiskQueue 优化** — 有序优先级切片，Pop O(1) / Push O(log N)，偿还 TD-010
+- 🧩 **DL Middleware 接口隔离** — 拆分为 `RequestProcessor`/`ResponseProcessor`/`ExceptionProcessor` 细粒度接口
+- 🔬 **TypedPipeline[T] 泛型 Pipeline** — 编译期约束 Item 类型，类型不匹配自动跳过
+- 🏷️ **struct tag 字段元数据** — `item:"name,required"` / `item:"name,default=value"` + Validate 函数
+- ⚙️ **go generate 代码生成器** — `scrapy-go generate-adapter` 自动生成 ItemAdapter 实现
+- 📋 全部测试通过，`go test -race` 无竞态，核心包覆盖率 ≥85%
 
 ### v0.5.0-beta.1 🎉
 
