@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
@@ -29,12 +31,12 @@ type downloadResult struct {
 //   - 请求先入队到 queue channel
 //   - 由 processQueue goroutine 串行出队
 //   - 通过 lastSeen 时间戳精确控制同一 Slot 内两次请求的最小间隔
-//   - 通过 transferSem 信号量控制并发传输数
+//   - 通过 semaphore.Weighted 控制并发传输数（支持 context 取消和加权获取）
 //
 // 对应 Scrapy 的 Slot 类。
 type Slot struct {
 	mu             sync.Mutex
-	concurrency    int
+	concurrency    int64
 	delay          time.Duration
 	randomizeDelay bool
 
@@ -45,8 +47,9 @@ type Slot struct {
 	// queue 是请求排队的 channel，processQueue goroutine 从中消费
 	queue chan *downloadTask
 
-	// transferSem 控制并发传输数的信号量
-	transferSem chan struct{}
+	// transferSem 使用 semaphore.Weighted 控制并发传输数，
+	// 相比 channel 信号量支持 context 取消（Acquire 时可响应 ctx.Done()）。
+	transferSem *semaphore.Weighted
 
 	// downloadFn 是实际执行下载的函数，由 Downloader 注入
 	downloadFn func(ctx context.Context, request *shttp.Request) (*shttp.Response, error)
@@ -69,14 +72,14 @@ func NewSlot(
 	}
 
 	s := &Slot{
-		concurrency:    concurrency,
+		concurrency:    int64(concurrency),
 		delay:          delay,
 		randomizeDelay: randomizeDelay,
 		active:         make(map[*shttp.Request]struct{}),
 		transferring:   make(map[*shttp.Request]struct{}),
 		lastSeen:       time.Time{}, // 零值，第一个请求不需要等待
 		queue:          make(chan *downloadTask, 1024),
-		transferSem:    make(chan struct{}, concurrency),
+		transferSem:    semaphore.NewWeighted(int64(concurrency)),
 		downloadFn:     downloadFn,
 		done:           make(chan struct{}),
 	}
@@ -160,8 +163,12 @@ func (s *Slot) processTask(task *downloadTask) {
 		}
 	}
 
-	// 2. 获取传输信号量（控制并发传输数）
-	s.transferSem <- struct{}{}
+	// 2. 获取传输信号量（使用 semaphore.Weighted，支持 context 取消）
+	if err := s.transferSem.Acquire(task.ctx, 1); err != nil {
+		// context 已取消，直接返回错误
+		task.resultCh <- downloadResult{err: err}
+		return
+	}
 
 	// 3. 更新 lastSeen（在实际发出请求的时刻）
 	s.mu.Lock()
@@ -178,7 +185,7 @@ func (s *Slot) processTask(task *downloadTask) {
 	go func() {
 		defer func() {
 			// 释放传输信号量
-			<-s.transferSem
+			s.transferSem.Release(1)
 			// 移除传输中标记
 			s.RemoveTransferring(task.request)
 		}()
@@ -193,7 +200,7 @@ func (s *Slot) processTask(task *downloadTask) {
 			}
 		}()
 
-		// 应用超时，确保超时仅覆盖网络传输阶段，
+		// 应用超时，确保超时仅覆盖网络传输阶段
 		downloadCtx := task.ctx
 		if v, ok := task.request.GetMeta("download_timeout"); ok {
 			if timeout, ok := v.(time.Duration); ok && timeout > 0 {
@@ -228,7 +235,7 @@ func (s *Slot) DownloadDelay() time.Duration {
 func (s *Slot) FreeTransferSlots() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.concurrency - len(s.transferring)
+	return int(s.concurrency) - len(s.transferring)
 }
 
 // AddActive 将请求添加到活跃集合。

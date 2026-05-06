@@ -9,9 +9,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"sort"
 
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
+	"github.com/dplcz/scrapy-go/pkg/item"
 	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/stats"
@@ -97,11 +99,12 @@ type Entry struct {
 // Manager 管理 Item Pipeline 链。
 // 对应 Scrapy 的 ItemPipelineManager。
 type Manager struct {
-	pipelines []Entry // 按优先级排序
-	signals   *signal.Manager
-	stats     stats.Collector
-	logger    *slog.Logger
-	crawler   Crawler // 可选的 Crawler 引用，供 CrawlerAwarePipeline 使用
+	pipelines     []Entry // 按优先级排序
+	signals       *signal.Manager
+	stats         stats.Collector
+	logger        *slog.Logger
+	crawler       Crawler // 可选的 Crawler 引用，供 CrawlerAwarePipeline 使用
+	validateItems bool    // 是否在 ProcessItem 前自动执行 Item 验证（填充默认值 + 校验 required）
 }
 
 // NewManager 创建一个新的 Pipeline 管理器。
@@ -138,6 +141,17 @@ func (m *Manager) AddPipeline(p ItemPipeline, name string, priority int) {
 // Count 返回 Pipeline 数量。
 func (m *Manager) Count() int {
 	return len(m.pipelines)
+}
+
+// SetValidateItems 设置是否在 ProcessItem 前自动执行 Item 验证。
+//
+// 启用后，Manager 会在调用 Pipeline 链之前对 struct 类型的 Item 执行：
+//   - 填充 `item:"...,default=value"` 标记的默认值
+//   - 校验 `item:"...,required"` 标记的必填字段
+//
+// 对于 map 类型的 Item，验证会被跳过。
+func (m *Manager) SetValidateItems(validate bool) {
+	m.validateItems = validate
 }
 
 // SetCrawler 设置 Crawler 引用，供 CrawlerAwarePipeline 在 Open 时使用。
@@ -191,11 +205,28 @@ func (m *Manager) Close(ctx context.Context) error {
 // ProcessItem 按优先级顺序通过所有 Pipeline 处理 Item。
 //
 // 处理流程：
-//  1. 按优先级顺序调用每个 Pipeline 的 ProcessItem
-//  2. 如果某个 Pipeline 返回 ErrDropItem，停止后续处理并发出 item_dropped 信号
-//  3. 如果某个 Pipeline 返回其他错误，发出 item_error 信号
-//  4. 所有 Pipeline 处理成功后，发出 item_scraped 信号
+//  1. 若启用了 ItemAdapter 自动适配，先对 struct Item 执行 Validate（填充默认值 + 校验 required）
+//  2. 按优先级顺序调用每个 Pipeline 的 ProcessItem
+//  3. 如果某个 Pipeline 返回 ErrDropItem，停止后续处理并发出 item_dropped 信号
+//  4. 如果某个 Pipeline 返回其他错误，发出 item_error 信号
+//  5. 所有 Pipeline 处理成功后，发出 item_scraped 信号
 func (m *Manager) ProcessItem(ctx context.Context, item any, response any) (any, error) {
+	// ItemAdapter 自动适配：对 struct Item 执行 Validate
+	if m.validateItems {
+		if err := m.validateItem(item); err != nil {
+			m.stats.IncValue("item_error_count", 1, 0)
+			m.logger.Error("item validation failed",
+				"error", err,
+			)
+			m.signals.SendCatchLog(signal.ItemError, map[string]any{
+				"item":     item,
+				"response": response,
+				"error":    err,
+			})
+			return nil, err
+		}
+	}
+
 	var err error
 	for _, entry := range m.pipelines {
 		item, err = entry.Pipeline.ProcessItem(ctx, item)
@@ -236,4 +267,24 @@ func (m *Manager) ProcessItem(ctx context.Context, item any, response any) (any,
 	})
 
 	return item, nil
+}
+
+// validateItem 对 struct 类型的 Item 执行验证（填充默认值 + 校验 required）。
+// 对于 map 类型或非 struct 类型的 Item，跳过验证。
+func (m *Manager) validateItem(it any) error {
+	if it == nil {
+		return nil
+	}
+	// 仅对 struct 指针执行验证（Validate 需要指针以填充默认值）
+	rv := reflect.ValueOf(it)
+	if rv.Kind() != reflect.Ptr {
+		return nil
+	}
+	if rv.IsNil() {
+		return nil
+	}
+	if rv.Elem().Kind() != reflect.Struct {
+		return nil
+	}
+	return item.Validate(it)
 }

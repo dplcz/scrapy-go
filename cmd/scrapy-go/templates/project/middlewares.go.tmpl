@@ -5,6 +5,13 @@
 //   c := crawler.NewDefault()
 //   c.AddDownloaderMiddleware(&project.MyDownloaderMiddleware{}, "MyDL", 543)
 //   c.AddSpiderMiddleware(&project.MySpiderMiddleware{}, "MySM", 543)
+//
+// 下载器中间件支持接口隔离（ISP）设计：
+//   - 只需实现关心的接口，无需为不需要的方法提供空实现
+//   - dmiddle.RequestProcessor：仅处理请求（正序调用）
+//   - dmiddle.ResponseProcessor：仅处理响应（逆序调用）
+//   - dmiddle.ExceptionProcessor：仅处理异常（逆序调用）
+//   - dmiddle.DownloaderMiddleware：全功能接口（同时满足以上三者，向后兼容）
 package project
 
 import (
@@ -17,23 +24,32 @@ import (
 )
 
 // ============================================================================
-// 下载器中间件
+// 下载器中间件（推荐：只实现需要的接口）
 // ============================================================================
 
-// {{.ClassName}}DownloaderMiddleware 是自定义下载器中间件。
-type {{.ClassName}}DownloaderMiddleware struct {
-	dmiddle.BaseDownloaderMiddleware
-}
+// {{.ClassName}}DownloaderMiddleware 是自定义下载器中间件示例。
+//
+// 推荐方式：只实现需要的细粒度接口（如仅实现 RequestProcessor）。
+// 兼容方式：嵌入 dmiddle.BaseDownloaderMiddleware 实现全部方法。
+//
+// 本示例仅实现 ProcessRequest，Manager 会自动跳过未实现的 ProcessResponse/ProcessException。
+type {{.ClassName}}DownloaderMiddleware struct{}
 
-// ProcessRequest 在请求发送到下载器之前调用。
+// ProcessRequest 在请求发送到下载器之前调用（实现 dmiddle.RequestProcessor）。
+// 返回 (nil, nil) 表示继续处理链。
 func (m *{{.ClassName}}DownloaderMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
+	// TODO: 在此处添加请求处理逻辑
+	// 示例：request.Headers.Set("X-Custom-Header", "value")
 	return nil, nil
 }
 
-// ProcessResponse 在下载器返回响应后调用。
-func (m *{{.ClassName}}DownloaderMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
-	return response, nil
-}
+// 如需处理响应，取消以下注释（实现 dmiddle.ResponseProcessor）：
+// func (m *{{.ClassName}}DownloaderMiddleware) ProcessResponse(ctx context.Context, request *shttp.Request, response *shttp.Response) (*shttp.Response, error) {
+// 	return response, nil
+// }
+
+// 确保满足 RequestProcessor 接口（编译期检查）。
+var _ dmiddle.RequestProcessor = (*{{.ClassName}}DownloaderMiddleware)(nil)
 
 // ============================================================================
 // Spider 中间件

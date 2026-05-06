@@ -194,8 +194,9 @@ func TestConcurrentItemsDefaultValue(t *testing.T) {
 	if s.concurrentItems != 100 {
 		t.Errorf("expected default concurrentItems=100, got %d", s.concurrentItems)
 	}
-	if cap(s.itemSem) != 100 {
-		t.Errorf("expected itemSem capacity=100, got %d", cap(s.itemSem))
+	// semaphore.Weighted 不支持 cap()，通过 concurrentItems 字段验证
+	if s.itemSem == nil {
+		t.Error("expected itemSem to be initialized")
 	}
 }
 

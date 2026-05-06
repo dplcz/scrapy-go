@@ -5,10 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/signal"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/dplcz/scrapy-go/pkg/downloader"
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
@@ -17,16 +22,19 @@ import (
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/scheduler"
 	"github.com/dplcz/scrapy-go/pkg/scraper"
-	"github.com/dplcz/scrapy-go/pkg/signal"
+	ssignal "github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
 
 const (
-	defaultHeartbeatInterval = 5 * time.Second
+	defaultHeartbeatInterval       = 5 * time.Second
+	defaultGracefulShutdownTimeout = 30 * time.Second
 )
 
 // Engine 是框架的核心引擎，协调所有组件。
+// 使用 errgroup 统一管理心跳、初始请求消费和信号监听等 goroutine，
+// 任一出错自动取消 context。
 // 对应 Scrapy 的 ExecutionEngine。
 type Engine struct {
 	mu sync.Mutex
@@ -38,7 +46,7 @@ type Engine struct {
 	dlMW       *downloader.MiddlewareManager
 	scraper    *scraper.Scraper
 	extensions *extension.Manager
-	signals    *signal.Manager
+	signals    *ssignal.Manager
 	stats      stats.Collector
 	logger     *slog.Logger
 
@@ -46,13 +54,20 @@ type Engine struct {
 	paused    atomic.Bool
 	startTime time.Time
 
-	heartbeatInterval time.Duration
+	heartbeatInterval       time.Duration
+	gracefulShutdownTimeout time.Duration
 
 	// scheduleNotify 用于在有新请求入队时即时通知调度循环
 	scheduleNotify chan struct{}
 
 	// startRequestsDone 标记初始请求是否已全部消费
 	startRequestsDone atomic.Bool
+
+	// shutdownOnce 确保优雅关闭流程只执行一次
+	shutdownOnce sync.Once
+
+	// forceShutdown 标记是否收到第二次 SIGINT，需要强制退出
+	forceShutdown atomic.Bool
 }
 
 // NewEngine 创建一个新的 Engine。
@@ -62,13 +77,13 @@ func NewEngine(
 	dl *downloader.Downloader,
 	dlMW *downloader.MiddlewareManager,
 	sc *scraper.Scraper,
-	signals *signal.Manager,
+	signals *ssignal.Manager,
 	statsCollector stats.Collector,
 	logger *slog.Logger,
 	ext *extension.Manager,
 ) *Engine {
 	if signals == nil {
-		signals = signal.NewManager(nil)
+		signals = ssignal.NewManager(nil)
 	}
 	if statsCollector == nil {
 		statsCollector = stats.NewDummyCollector()
@@ -78,21 +93,29 @@ func NewEngine(
 	}
 
 	return &Engine{
-		spider:            sp,
-		scheduler:         sched,
-		downloader:        dl,
-		dlMW:              dlMW,
-		scraper:           sc,
-		extensions:        ext,
-		signals:           signals,
-		stats:             statsCollector,
-		logger:            logger,
-		heartbeatInterval: defaultHeartbeatInterval,
-		scheduleNotify:    make(chan struct{}, 1),
+		spider:                  sp,
+		scheduler:               sched,
+		downloader:              dl,
+		dlMW:                    dlMW,
+		scraper:                 sc,
+		extensions:              ext,
+		signals:                 signals,
+		stats:                   statsCollector,
+		logger:                  logger,
+		heartbeatInterval:       defaultHeartbeatInterval,
+		gracefulShutdownTimeout: defaultGracefulShutdownTimeout,
+		scheduleNotify:          make(chan struct{}, 1),
 	}
 }
 
+// SetGracefulShutdownTimeout 设置优雅关闭超时时间。
+func (e *Engine) SetGracefulShutdownTimeout(d time.Duration) {
+	e.gracefulShutdownTimeout = d
+}
+
 // Start 启动引擎，开始爬取流程。
+// 使用 errgroup 统一管理心跳、初始请求消费和信号监听 goroutine，
+// 任一出错自动取消 context（替代 Scrapy Twisted reactor 事件循环）。
 // 此方法会阻塞直到爬取完成或 context 被取消。
 func (e *Engine) Start(ctx context.Context) error {
 	if e.running.Load() {
@@ -109,19 +132,47 @@ func (e *Engine) Start(ctx context.Context) error {
 	}
 
 	// 发送 engine_started 信号
-	e.signals.SendCatchLog(signal.EngineStarted, nil)
+	e.signals.SendCatchLog(ssignal.EngineStarted, nil)
 
-	// 启动初始请求消费
-	go e.consumeStartRequests(ctx)
+	// 派生一个可取消的 context，当主调度循环结束时取消所有子 goroutine
+	runCtx, runCancel := context.WithCancel(ctx)
+	defer runCancel()
 
-	// 主调度循环
-	err := e.run(ctx)
+	// 使用 errgroup 管理多 goroutine
+	g, gCtx := errgroup.WithContext(runCtx)
 
-	// 关闭
-	e.closeSpider(ctx, e.closeReason(err))
+	// goroutine 1: 消费初始请求
+	g.Go(func() error {
+		e.consumeStartRequests(gCtx)
+		return nil
+	})
+
+	// goroutine 2: 主调度循环（心跳 + 即时通知）
+	g.Go(func() error {
+		err := e.run(gCtx)
+		// 主循环结束后取消 context，通知其他 goroutine 退出
+		runCancel()
+		return err
+	})
+
+	// goroutine 3: OS 信号监听（两阶段 SIGINT 处理）
+	g.Go(func() error {
+		return e.watchOSSignals(gCtx)
+	})
+
+	// 等待所有 goroutine 完成
+	err := g.Wait()
+
+	// 如果错误是由 runCancel() 触发的 context.Canceled，视为正常完成
+	if err != nil && errors.Is(err, context.Canceled) && e.slot != nil && e.slot.closing.Load() {
+		err = nil
+	}
+
+	// 优雅关闭：等待 in-flight 请求完成 + Pipeline 排空
+	e.gracefulClose(ctx, e.closeReason(err))
 
 	// 发送 engine_stopped 信号
-	e.signals.SendCatchLog(signal.EngineStopped, nil)
+	e.signals.SendCatchLog(ssignal.EngineStopped, nil)
 
 	return err
 }
@@ -178,59 +229,136 @@ func (e *Engine) openSpider(ctx context.Context) error {
 	e.logger.Info("spider opened", "spider", e.spider.Name())
 
 	// 发送 spider_opened 信号
-	e.signals.SendCatchLog(signal.SpiderOpened, map[string]any{
+	e.signals.SendCatchLog(ssignal.SpiderOpened, map[string]any{
 		"spider": e.spider,
 	})
 
 	return nil
 }
 
-// closeSpider 关闭所有组件。
-func (e *Engine) closeSpider(ctx context.Context, reason string) {
-	e.logger.Info("closing spider", "reason", reason)
+// gracefulClose 执行优雅关闭流程。
+// 等待 in-flight 请求完成 + Pipeline 排空，超时后强制退出。
+func (e *Engine) gracefulClose(ctx context.Context, reason string) {
+	e.shutdownOnce.Do(func() {
+		e.logger.Info("closing spider", "reason", reason)
 
-	e.slot.closing.Store(true)
+		e.slot.closing.Store(true)
 
-	// 关闭下载器
-	if err := e.downloader.Close(); err != nil {
-		e.logger.Error("failed to close downloader", "error", err)
-	}
+		// 如果不是强制关闭，等待 in-flight 请求完成
+		if !e.forceShutdown.Load() {
+			e.waitForInFlight()
+		}
 
-	// 关闭 Scraper
-	if err := e.scraper.Close(ctx); err != nil {
-		e.logger.Error("failed to close scraper", "error", err)
-	}
+		// 关闭下载器
+		if err := e.downloader.Close(); err != nil {
+			e.logger.Error("failed to close downloader", "error", err)
+		}
 
-	// 关闭调度器
-	if err := e.scheduler.Close(ctx, reason); err != nil {
-		e.logger.Error("failed to close scheduler", "error", err)
-	}
+		// 关闭 Scraper（内部会等待 in-flight Item 处理完毕）
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), e.gracefulShutdownTimeout)
+		defer closeCancel()
 
-	// 发送 spider_closed 信号
-	// 注意：此信号必须在 extensions.Close 之前派发。
-	// 扩展在自身 Close 中会注销 SpiderClosed 处理器（如 CoreStats/LogStats/CloseSpider），
-	// 若先关闭扩展再发信号，处理器已不存在，会导致 finish_time、elapsed_time_seconds、
-	// finish_reason、responses_per_minute 等最终指标无法写入 stats，进而在 stats dump 中丢失。
-	// 该顺序与 Scrapy 原版 ExecutionEngine.close_spider 保持一致。
-	e.signals.SendCatchLog(signal.SpiderClosed, map[string]any{
-		"spider": e.spider,
-		"reason": reason,
+		if err := e.scraper.Close(closeCtx); err != nil {
+			e.logger.Error("failed to close scraper", "error", err)
+		}
+
+		// 关闭调度器
+		if err := e.scheduler.Close(closeCtx, reason); err != nil {
+			e.logger.Error("failed to close scheduler", "error", err)
+		}
+
+		// 发送 spider_closed 信号
+		// 注意：此信号必须在 extensions.Close 之前派发。
+		// 扩展在自身 Close 中会注销 SpiderClosed 处理器（如 CoreStats/LogStats/CloseSpider），
+		// 若先关闭扩展再发信号，处理器已不存在，会导致最终指标无法写入 stats。
+		// 该顺序与 Scrapy 原版 ExecutionEngine.close_spider 保持一致。
+		e.signals.SendCatchLog(ssignal.SpiderClosed, map[string]any{
+			"spider": e.spider,
+			"reason": reason,
+		})
+
+		// 关闭扩展系统（此时扩展已通过 SpiderClosed 信号完成最终统计写入）
+		if e.extensions != nil {
+			if err := e.extensions.Close(closeCtx); err != nil {
+				e.logger.Error("failed to close extensions", "error", err)
+			}
+		}
+
+		// 关闭统计收集器（触发 dump，此时 stats 已包含扩展写入的最终指标）
+		e.stats.Close(reason)
+
+		// 调用 Spider.Closed
+		e.spider.Closed(reason)
+
+		e.logger.Info("spider closed", "reason", reason)
 	})
+}
 
-	// 关闭扩展系统（此时扩展已通过 SpiderClosed 信号完成最终统计写入）
-	if e.extensions != nil {
-		if err := e.extensions.Close(ctx); err != nil {
-			e.logger.Error("failed to close extensions", "error", err)
+// waitForInFlight 等待所有 in-flight 请求完成。
+// 使用 GRACEFUL_SHUTDOWN_TIMEOUT 控制最大等待时间。
+func (e *Engine) waitForInFlight() {
+	if e.slot == nil {
+		return
+	}
+
+	timeout := time.NewTimer(e.gracefulShutdownTimeout)
+	defer timeout.Stop()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if e.slot.IsIdle() && e.downloader.ActiveCount() == 0 {
+			e.logger.Debug("all in-flight requests completed")
+			return
+		}
+
+		select {
+		case <-timeout.C:
+			inProgress := e.slot.InProgressCount()
+			activeDownloads := e.downloader.ActiveCount()
+			e.logger.Warn("graceful shutdown timeout reached, forcing close",
+				"in_progress", inProgress,
+				"active_downloads", activeDownloads,
+				"timeout", e.gracefulShutdownTimeout,
+			)
+			return
+		case <-ticker.C:
+			// 继续检查
 		}
 	}
+}
 
-	// 关闭统计收集器（触发 dump，此时 stats 已包含扩展写入的最终指标）
-	e.stats.Close(reason)
+// watchOSSignals 监听 OS 信号，实现两阶段 SIGINT 处理。
+// 第一次 SIGINT：触发优雅关闭（停止取新请求，等待 in-flight 完成）。
+// 第二次 SIGINT：强制退出。
+func (e *Engine) watchOSSignals(ctx context.Context) error {
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 
-	// 调用 Spider.Closed
-	e.spider.Closed(reason)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case sig := <-sigCh:
+			if e.slot != nil && e.slot.closing.Load() {
+				// 第二次信号：强制退出
+				e.logger.Warn("received second signal, forcing immediate shutdown", "signal", sig)
+				e.forceShutdown.Store(true)
+				os.Exit(1)
+			}
 
-	e.logger.Info("spider closed", "reason", reason)
+			// 第一次信号：优雅关闭
+			e.logger.Info("received shutdown signal, initiating graceful shutdown", "signal", sig)
+			if e.slot != nil {
+				e.slot.closing.Store(true)
+			}
+			// 通知调度循环检查退出条件
+			e.notifySchedule()
+			return nil
+		}
+	}
 }
 
 // run 是主调度循环。
@@ -239,7 +367,7 @@ func (e *Engine) run(ctx context.Context) error {
 	defer ticker.Stop()
 
 	for {
-		// 检查是否正在关闭
+		// 检查是否正在关闭且已空闲
 		if e.slot != nil && e.slot.closing.Load() && e.slot.IsIdle() {
 			return nil
 		}
@@ -260,15 +388,26 @@ func (e *Engine) run(ctx context.Context) error {
 //   - 在同步循环中从 Scheduler 取出请求
 //   - 同步将请求添加到 Downloader.active（确保 NeedsBackout 立即可见）
 //   - 然后异步启动下载 goroutine
+//
+// 当 slot.closing 为 true 时，停止取新请求但不丢弃队列中的剩余请求（可配置）。
 func (e *Engine) processScheduledRequests(ctx context.Context) {
-	if e.paused.Load() || e.slot == nil || e.slot.closing.Load() {
+	if e.paused.Load() || e.slot == nil {
+		return
+	}
+
+	// slot.closing 后停止取新请求但不丢弃队列
+	if e.slot.closing.Load() {
+		// 仅检查是否需要触发 idle 关闭
+		if e.spiderIsIdle() && e.slot.closeIfIdle {
+			return
+		}
 		return
 	}
 
 	for !e.needsBackout() {
 		req := e.scheduler.NextRequest()
 		if req == nil {
-			e.signals.SendCatchLog(signal.SchedulerEmpty, nil)
+			e.signals.SendCatchLog(ssignal.SchedulerEmpty, nil)
 			break
 		}
 
@@ -313,19 +452,19 @@ func (e *Engine) spiderIsIdle() bool {
 
 // handleSpiderIdle 处理 Spider 空闲状态。
 func (e *Engine) handleSpiderIdle(ctx context.Context) {
-	errs := e.signals.SendCatchLog(signal.SpiderIdle, map[string]any{
+	errs := e.signals.SendCatchLog(ssignal.SpiderIdle, map[string]any{
 		"spider": e.spider,
 	})
 
 	// 检查是否有处理器请求不关闭
-	if signal.ContainsDontCloseSpider(errs) {
+	if ssignal.ContainsDontCloseSpider(errs) {
 		return
 	}
 
 	// 再次确认空闲
 	if e.spiderIsIdle() {
 		reason := "finished"
-		if closeErr := signal.ContainsCloseSpider(errs); closeErr != nil {
+		if closeErr := ssignal.ContainsCloseSpider(errs); closeErr != nil {
 			reason = closeErr.Reason
 		}
 		e.slot.closing.Store(true)
@@ -395,11 +534,7 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 	}
 
 	// 发送 response_received 信号
-	// 注：下游核心指标（response_received_count）由 CoreStats 扩展监听该信号后递增，
-	// 下载层指标（downloader/response_count、downloader/response_status_count/{STATUS}、
-	// downloader/response_bytes 等）由 DownloaderStats 中间件统一负责。
-	// 引擎仅负责派发信号与引擎视角的调度日志，不直接写入下载层统计。
-	e.signals.SendCatchLog(signal.ResponseReceived, map[string]any{
+	e.signals.SendCatchLog(ssignal.ResponseReceived, map[string]any{
 		"response": resp,
 		"request":  request,
 	})
@@ -459,13 +594,13 @@ func (e *Engine) consumeStartRequests(ctx context.Context) {
 func (e *Engine) crawl(request *shttp.Request) {
 	if !e.scheduler.EnqueueRequest(request) {
 		// 请求被过滤（去重）
-		e.signals.SendCatchLog(signal.RequestDropped, map[string]any{
+		e.signals.SendCatchLog(ssignal.RequestDropped, map[string]any{
 			"request": request,
 		})
 		return
 	}
 
-	e.signals.SendCatchLog(signal.RequestScheduled, map[string]any{
+	e.signals.SendCatchLog(ssignal.RequestScheduled, map[string]any{
 		"request": request,
 	})
 

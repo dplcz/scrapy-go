@@ -161,12 +161,19 @@ func (c *Crawler) AddPipeline(p pipeline.ItemPipeline, name string, priority int
 // AddDownloaderMiddleware 注册一个自定义下载器中间件。
 // 必须在 Run 之前调用。priority 值越小越先执行 ProcessRequest。
 //
+// mw 可以是以下类型之一（接口隔离）：
+//   - dmiddle.DownloaderMiddleware（全功能，向后兼容）
+//   - dmiddle.RequestProcessor（仅处理请求）
+//   - dmiddle.ResponseProcessor（仅处理响应）
+//   - dmiddle.ExceptionProcessor（仅处理异常）
+//   - 或以上接口的任意组合
+//
 // 用法：
 //
 //	c := crawler.NewDefault()
 //	c.AddDownloaderMiddleware(&MyAuthMiddleware{}, "Auth", 450)
 //	c.Run(ctx, mySpider)
-func (c *Crawler) AddDownloaderMiddleware(mw dmiddle.DownloaderMiddleware, name string, priority int) {
+func (c *Crawler) AddDownloaderMiddleware(mw any, name string, priority int) {
 	c.userDLMiddlewares = append(c.userDLMiddlewares, downloader.MiddlewareEntry{
 		Middleware: mw,
 		Name:       name,

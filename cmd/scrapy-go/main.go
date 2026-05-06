@@ -42,6 +42,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
 			os.Exit(1)
 		}
+	case "generate-adapter":
+		if err := runGenerateAdapter(args); err != nil {
+			fmt.Fprintf(os.Stderr, "错误: %v\n", err)
+			os.Exit(1)
+		}
 	case "version":
 		runVersion(args)
 	case "-h", "--help", "help":
@@ -63,6 +68,7 @@ func printUsage() {
 可用命令:
   startproject <name> [dir]    创建新的 scrapy-go 项目
   genspider <name> <domain>    使用模板生成新的爬虫文件
+  generate-adapter -type=Name  从 struct 生成 ItemAdapter 实现
   version [-v]                 打印版本信息
 
 使用 "scrapy-go <command> -h" 获取命令的详细帮助。`)

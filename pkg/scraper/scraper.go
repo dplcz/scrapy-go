@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/sync/semaphore"
+
 	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/pipeline"
@@ -37,11 +39,11 @@ type Scraper struct {
 
 	// concurrentItems 控制同时在 Pipeline 链中处理的 Item 上限。
 	// 对齐 Scrapy 的 CONCURRENT_ITEMS 配置（默认 100）。
-	concurrentItems int
+	concurrentItems int64
 
-	// itemSem 是 Item 并发处理的信号量通道。
-	// 缓冲区大小等于 concurrentItems。
-	itemSem chan struct{}
+	// itemSem 使用 semaphore.Weighted 控制 Item 并发处理，
+	// 相比 channel 信号量支持 context 取消（Acquire 时可响应 ctx.Done()）。
+	itemSem *semaphore.Weighted
 
 	// itemWg 用于等待所有 in-flight Item 处理完毕（优雅关闭）。
 	itemWg sync.WaitGroup
@@ -88,8 +90,8 @@ func NewScraper(
 		stats:           sc,
 		logger:          logger,
 		maxActiveSize:   int64(maxActiveSize),
-		concurrentItems: concurrentItems,
-		itemSem:         make(chan struct{}, concurrentItems),
+		concurrentItems: int64(concurrentItems),
+		itemSem:         semaphore.NewWeighted(int64(concurrentItems)),
 	}
 }
 
@@ -216,6 +218,7 @@ func (s *Scraper) resolveCallback(request *shttp.Request) spider.CallbackFunc {
 // 将 Request 收集返回给 Engine，将 Item 发送到 Pipeline。
 // Item 之间并发处理（受 CONCURRENT_ITEMS 上限控制），
 // 单个 Item 内 Pipeline 链仍按优先级串行（对齐 Scrapy 语义）。
+// 使用 semaphore.Weighted 替代 channel 信号量，支持 context 取消。
 func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, response any) ([]*shttp.Request, error) {
 	var newRequests []*shttp.Request
 
@@ -231,11 +234,15 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 			s.logger.Debug("scraped item", "item", output.Item)
 			// 并发处理 Item：获取信号量后在 goroutine 中执行 Pipeline 链
 			item := output.Item
-			s.itemSem <- struct{}{} // 获取信号量（阻塞直到有空位）
-			s.itemWg.Add(1)         // 增加 WaitGroup 计数
+			// 使用 semaphore.Weighted 获取许可（支持 context 取消）
+			if err := s.itemSem.Acquire(ctx, 1); err != nil {
+				// context 已取消，停止处理后续 Item
+				break
+			}
+			s.itemWg.Add(1) // 增加 WaitGroup 计数
 			go func(it any) {
 				defer s.itemWg.Done()
-				defer func() { <-s.itemSem }() // 释放信号量
+				defer s.itemSem.Release(1) // 释放信号量
 				// panic recovery: 防止 Pipeline 中的 panic 导致进程崩溃
 				defer func() {
 					if r := recover(); r != nil {

@@ -19,6 +19,8 @@ import (
 //   - 使用多文件方案替代 Scrapy 的单文件追加方案，便于按优先级管理
 //   - 每次 Push/Pop 操作立即写盘，确保进程异常退出时数据不丢失
 //   - 无需手动 Flush，Close 仅做清理工作
+//   - sortedPriorities 维护有序切片，Push 时二分插入 O(log N)，
+//     Pop 取最高优先级 O(1)，避免每次重新分配和排序
 //
 // 对应 Scrapy 的 LifoDiskQueue（通过 queuelib 实现）。
 type DiskQueue struct {
@@ -26,6 +28,12 @@ type DiskQueue struct {
 	dir     string          // 队列数据目录
 	buckets map[int]*bucket // 按优先级分桶
 	count   int             // 总元素数量
+
+	// priorities 维护按优先级从高到低排序的有序切片。
+	// Push 新优先级时二分插入 O(log N)，删除空桶时二分移除 O(log N)，
+	// Pop 取最高优先级 O(1)。
+	// 替代原有的每次 Pop/Peek 重新分配切片 + O(N log N) 排序。
+	priorities []int
 }
 
 // bucket 是单个优先级的数据桶。
@@ -43,8 +51,9 @@ func NewDiskQueue(dir string) (*DiskQueue, error) {
 	}
 
 	dq := &DiskQueue{
-		dir:     dir,
-		buckets: make(map[int]*bucket),
+		dir:        dir,
+		buckets:    make(map[int]*bucket),
+		priorities: make([]int, 0, 8),
 	}
 
 	// 加载已有数据
@@ -65,6 +74,8 @@ func (dq *DiskQueue) PushWithPriority(data []byte, priority int) error {
 	if !ok {
 		b = &bucket{priority: priority, items: make([]json.RawMessage, 0)}
 		dq.buckets[priority] = b
+		// 二分插入新优先级到有序切片（从高到低）
+		dq.insertPriority(priority)
 	}
 
 	b.items = append(b.items, data)
@@ -77,6 +88,7 @@ func (dq *DiskQueue) PushWithPriority(data []byte, priority int) error {
 		dq.count--
 		if len(b.items) == 0 {
 			delete(dq.buckets, priority)
+			dq.removePriority(priority)
 		}
 		return fmt.Errorf("failed to persist after push: %w", err)
 	}
@@ -101,13 +113,9 @@ func (dq *DiskQueue) PopWithPriority() ([]byte, int, error) {
 		return nil, 0, nil
 	}
 
-	// 按优先级从高到低排序
-	priorities := dq.sortedPriorities()
-	if len(priorities) == 0 {
-		return nil, 0, nil
-	}
-
-	for _, p := range priorities {
+	// 直接从有序切片取最高优先级 O(1)
+	for i := 0; i < len(dq.priorities); i++ {
+		p := dq.priorities[i]
 		b := dq.buckets[p]
 		if len(b.items) == 0 {
 			continue
@@ -124,6 +132,7 @@ func (dq *DiskQueue) PopWithPriority() ([]byte, int, error) {
 		// 清理空桶
 		if len(b.items) == 0 {
 			delete(dq.buckets, p)
+			dq.removePriority(p)
 			bucketRemoved = true
 		}
 
@@ -132,13 +141,14 @@ func (dq *DiskQueue) PopWithPriority() ([]byte, int, error) {
 			// 回滚内存状态
 			if bucketRemoved {
 				dq.buckets[p] = b
+				dq.insertPriority(p)
 			}
 			b.items = append(b.items, data)
 			dq.count++
 			return nil, 0, fmt.Errorf("failed to persist after pop: %w", err)
 		}
 
-		return []byte(data), p, nil
+		return data, p, nil
 	}
 
 	return nil, 0, nil
@@ -160,8 +170,8 @@ func (dq *DiskQueue) Peek() ([]byte, error) {
 		return nil, nil
 	}
 
-	priorities := dq.sortedPriorities()
-	for _, p := range priorities {
+	// 直接从有序切片取最高优先级 O(1)
+	for _, p := range dq.priorities {
 		b := dq.buckets[p]
 		if len(b.items) > 0 {
 			return b.items[len(b.items)-1], nil
@@ -189,18 +199,55 @@ func (dq *DiskQueue) Close() error {
 }
 
 // ============================================================================
-// 内部方法
+// 有序优先级切片维护方法
 // ============================================================================
 
-// sortedPriorities 返回按优先级从高到低排序的优先级列表。
-func (dq *DiskQueue) sortedPriorities() []int {
-	priorities := make([]int, 0, len(dq.buckets))
-	for p := range dq.buckets {
-		priorities = append(priorities, p)
-	}
-	sort.Sort(sort.Reverse(sort.IntSlice(priorities)))
-	return priorities
+// insertPriority 将优先级插入有序切片（从高到低排序）。
+// 使用二分查找确定插入位置，时间复杂度 O(log N)。
+func (dq *DiskQueue) insertPriority(priority int) {
+	// 二分查找插入位置（降序排列）
+	idx := sort.Search(len(dq.priorities), func(i int) bool {
+		return dq.priorities[i] < priority
+	})
+	// 在 idx 位置插入
+	dq.priorities = append(dq.priorities, 0)
+	copy(dq.priorities[idx+1:], dq.priorities[idx:])
+	dq.priorities[idx] = priority
 }
+
+// removePriority 从有序切片中移除指定优先级。
+// 使用二分查找定位，时间复杂度 O(log N)。
+func (dq *DiskQueue) removePriority(priority int) {
+	// 二分查找目标位置（降序排列）
+	idx := sort.Search(len(dq.priorities), func(i int) bool {
+		return dq.priorities[i] < priority
+	})
+	// 向前检查是否找到
+	if idx > 0 && dq.priorities[idx-1] == priority {
+		idx = idx - 1
+	} else if idx < len(dq.priorities) && dq.priorities[idx] == priority {
+		// 找到了
+	} else {
+		return // 未找到
+	}
+	// 移除
+	dq.priorities = append(dq.priorities[:idx], dq.priorities[idx+1:]...)
+}
+
+// rebuildPriorities 从 buckets 重建有序优先级切片。
+// 仅在 load 时调用一次。
+func (dq *DiskQueue) rebuildPriorities() {
+	dq.priorities = make([]int, 0, len(dq.buckets))
+	for p := range dq.buckets {
+		dq.priorities = append(dq.priorities, p)
+	}
+	// 降序排列
+	sort.Sort(sort.Reverse(sort.IntSlice(dq.priorities)))
+}
+
+// ============================================================================
+// 内部方法
+// ============================================================================
 
 // load 从磁盘加载已有数据。
 func (dq *DiskQueue) load() error {
@@ -242,6 +289,9 @@ func (dq *DiskQueue) load() error {
 			dq.count += len(items)
 		}
 	}
+
+	// 重建有序优先级切片
+	dq.rebuildPriorities()
 
 	return nil
 }

@@ -7,6 +7,130 @@
 
 ## [Unreleased]
 
+### 新增
+
+#### 接口隔离优化（P3-008）
+
+##### DL Middleware 细粒度接口拆分（P3-008a）
+- 将原有的单一 `DownloaderMiddleware` 接口拆分为三个细粒度接口：
+  - `RequestProcessor`：仅处理请求（正序调用）
+  - `ResponseProcessor`：仅处理响应（逆序调用）
+  - `ExceptionProcessor`：仅处理异常（逆序调用）
+- 中间件只需实现自己关心的接口，无需为不需要的方法提供空实现
+- 遵循 Go 接口隔离原则（ISP），替代 Scrapy 必须实现全部 3 个方法的约束
+
+##### Manager 类型断言适配（P3-008b）
+- `MiddlewareManager.AddMiddleware` 接受 `any` 类型参数
+- 通过缓存的类型断言结果在运行时适配，跳过未实现对应接口的中间件
+- 零额外内存分配（类型断言结果在 AddMiddleware 时一次性缓存）
+
+##### 向后兼容保证（P3-008c）
+- 原有的 `DownloaderMiddleware` 接口保留，组合三个细粒度接口
+- `BaseDownloaderMiddleware` 结构体保留，所有已有中间件无需修改
+- `Crawler.AddDownloaderMiddleware` 接受 `any` 类型，支持注册细粒度中间件
+- 全部已有测试通过，无 API 破坏性变更
+
+#### 泛型 Item Pipeline + Item 体系增强（P3-009）
+
+##### TypedPipeline[T] 泛型包装（P3-009a）
+- 新增 `TypedItemPipeline[T]` 泛型接口，编译期约束 Item 类型
+- 新增 `TypedPipeline[T]` 适配器，将泛型 Pipeline 包装为通用 `ItemPipeline` 接口
+- 类型不匹配时自动跳过（透传 Item），允许多个 TypedPipeline 共存
+- 替代 Scrapy 运行时 isinstance() 类型检查
+
+##### Pipeline Manager 集成 ItemAdapter（P3-009b）
+- `Manager.SetValidateItems(true)` 启用 Item 自动验证
+- 在 Pipeline 链处理前自动对 struct Item 执行 Validate（填充默认值 + 校验 required）
+- map 类型 Item 自动跳过验证
+- 验证失败发出 `item_error` 信号并记录统计
+
+##### struct tag 字段元数据增强（P3-009c）
+- 支持 `item:"name,required"` 标记必填字段
+- 支持 `item:"name,default=value"` 标记默认值（支持 string/int/float/bool）
+- 支持 `item:"name,omitempty"` 标记序列化时忽略零值
+- 新增 `item.Validate(item)` 函数：先填充默认值，再校验 required
+- 新增 `item.ValidationError` 结构化错误类型，包含所有失败字段信息
+- 替代 Scrapy `ItemMeta` 元类 + `Field` 描述符
+
+##### go generate ItemAdapter 代码生成器（P3-009d）
+- 新增 `scrapy-go generate-adapter` CLI 命令
+- 从带 `item` struct tag 的结构体自动生成 `ItemAdapter` 实现代码
+- 生成的代码使用 switch-case 替代反射，消除运行时反射开销
+- 支持 `//go:generate scrapy-go generate-adapter -type=Book` 指令
+- 生成代码包含完整的 `ItemAdapter` 接口实现 + `FieldMeta` 元数据
+
+#### 并发模型优化（P3-007）
+
+##### errgroup 管理 Engine 多 goroutine（P3-007a）
+- Engine 使用 `golang.org/x/sync/errgroup` 统一管理心跳、初始请求消费和 OS 信号监听 goroutine
+- 任一 goroutine 出错自动取消 context，替代 Scrapy Twisted reactor 事件循环
+- 主调度循环结束后自动通知其他 goroutine 退出
+
+##### sync.Pool 对象池（P3-007b）
+- 新增 `pkg/pool` 包，提供 `RequestPool`、`ResponsePool`、`BytesPool` 三种对象池
+- 通过 `sync.Pool` 复用 HTTP 请求/响应对象，减少高并发场景下的 GC 压力
+- 提供 `Reset()` 方法确保归还对象不泄漏数据
+- 作为可选优化，需 Benchmark 验证 GC 为瓶颈时启用
+
+##### semaphore.Weighted 替代 channel 信号量（P3-007c）
+- Downloader Slot 的 `transferSem` 从 `chan struct{}` 替换为 `semaphore.Weighted`
+- Scraper 的 `itemSem`（CONCURRENT_ITEMS）从 `chan struct{}` 替换为 `semaphore.Weighted`
+- 支持 context 取消时中断信号量获取（channel 信号量不支持此特性）
+
+##### pprof 调试端点（P3-007d）
+- 新增 `pkg/debug` 包，提供 `PprofExtension` 扩展
+- 通过 `PPROF_ENABLED` 配置控制是否启用
+- 在指定端口（默认 `:6060`）提供标准 Go pprof 端点
+- 支持 CPU profile、堆内存分析、goroutine 堆栈、执行 trace 等
+- Go 特有调试手段，Scrapy 无此功能
+
+##### Engine 优雅关闭（P3-007e）
+- 两阶段 SIGINT 处理：第一次触发优雅关闭，第二次强制退出
+- 优雅关闭流程：停止取新请求 → 等待 in-flight 请求完成 → Pipeline 排空 → 关闭组件
+- `GRACEFUL_SHUTDOWN_TIMEOUT` 配置（默认 30s），超时后强制退出并记录未完成请求
+- `slot.closing` 后停止取新请求但不丢弃队列中的剩余请求
+- 使用 `sync.Once` 确保关闭流程只执行一次
+
+##### DiskQueue sortedPriorities 优化（P3-007f）
+- 维护有序 `[]int` 切片替代每次 Pop/Peek 重新分配 + O(N log N) 排序
+- Push 新优先级时二分插入 O(log N)
+- 删除空桶时二分移除 O(log N)
+- Pop 取最高优先级 O(1)
+- 偿还技术债务 TD-010
+
+### 新增配置项
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `GRACEFUL_SHUTDOWN_TIMEOUT` | 30 | 优雅关闭超时时间（秒） |
+| `PPROF_ENABLED` | false | 是否启用 pprof HTTP 端点 |
+| `PPROF_ADDR` | ":6060" | pprof 监听地址 |
+
+### 新增依赖
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| `golang.org/x/sync` | v0.20.0 | errgroup + semaphore.Weighted |
+
+### 质量
+
+- 全部单元测试通过（`go test ./... -race` 无竞态）
+- `go vet ./...` 无告警
+- 新增 `pkg/pool` 包含并发安全测试和 Benchmark
+- 新增 `pkg/debug` 包含 pprof 端点可访问性测试
+- 核心包测试覆盖率：`pkg/item` 91.3%、`pkg/pipeline` 92.1%、`pkg/downloader` 76.8%
+- ISP 接口隔离 7 个专项测试用例
+- TypedPipeline 6 个测试用例 + Manager 集成 4 个测试用例
+- struct tag 验证 12 个测试用例
+- generate-adapter 命令 7 个测试用例
+
+### 技术债务偿还
+
+- **TD-008**：Engine 优雅关闭机制 — 两阶段 SIGINT + in-flight 等待 + Pipeline 排空
+- **TD-010**：DiskQueue.sortedPriorities 优化 — 维护有序切片替代每次重新排序
+
+---
+
 ## [v0.5.0-beta.1] - 2026-04-30
 
 > **Phase 3 公开体验版** — 高级爬虫功能 + 工程化工具全部可用
