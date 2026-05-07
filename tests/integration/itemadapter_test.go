@@ -6,7 +6,8 @@
 //   - Pipeline 可以通过 ItemAdapter 读取异构 Item 的字段
 //
 // 对应 Phase 2 验收标准 P2-009 中：
-//   "ItemAdapter + Feed Export | 集成测试 | Feed Export 通过 ItemAdapter 统一导出 struct 和 map 类型的 Item"
+//
+//	"ItemAdapter + Feed Export | 集成测试 | Feed Export 通过 ItemAdapter 统一导出 struct 和 map 类型的 Item"
 package integration
 
 import (
@@ -93,7 +94,7 @@ func (c *customAdapterItem) AsMap() map[string]any {
 	}
 	return out
 }
-func (c *customAdapterItem) Len() int                       { return len(c.data) }
+func (c *customAdapterItem) Len() int                        { return len(c.data) }
 func (c *customAdapterItem) FieldMeta(string) item.FieldMeta { return nil }
 
 // ============================================================================

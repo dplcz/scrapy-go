@@ -26,19 +26,19 @@ import (
 // - `item` tag 后续 token 为 key=value 元数据（如 serializer=strip）
 // - `json` tag 作为 fallback 字段名来源
 type Book struct {
-	Title    string  `item:"title"`
-	Author   string  `item:"author"`
-	Price    float64 `item:"price,serializer=format_price"`
-	InStock  bool    `item:"in_stock"`
+	Title    string   `item:"title"`
+	Author   string   `item:"author"`
+	Price    float64  `item:"price,serializer=format_price"`
+	InStock  bool     `item:"in_stock"`
 	Tags     []string `item:"tags"`
-	internal string  // 非导出字段，自动跳过
+	internal string   // 非导出字段，自动跳过
 }
 
 // Movie 演示 json tag 作为 fallback 字段名。
 type Movie struct {
-	Name     string `json:"name"`
-	Director string `json:"director"`
-	Year     int    `json:"year"`
+	Name     string  `json:"name"`
+	Director string  `json:"director"`
+	Year     int     `json:"year"`
 	Rating   float64 `json:"rating,omitempty"`
 }
 
@@ -80,7 +80,7 @@ func (o *OrderedItem) AsMap() map[string]any {
 	}
 	return out
 }
-func (o *OrderedItem) Len() int                    { return len(o.keys) }
+func (o *OrderedItem) Len() int                        { return len(o.keys) }
 func (o *OrderedItem) FieldMeta(string) item.FieldMeta { return nil }
 
 // ============================================================================
@@ -514,7 +514,7 @@ func (a *csvRowAdapter) AsMap() map[string]any {
 	}
 	return out
 }
-func (a *csvRowAdapter) Len() int                    { return len(a.row.Headers) }
+func (a *csvRowAdapter) Len() int                        { return len(a.row.Headers) }
 func (a *csvRowAdapter) FieldMeta(string) item.FieldMeta { return nil }
 
 func demoRegisterFactory() {

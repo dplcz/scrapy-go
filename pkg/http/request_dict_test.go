@@ -185,7 +185,7 @@ func TestToDictFull(t *testing.T) {
 			{Name: "lang", Value: "en"},
 		}),
 		WithMeta(map[string]any{
-			"depth":    1,
+			"depth":         1,
 			"download_slot": "example.com",
 		}),
 		WithPriority(10),
@@ -281,7 +281,7 @@ func TestToDictSkipsNonSerializableMeta(t *testing.T) {
 		WithMeta(map[string]any{
 			"depth":    1,
 			"callback": func() {}, // 不可序列化
-			"channel":  ch,         // 不可序列化
+			"channel":  ch,        // 不可序列化
 		}),
 	)
 
@@ -361,7 +361,7 @@ func TestFromDictFull(t *testing.T) {
 		"url":         "https://example.com/api",
 		"method":      "POST",
 		"body":        "eyJrZXkiOiJ2YWx1ZSJ9", // base64 of {"key":"value"}
-		"priority":    float64(10),               // JSON 数字默认为 float64
+		"priority":    float64(10),            // JSON 数字默认为 float64
 		"dont_filter": true,
 		"encoding":    "gbk",
 		"flags":       []any{"cached", "redirected"},
@@ -1505,7 +1505,7 @@ func TestRegisterSpiderNil(t *testing.T) {
 // mockSpiderNoCallbacks 没有任何符合签名的方法
 type mockSpiderNoCallbacks struct{}
 
-func (s *mockSpiderNoCallbacks) Name() string { return "empty" }
+func (s *mockSpiderNoCallbacks) Name() string    { return "empty" }
 func (s *mockSpiderNoCallbacks) GetData() string { return "data" }
 
 func TestRegisterSpiderNoMatchingMethods(t *testing.T) {

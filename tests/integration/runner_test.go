@@ -202,11 +202,11 @@ func TestRunner_E2E_CrossCrawlerSignalPropagation(t *testing.T) {
 	r := crawler.NewRunner(crawler.WithOSSignalHandling(false))
 
 	var (
-		mu           sync.Mutex
-		openedNames  []string
-		closedNames  []string
-		openedCount  atomic.Int32
-		closedCount  atomic.Int32
+		mu          sync.Mutex
+		openedNames []string
+		closedNames []string
+		openedCount atomic.Int32
+		closedCount atomic.Int32
 	)
 
 	r.ConnectSignal(sig.SpiderOpened, func(params map[string]any) error {

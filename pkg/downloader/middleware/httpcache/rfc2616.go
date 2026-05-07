@@ -28,9 +28,9 @@ const maxAge = 3600 * 24 * 365
 //   - HTTPCACHE_IGNORE_SCHEMES: 不缓存的 URL scheme 列表（默认 ["file"]）
 //   - HTTPCACHE_IGNORE_RESPONSE_CACHE_CONTROLS: 忽略的响应 Cache-Control 指令
 type RFC2616Policy struct {
-	alwaysStore                   bool
-	ignoreSchemes                 map[string]bool
-	ignoreResponseCacheControls   map[string]bool
+	alwaysStore                 bool
+	ignoreSchemes               map[string]bool
+	ignoreResponseCacheControls map[string]bool
 }
 
 // RFC2616PolicyOption 是 RFC2616Policy 的可选配置函数。
@@ -346,12 +346,12 @@ func (cc cacheControlDirectives) getInt(key string) (int, bool) {
 
 // httpDateFormats 是 HTTP 日期的常见格式。
 var httpDateFormats = []string{
-	http.TimeFormat,                    // "Mon, 02 Jan 2006 15:04:05 GMT"
-	time.RFC1123,                       // "Mon, 02 Jan 2006 15:04:05 MST"
-	time.RFC1123Z,                      // "Mon, 02 Jan 2006 15:04:05 -0700"
-	"Mon, 2 Jan 2006 15:04:05 GMT",    // 单数日期
-	"Monday, 02-Jan-06 15:04:05 GMT",  // RFC 850
-	"Mon Jan  2 15:04:05 2006",        // ANSI C asctime()
+	http.TimeFormat,                  // "Mon, 02 Jan 2006 15:04:05 GMT"
+	time.RFC1123,                     // "Mon, 02 Jan 2006 15:04:05 MST"
+	time.RFC1123Z,                    // "Mon, 02 Jan 2006 15:04:05 -0700"
+	"Mon, 2 Jan 2006 15:04:05 GMT",   // 单数日期
+	"Monday, 02-Jan-06 15:04:05 GMT", // RFC 850
+	"Mon Jan  2 15:04:05 2006",       // ANSI C asctime()
 }
 
 // parseHTTPDate 解析 HTTP 日期字符串。

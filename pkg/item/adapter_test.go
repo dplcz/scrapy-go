@@ -27,14 +27,14 @@ type customItem struct {
 	data map[string]any
 }
 
-func (c *customItem) Item() any                          { return c }
-func (c *customItem) FieldNames() []string               { return []string{"custom"} }
-func (c *customItem) GetField(_ string) (any, bool)      { return "x", true }
-func (c *customItem) SetField(_ string, _ any) error     { return nil }
-func (c *customItem) HasField(_ string) bool             { return true }
-func (c *customItem) AsMap() map[string]any              { return c.data }
-func (c *customItem) Len() int                           { return 1 }
-func (c *customItem) FieldMeta(_ string) item.FieldMeta  { return nil }
+func (c *customItem) Item() any                         { return c }
+func (c *customItem) FieldNames() []string              { return []string{"custom"} }
+func (c *customItem) GetField(_ string) (any, bool)     { return "x", true }
+func (c *customItem) SetField(_ string, _ any) error    { return nil }
+func (c *customItem) HasField(_ string) bool            { return true }
+func (c *customItem) AsMap() map[string]any             { return c.data }
+func (c *customItem) Len() int                          { return 1 }
+func (c *customItem) FieldMeta(_ string) item.FieldMeta { return nil }
 
 // ============================================================================
 // Adapt / IsItem

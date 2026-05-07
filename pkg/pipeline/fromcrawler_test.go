@@ -34,8 +34,8 @@ func newMockCrawler() *mockCrawler {
 
 func (c *mockCrawler) GetSettings() *settings.Settings { return c.settings }
 func (c *mockCrawler) GetStats() stats.Collector       { return c.stats }
-func (c *mockCrawler) GetSignals() *signal.Manager      { return c.signals }
-func (c *mockCrawler) GetLogger() *slog.Logger          { return c.logger }
+func (c *mockCrawler) GetSignals() *signal.Manager     { return c.signals }
+func (c *mockCrawler) GetLogger() *slog.Logger         { return c.logger }
 
 // crawlerAwarePipeline 是一个实现了 CrawlerAwarePipeline 的测试 Pipeline。
 type crawlerAwarePipeline struct {
