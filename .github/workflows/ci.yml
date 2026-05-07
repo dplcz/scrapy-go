@@ -1,0 +1,138 @@
+# CI 工作流 — 每次 Push/PR 触发
+#
+# 检查项（对齐迭代日程文档 4.3 代码质量检查清单）：
+#   1. 静态分析（go vet）
+#   2. 单元测试 + 竞态检测
+#   3. 覆盖率检查（>= 80%）
+#   4. 构建验证
+#
+# Phase 4 验收标准：全局覆盖率 >= 80%，核心包 >= 90%
+
+name: CI
+
+on:
+  push:
+    branches: [main, "release/*", "feature/*"]
+  pull_request:
+    branches: [main, "release/*"]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25"
+
+jobs:
+  # ============================================================================
+  # 静态分析
+  # ============================================================================
+  lint:
+    name: Lint & Vet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "以下文件未格式化："
+            gofmt -l .
+            exit 1
+          fi
+
+  # ============================================================================
+  # 单元测试 + 竞态检测 + 覆盖率
+  # ============================================================================
+  test:
+    name: Test (race + coverage)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run tests with race detection and coverage
+        run: |
+          go test ./pkg/... ./cmd/... ./internal/... \
+            -race \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -timeout=300s
+
+      - name: Check coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${COVERAGE}%"
+          # Phase 4 验收标准：全局覆盖率 >= 80%
+          if [ "$(echo "$COVERAGE < 80.0" | bc -l)" -eq 1 ]; then
+            echo "❌ Coverage ${COVERAGE}% is below 80% threshold"
+            exit 1
+          fi
+          echo "✅ Coverage ${COVERAGE}% meets 80% threshold"
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.out
+          retention-days: 7
+
+  # ============================================================================
+  # 构建验证
+  # ============================================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build all packages
+        run: go build ./...
+
+      - name: Build CLI binary
+        run: go build -o scrapy-go ./cmd/scrapy-go/
+
+  # ============================================================================
+  # Benchmark 验收测试（仅验证通过/失败，不做性能回归）
+  # ============================================================================
+  benchmark-acceptance:
+    name: Benchmark Acceptance
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run benchmark acceptance tests
+        run: |
+          go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAcceptance" \
+            -timeout=300s \
+            -v \
+            ./benchmarks/

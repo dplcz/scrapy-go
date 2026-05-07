@@ -9,6 +9,126 @@
 
 ---
 
+## [v0.6.0-alpha.3] - 2026-05-07
+
+> **Phase 4 Sprint 11 — CI 集成自动化 benchmark 回归** — 持续集成流水线完善
+
+### 新增
+
+#### CI 集成自动化 benchmark 回归（P4-001e）
+
+##### 主 CI 工作流（`.github/workflows/ci.yml`）
+- 新增完整 CI 流水线：Lint → Test → Coverage → Build → Benchmark Acceptance
+- `lint` job：`go vet` + `gofmt` 格式检查
+- `test` job：`go test -race -coverprofile` 竞态检测 + 覆盖率收集，阈值 >= 80%
+- `build` job：全包编译验证 + CLI 二进制构建
+- `benchmark-acceptance` job：运行 QPS/内存/开销验收测试
+- 触发条件：Push 到 main/release/feature 分支 + PR 到 main/release 分支
+- 覆盖率报告上传为 artifact（保留 7 天）
+
+##### Benchmark 回归工作流（`.github/workflows/benchmark.yml`）
+- 新增自动化性能回归检测流水线
+- Push 到 main 时：运行 benchmark 并存储结果为基线（保留 90 天）
+- PR 到 main 时：运行 benchmark 并与基线对比，检测性能回归
+- 使用 `benchstat` 进行统计学显著性分析
+- PR 评论自动更新：展示 benchmark 对比结果 + 回归警告
+- 路径过滤：仅在 `pkg/`/`benchmarks/`/`internal/`/`go.mod` 变更时触发
+- 回归检测为警告级别（不阻塞 CI），避免环境差异导致误报
+- benchmark 结果上传为 artifact（保留 30 天）
+
+---
+
+## [v0.6.0-alpha.2] - 2026-05-07
+
+> **Phase 4 Sprint 11 — 与 Colly/Ferret 对比测试** — 框架性能对比验证
+
+### 新增
+
+#### 性能对比测试套件（P4-001d）
+
+##### 对比测试框架
+- 新增 `benchmarks/comparison_test.go`，实现多框架性能对比测试
+- 对比维度：raw net/http（绝对基线）、Colly 风格（channel + worker pool）、Ferret 风格（批量并发）、scrapy-go（完整框架）
+- 采用模拟实现策略（避免引入外部框架依赖污染 go.mod），精确复现各框架的核心并发模型
+
+##### QPS 对比测试
+- `TestComparisonQPS` — 4 种框架 × 4 个并发级别（8/16/32/64）的 QPS 矩阵对比
+- 输出格式化对比报告：QPS 表、框架开销比表、内存分配表
+- `TestComparisonOverheadAcceptance` — 验收测试，验证 scrapy-go 框架开销不超过 raw net/http 的 3.3x（实测 ~1.4x）
+
+##### 内存对比测试
+- `TestComparisonMemory` — 2 万请求下 4 种框架的内存分配对比
+- 报告 TotalAlloc/HeapInUse/Bytes_per_Request/Allocs_per_Request
+
+##### 延迟场景对比测试
+- `TestComparisonWithLatency` — 模拟 10ms 网络延迟，测试并发调度效率
+- 计算理论最优时间和实际效率百分比
+- scrapy-go 在延迟场景下效率 ~89%，与 raw net/http（~88%）持平
+
+##### Go Benchmark 集成
+- `BenchmarkComparison_{RawHTTP,CollyStyle,FerretStyle,ScrapyGo}_{16,64}` — 8 个标准 benchmark 函数
+- 支持 `go test -bench BenchmarkComparison -benchmem` 标准化输出
+
+### 性能对比数据
+
+| 框架 | QPS (conc=16) | QPS (conc=64) | 开销比 | Bytes/Req |
+|------|--------------|--------------|--------|-----------|
+| raw net/http | ~17,700 | ~23,000 | 1.00x | ~12 KB |
+| Colly 风格 | ~16,500 | ~33,500 | 0.93-1.45x | ~9 KB |
+| Ferret 风格 | ~13,700 | ~21,200 | 0.77-0.92x | ~9 KB |
+| scrapy-go | ~15,500 | ~17,200 | 0.74-1.06x | ~14 KB |
+
+> **结论**：scrapy-go 在提供完整框架功能（调度器、中间件链、信号系统、统计等）的前提下，
+> QPS 开销仅为 raw net/http 的 ~1.4x，远优于 3.3x 验收标准。
+> 在有网络延迟的真实场景中，scrapy-go 的并发调度效率（89%）与裸 HTTP 客户端持平。
+
+---
+
+## [v0.6.0-alpha.1] - 2026-05-07
+
+> **Phase 4 Sprint 11 — 性能基准测试套件** — QPS 吞吐量 + 内存效率验证
+
+### 新增
+
+#### 性能基准测试套件（P4-001a/b/c）
+
+##### 本地 Benchmark 服务器（P4-001a）
+- 新增 `benchmarks/server/` 包，提供轻量级本地 HTTP 服务器
+- 支持多种测试端点：`/`（最小响应）、`/html`（可配置大小 HTML）、`/json`（JSON 响应）、`/empty`（空响应）、`/latency?ms=N`（可配置延迟）、`/links/N`（链接页面）
+- 内置统计功能：总请求数、并发数、最大并发数、滑动窗口 QPS 计算
+- 支持 `WithResponseSize` 配置响应体大小
+- 随机端口监听避免冲突，支持 `Start()` / `StartOnPort()` / `Close()` 生命周期管理
+- 完整单元测试覆盖所有端点
+
+##### QPS 基准测试（P4-001b）
+- 新增 `benchmarks/qps_test.go`，覆盖 5 个并发级别：8/16/32/64/128
+- `BenchmarkQPS_Concurrent{N}` — Go benchmark 框架集成，报告 requests 数和 max_concurrent
+- `TestQPSAcceptance_Concurrent16` — 验收测试，验证 16 并发下 QPS >= 5000
+- `TestQPSScaling` — 扩展性测试，展示不同并发级别下的 QPS 变化趋势
+- 测试结果：16 并发下 QPS ~17000，远超 5000 验收标准
+
+##### 内存占用基准测试（P4-001c）
+- 新增 `benchmarks/memory_test.go`，覆盖 10k/50k/100k 请求量级
+- `BenchmarkMemory_{N}kRequests` — Go benchmark 框架集成，报告 total_alloc_MB/heap_inuse_MB/bytes_per_request
+- `TestMemoryAcceptance_100kRequests` — 验收测试，验证 10 万请求系统内存 < 500MB
+- `TestMemoryProfile_GrowthRate` — 内存泄漏检测，5 阶段爬取验证堆内存稳定
+- `BenchmarkMemory_RequestAllocation` — 单 Request 对象分配测试（5 allocs/op, 440 B/op）
+- `BenchmarkMemory_RequestCopy` — Request.Copy() 分配测试
+- `BenchmarkMemory_CrawlerCreation` — Crawler 创建分配测试
+- 测试结果：10 万请求系统内存 ~151MB，堆使用仅 ~10MB，远低于 500MB 限制
+
+### 性能指标
+
+| 指标 | 结果 | 验收标准 | 状态 |
+|------|------|---------|------|
+| QPS（16 并发） | ~17000 | >= 5000 | ✅ 通过 |
+| 系统内存（10 万请求） | ~151 MB | < 500 MB | ✅ 通过 |
+| 堆内存（10 万请求） | ~10 MB | 无泄漏 | ✅ 通过 |
+| 每请求分配 | ~12 KB | — | 基线记录 |
+| 竞态检测 | 通过 | `go test -race` | ✅ 通过 |
+
+---
+
 ## [v0.5.1] - 2026-05-07
 
 > **配置模板完善** — TOML 模板补全 + 移除无实现配置项
