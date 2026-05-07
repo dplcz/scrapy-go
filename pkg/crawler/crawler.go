@@ -288,6 +288,14 @@ func (c *Crawler) Crawl(ctx context.Context, sp spider.Spider) error {
 func (c *Crawler) crawl(ctx context.Context, sp spider.Spider) error {
 	c.spider = sp
 
+	// 自动探测并加载 TOML 配置文件（PriorityAddon 级别）
+	// 优先级：SCRAPY_GO_CONFIG 环境变量 → 当前目录 scrapy-go.toml
+	if configPath, err := c.Settings.AutoLoadConfig(); err != nil {
+		c.Logger.Warn("加载配置文件失败", "error", err)
+	} else if configPath != "" {
+		c.Logger.Debug("已加载配置文件", "path", configPath)
+	}
+
 	// 应用 Spider 级别的配置
 	if spiderSettings := sp.CustomSettings(); spiderSettings != nil {
 		if settingsMap := spiderSettings.ToMap(); len(settingsMap) > 0 {

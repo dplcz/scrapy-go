@@ -3,6 +3,7 @@ module github.com/dplcz/scrapy-go
 go 1.25.1
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/andybalholm/brotli v1.2.1
 	github.com/antchfx/htmlquery v1.3.6

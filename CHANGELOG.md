@@ -7,11 +7,61 @@
 
 ## [Unreleased]
 
-### 待完成（v0.5.0 正式发布前）
+---
 
-- P3-014 TOML 配置文件加载
-- P3-010 Phase 3 集成测试套件
-- P3-011 v0.5.0 发布准备
+## [v0.5.0] - 2026-05-07
+
+> **Phase 3 完成 — 高级特性与工程化** — 生产环境就绪
+
+### 新增
+
+#### TOML 配置文件加载（P3-014）
+
+##### Settings.LoadFromFile 方法（P3-014a/b）
+- 引入 `github.com/BurntSushi/toml` 依赖
+- 新增 `Settings.LoadFromFile(path string) (int, error)` 方法
+- 以 `PriorityAddon`(15) 优先级加载外部配置（低于代码中 `PriorityProject`(20)，高于 `PriorityDefault`(0)）
+- 支持标量类型：int、bool、string、float、duration（如 "5s"、"1m30s"）
+- 支持列表类型：`[]int`、`[]string`
+- 支持简单 map 类型：`map[string]string`（适用于 HTTP Header 等）
+- TOML 键名自动转换为大写格式（如 `concurrent_requests` → `CONCURRENT_REQUESTS`）
+- 不支持从配置文件加载组件优先级字典（Go 静态编译限制）
+
+##### Crawler 自动探测配置文件（P3-014c）
+- Crawler 初始化时自动探测配置文件
+- 探测优先级：`SCRAPY_GO_CONFIG` 环境变量 → 当前目录 `scrapy-go.toml`
+- 环境变量指定的文件必须存在（否则警告），默认文件不存在则静默跳过
+- 新增 `Settings.AutoLoadConfig()` 和 `Settings.LoadFromFileIfExists()` 辅助方法
+
+##### 单元测试 + startproject 模板集成（P3-014d）
+- 21 个单元测试覆盖所有类型转换、优先级、错误处理场景
+- `startproject` 模板已包含带注释的 `scrapy-go.toml` 示例配置
+- 测试覆盖率 ≥ 85%
+
+#### Phase 3 集成测试套件（P3-010）
+- 新增 `tests/integration/phase3_test.go`，11 个端到端集成测试场景：
+  - CrawlSpider 基于规则的自动爬取
+  - RobotsTxt 中间件遵守 robots.txt
+  - HttpCache 中间件缓存响应（两次爬取验证缓存命中）
+  - FormRequestFromResponse 表单自动提取与提交
+  - 优雅关闭（Graceful Shutdown）不丢失 in-flight 请求
+  - 接口隔离（ISP）中间件（RequestProcessor/ResponseProcessor 独立工作）
+  - TypedPipeline 泛型 Pipeline 处理 Item
+  - TOML 配置文件加载（环境变量指定路径）
+  - Request 序列化与 curl 互操作（ToDict/FromDict/ToCURL/FromCURL 往返）
+  - Multipart 文件上传
+  - 磁盘队列与断点续爬（JOBDIR 持久化验证）
+
+### 变更
+
+- `go.mod` 新增 `github.com/BurntSushi/toml v1.6.0` 依赖
+
+### 发布信息
+
+- 所有测试通过，`go test ./... -race` 无竞态
+- `go vet ./...` 无告警
+- 全局覆盖率 ≥ 75%，核心包 ≥ 85%
+- v0.5.0 tag 已打
 
 ---
 

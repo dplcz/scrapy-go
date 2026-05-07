@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.5.0-beta.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.5.0** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -362,11 +362,25 @@ err := runner.StartSequentially(ctx,
 
 ### 配置方式
 
-scrapy-go 支持三种配置方式（按优先级从低到高）：
+scrapy-go 支持四种配置方式（按优先级从低到高）：
 
 **① 框架默认配置** — 所有配置项都有合理的默认值，开箱即用
 
-**② 全局配置** — 通过 `Settings` 对象设置：
+**② TOML 配置文件** — 通过 `scrapy-go.toml` 文件设置（`PriorityAddon` 级别）：
+
+```toml
+# scrapy-go.toml
+bot_name = "mybot"
+concurrent_requests = 32
+download_delay = 1
+log_level = "INFO"
+robotstxt_obey = false
+retry_http_codes = [500, 502, 503, 504, 429]
+```
+
+配置文件自动探测顺序：`SCRAPY_GO_CONFIG` 环境变量 → 当前目录 `scrapy-go.toml`
+
+**③ 全局配置** — 通过 `Settings` 对象设置：
 
 ```go
 s := settings.New()
@@ -376,7 +390,7 @@ s.Set("DOWNLOAD_DELAY", time.Second, settings.PriorityProject)
 c := crawler.New(crawler.WithSettings(s))
 ```
 
-**③ Spider 级别配置** — 通过 `CustomSettings()` 返回类型安全的配置：
+**④ Spider 级别配置** — 通过 `CustomSettings()` 返回类型安全的配置：
 
 ```go
 func (s *MySpider) CustomSettings() *spider.Settings {
@@ -890,7 +904,7 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### v0.5.0（开发中）🚧
+### v0.5.0 🎉
 
 > **生产就绪版本** — 并发模型优化 + 接口隔离 + 泛型 Pipeline + TOML 配置
 
@@ -904,8 +918,8 @@ scrapy-go/
 - 🔬 **TypedPipeline[T] 泛型 Pipeline** — 编译期约束 Item 类型，类型不匹配自动跳过
 - 🏷️ **struct tag 字段元数据** — `item:"name,required"` / `item:"name,default=value"` + Validate 函数
 - ⚙️ **go generate 代码生成器** — `scrapy-go generate-adapter` 自动生成 ItemAdapter 实现
-- 🚧 TOML 配置文件加载（待完成）
-- 🚧 Phase 3 集成测试套件（待完成）
+- 📄 **TOML 配置文件加载** — `scrapy-go.toml` 自动探测，`PriorityAddon` 级别，支持标量/列表/map 类型
+- ✅ **Phase 3 集成测试套件** — 11 个端到端场景覆盖 CrawlSpider/RobotsTxt/HttpCache/FormRequest/优雅关闭等
 
 ### v0.5.0-beta.2
 
