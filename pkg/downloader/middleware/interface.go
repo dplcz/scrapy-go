@@ -125,5 +125,3 @@ var (
 	_ ResponseProcessor    = (*BaseDownloaderMiddleware)(nil)
 	_ ExceptionProcessor   = (*BaseDownloaderMiddleware)(nil)
 )
-
-

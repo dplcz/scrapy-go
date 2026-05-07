@@ -140,8 +140,8 @@ func (s *Settings) loadDefaults() {
 	// pprof 调试端点
 	// ========================================================================
 
-	s.Set("PPROF_ENABLED", false, d)    // 是否启用 pprof HTTP 端点
-	s.Set("PPROF_ADDR", ":6060", d)     // pprof 监听地址
+	s.Set("PPROF_ENABLED", false, d) // 是否启用 pprof HTTP 端点
+	s.Set("PPROF_ADDR", ":6060", d)  // pprof 监听地址
 
 	// ========================================================================
 	// Scraper 配置
@@ -256,7 +256,6 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("DOWNLOADER_STATS", true, d)
-
 
 	// ========================================================================
 	// 数据导出（Feed Export）

@@ -218,16 +218,16 @@ func NewDummyCollector() *DummyCollector {
 	return &DummyCollector{}
 }
 
-func (c *DummyCollector) GetValue(key string, defaultVal any) any { return defaultVal }
-func (c *DummyCollector) GetStats() map[string]any                { return map[string]any{} }
-func (c *DummyCollector) SetValue(key string, value any)          {}
-func (c *DummyCollector) SetStats(stats map[string]any)           {}
+func (c *DummyCollector) GetValue(key string, defaultVal any) any   { return defaultVal }
+func (c *DummyCollector) GetStats() map[string]any                  { return map[string]any{} }
+func (c *DummyCollector) SetValue(key string, value any)            {}
+func (c *DummyCollector) SetStats(stats map[string]any)             {}
 func (c *DummyCollector) IncValue(key string, count int, start int) {}
-func (c *DummyCollector) MaxValue(key string, value any)          {}
-func (c *DummyCollector) MinValue(key string, value any)          {}
-func (c *DummyCollector) ClearStats()                             {}
-func (c *DummyCollector) Open()                                   {}
-func (c *DummyCollector) Close(reason string)                     {}
+func (c *DummyCollector) MaxValue(key string, value any)            {}
+func (c *DummyCollector) MinValue(key string, value any)            {}
+func (c *DummyCollector) ClearStats()                               {}
+func (c *DummyCollector) Open()                                     {}
+func (c *DummyCollector) Close(reason string)                       {}
 
 // ============================================================================
 // 辅助函数

@@ -28,13 +28,13 @@ type BenchServer struct {
 	listener net.Listener
 
 	// 统计指标
-	totalRequests  atomic.Int64
-	concurrent     atomic.Int64
-	maxConcurrent  atomic.Int64
-	startTime      time.Time
+	totalRequests atomic.Int64
+	concurrent    atomic.Int64
+	maxConcurrent atomic.Int64
+	startTime     time.Time
 
 	// 用于 QPS 计算的滑动窗口
-	mu          sync.Mutex
+	mu           sync.Mutex
 	requestTimes []time.Time
 
 	// 配置

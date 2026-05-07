@@ -36,8 +36,8 @@ func TestMergeHeaders(t *testing.T) {
 		"Accept":       {"*/*"},
 	}
 	src := http.Header{
-		"Content-Type":   {"application/json"},
-		"X-Custom":       {"value"},
+		"Content-Type": {"application/json"},
+		"X-Custom":     {"value"},
 	}
 
 	// override=true

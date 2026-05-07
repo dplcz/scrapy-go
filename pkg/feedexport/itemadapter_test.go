@@ -41,7 +41,7 @@ func (p *protoItem) AsMap() map[string]any {
 	}
 	return out
 }
-func (p *protoItem) Len() int                       { return len(p.m) }
+func (p *protoItem) Len() int                        { return len(p.m) }
 func (p *protoItem) FieldMeta(string) item.FieldMeta { return nil }
 
 // ----------------------------------------------------------------------------

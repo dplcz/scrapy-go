@@ -14,15 +14,15 @@ import (
 
 // ANSI color codes
 const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
+	colorReset   = "\033[0m"
+	colorRed     = "\033[31m"
+	colorGreen   = "\033[32m"
+	colorYellow  = "\033[33m"
+	colorBlue    = "\033[34m"
 	colorMagenta = "\033[35m"
-	colorCyan   = "\033[36m"
-	colorGray   = "\033[90m"
-	colorWhite  = "\033[37m"
+	colorCyan    = "\033[36m"
+	colorGray    = "\033[90m"
+	colorWhite   = "\033[37m"
 
 	// Bold variants
 	colorBoldRed    = "\033[1;31m"
@@ -110,12 +110,12 @@ func levelLabel(level slog.Level) string {
 //
 // When the output is not a terminal (e.g. piped to a file), colors are automatically disabled.
 type ColorHandler struct {
-	opts      slog.HandlerOptions
-	output    io.Writer
-	mu        *sync.Mutex
-	attrs     []slog.Attr
-	groups    []string
-	useColor  bool
+	opts     slog.HandlerOptions
+	output   io.Writer
+	mu       *sync.Mutex
+	attrs    []slog.Attr
+	groups   []string
+	useColor bool
 }
 
 // NewColorHandler creates a new ColorHandler.

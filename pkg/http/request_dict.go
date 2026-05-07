@@ -422,7 +422,7 @@ func isJSONSerializable(v any) bool {
 }
 
 // shellQuote 对字符串进行 shell 引用，使用单引号包裹。
-// 单引号内的单引号通过 '\'' 转义。
+// 单引号内的单引号通过 '\” 转义。
 func shellQuote(s string) string {
 	result := "'"
 	for _, c := range s {
