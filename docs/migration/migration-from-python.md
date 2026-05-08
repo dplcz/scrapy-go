@@ -849,7 +849,9 @@ func (p *MyPipeline) Open(ctx context.Context) error {
 | CPU 利用率 | 单核（GIL） | 多核 | 线性扩展 |
 | 二进制大小 | N/A（解释型） | ~15 MB | 单文件部署 |
 
-> 注：以上数据基于本地 benchmark 服务器测试，实际性能取决于网络延迟和目标网站响应速度。
+> 注：以上 scrapy-go 数据基于本地 benchmark 服务器测试（最小响应体，无网络延迟），
+> 测量条件：TestQPSAcceptance（10000 请求，16 并发，GOMAXPROCS=96），TestMemoryAcceptance（100000 请求）。
+> Python Scrapy 数据为同等条件下的估算值。实际性能取决于网络延迟和目标网站响应速度。
 > 在有网络延迟的真实场景中，两者差距会缩小（I/O bound 场景）。
 
 ### 适用场景建议

@@ -19,6 +19,11 @@ scrapy-go v1.0.0 是首个正式发布版本，标志着框架已达到生产就
 
 #### 核心指标
 
+<!-- 测量条件：本地 benchmark 服务器（最小响应体），GOMAXPROCS=96，无 pprof 采样开销
+     QPS: TestQPSAcceptance_Concurrent16（10000 请求）
+     内存: TestMemoryAcceptance_100kRequests（100000 请求）
+     开销: TestComparisonOverheadAcceptance（5000 请求，scrapy-go vs raw net/http） -->
+
 | 指标 | 结果 | 标准 |
 |------|------|------|
 | QPS（16 并发） | ~17,000 req/s | >= 5,000 ✅ |

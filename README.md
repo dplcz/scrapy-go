@@ -57,6 +57,9 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 
 #### 📊 性能基准数据
 
+<!-- 测量条件：本地 benchmark 服务器（最小响应体），TestQPSAcceptance 验收测试（10000 请求），
+     TestMemoryAcceptance（100000 请求），GOMAXPROCS=96，无 pprof 采样开销，禁用非必要中间件 -->
+
 | 指标 | 结果 | 说明 |
 |------|------|------|
 | QPS（16 并发） | ~17,000 req/s | 本地服务器，最小响应 |
@@ -67,6 +70,9 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 | Request 对象创建 | 693 ns/op, 5 allocs | 单次 NewRequest 调用 |
 
 #### 🔄 框架对比数据（vs Colly/Ferret 风格）
+
+<!-- 测量条件：TestComparisonQPS 对比测试（5000 请求/框架/并发级别），本地 benchmark 服务器，
+     模拟实现（非真实 Colly/Ferret 依赖），GOMAXPROCS=96 -->
 
 | 框架 | QPS (conc=16) | 开销比 | Bytes/Req | 延迟场景效率 |
 |------|--------------|--------|-----------|-------------|
@@ -960,7 +966,7 @@ scrapy-go/
 > **scrapy-go v1.0.0 正式发布** — 生产就绪的 Go 语言高性能爬虫框架
 
 - 🎉 **首个正式发布版本** — 经过 Phase 1-4 共 22 周迭代，框架达到生产就绪状态
-- 📊 **性能验证** — QPS ~17,000（16 并发），内存 ~139MB（10 万请求），框架开销仅 1.11x
+- 📊 **性能验证** — QPS ~17,000（16 并发），内存 ~139MB（10 万请求），框架开销仅 1.11x（测量条件：本地 benchmark 服务器，TestQPSAcceptance 10000 请求，TestMemoryAcceptance 100000 请求，GOMAXPROCS=96，无 pprof 开销）
 - ✅ **全量回归测试** — `tests/integration/phase4_test.go` 覆盖所有核心功能端到端验证（10 个测试场景）
 - 📖 **文档完备** — API 参考 + 用户指南 + 架构设计 + 迁移指南全部完成
 - 🔒 **质量保证** — 测试覆盖率 83.6%，竞态检测全部通过，静态分析零告警
