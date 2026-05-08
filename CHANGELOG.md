@@ -9,6 +9,118 @@
 
 ---
 
+## [v1.0.0] - 2026-05-08
+
+> **🎉 scrapy-go v1.0.0 正式发布** — 生产就绪的 Go 语言高性能爬虫框架
+
+### 🎯 发布亮点
+
+scrapy-go v1.0.0 是首个正式发布版本，标志着框架已达到生产就绪状态。经过 Phase 1-4 共 22 周的迭代开发，框架完整实现了 Scrapy 核心架构，并充分利用 Go 语言的并发模型和类型安全特性。
+
+#### 核心指标
+
+| 指标 | 结果 | 标准 |
+|------|------|------|
+| QPS（16 并发） | ~17,900 req/s | >= 5,000 ✅ |
+| 内存（10 万请求） | ~159 MB | < 500 MB ✅ |
+| 框架开销 | ~1.14x raw net/http | < 3.3x ✅ |
+| 测试覆盖率 | 83.6% | >= 80% ✅ |
+| 竞态检测 | 全部通过 | `go test -race` ✅ |
+| 静态分析 | 零告警 | `go vet` ✅ |
+
+### 新增
+
+#### 全量回归测试（P4-006a）
+
+##### `tests/integration/phase4_test.go`
+- 新增 Phase 4 全量回归测试，覆盖 v1.0.0 发布前所有核心功能端到端验证
+- `TestTelemetryInterfaceContract` — 可观测性接口契约验证（Tracer/Span/Metrics/并发安全）
+- `TestFullRegressionE2E` — 全功能联合回归（Spider 爬取 + CSS 选择器 + Pipeline + 中间件链）
+- `TestRunnerConcurrentRegression` — 多爬虫并发运行回归（Runner 3 Spider 并发）
+- `TestCrawlSpiderRulesRegression` — CrawlSpider 规则系统回归（LinkExtractor + Rule 过滤）
+- `TestFeedExportRegression` — Feed Export 系统回归（JSONL 导出 + 文件验证）
+- `TestMiddlewareChainRegression` — 中间件链完整性回归（UserAgent + HttpAuth + Compression）
+- `TestSettingsRegression` — 配置体系回归（Spider 覆盖 + Pipeline 优先级顺序）
+- `TestGracefulShutdownRegression` — 优雅关闭回归（context 超时触发 + 快速退出）
+- `TestPerformanceBaselineRegression` — 性能基线回归（1000 请求 QPS 验证）
+- `TestDocumentationCompleteness` — 文档完整性验证（3 篇指南 + 13 个 doc.go）
+
+#### v1.0.0 发布准备（P4-006b/c）
+
+- 版本号升级至 v1.0.0（`cmd/scrapy-go/main.go`）
+- CHANGELOG 完整记录所有 Phase 1-4 变更
+- GitHub Release 工作流已就绪（`.github/workflows/release.yml`）
+- Go Module 发布就绪（`go.mod` 模块路径已确定）
+
+### 功能总览（v1.0.0 包含的全部功能）
+
+#### Phase 1 — 核心中间件补全（v0.2.0）
+- 重试/重定向机制重构（NewRequestError 模式）
+- DownloadTimeout / HttpAuth / Cookies / HttpCompression 中间件
+- HTML 解析集成（goquery CSS + htmlquery XPath）
+- 链式选择器 API（`::text` / `::attr()` 伪元素）
+
+#### Phase 2 — 扩展体系与数据导出（v0.3.0）
+- Extension 系统框架（Manager + 优先级排序 + 逆序关闭）
+- 内置扩展（CoreStats / CloseSpider / LogStats / MemoryUsage）
+- CrawlerRunner 多爬虫调度器（并发/顺序运行）
+- Feed Export 系统（JSON / JSONLines / CSV / XML + 文件/Stdout 存储）
+- HttpProxy / Stats / Spider 内置中间件（Depth/HttpError/Offsite/Referer/URLLength）
+- ItemAdapter 体系（Struct + Map 适配器）
+
+#### Phase 3 — 高级特性与工程化（v0.5.0）
+- CrawlSpider + LinkExtractor（规则驱动自动爬取）
+- RobotsTxt 中间件（robots.txt 遵守）
+- 磁盘队列与断点续爬（JOBDIR 配置）
+- HttpCache 中间件（RFC 2616 + Dummy 策略）
+- 项目脚手架工具（startproject / genspider / generate-adapter）
+- 并发模型优化（semaphore.Weighted + errgroup）
+
+#### Phase 4 — v1.0.0 发布（当前版本）
+- 性能基准测试套件（QPS / 内存 / 对比测试 / CI 集成）
+- 可观测性接口（Tracer / Span / MetricsRegistry + Noop 实现）
+- API 参考文档（所有导出符号 godoc 注释 + Example 函数）
+- 用户指南 Getting Started
+- 架构设计文档
+- 迁移指南（从 Python Scrapy 迁移）
+- 全量回归测试
+- v1.0.0 正式发布
+
+---
+
+## [v0.6.0-alpha.10] - 2026-05-08
+
+> **Phase 4 Sprint 11 — 文档完善：用户指南 + 架构设计文档 + 迁移指南** — P4-005b/c/d
+
+### 新增
+
+#### 用户指南 Getting Started（P4-005b）
+
+##### `docs/guide/getting-started.md`
+- 新增完整用户指南文档，覆盖从零开始使用 scrapy-go 的全流程
+- 包含章节：环境要求、安装、创建项目、编写第一个 Spider、运行爬虫、选择器使用（CSS/XPath）、跟踪链接、Item Pipeline、Feed Export、CrawlSpider、配置说明、中间件、多爬虫运行、优雅关闭、调试与性能分析
+- 所有代码示例均为可运行的完整 Go 代码
+- 配置项对照表覆盖所有常用设置
+
+#### 架构设计文档（P4-005c）
+
+##### `docs/architecture/architecture.md`
+- 新增完整架构设计文档，详细描述框架内部工作原理
+- 包含章节：架构概览（五层架构 ASCII 图）、分层架构、核心组件（Engine/Scheduler/Downloader/Scraper 内部结构图）、数据流（Mermaid 时序图）、并发模型（goroutine 模型 + 背压控制）、信号系统、中间件架构（请求/响应双向链）、扩展系统、配置体系（六级优先级）、错误处理、与 Scrapy 架构的差异
+- 包含 Mermaid 包依赖关系图
+- 性能设计要点（内存优化、并发优化、可靠性）
+
+#### 迁移指南（P4-005d）
+
+##### `docs/migration/migration-from-python.md`
+- 新增从 Python Scrapy 迁移到 scrapy-go 的完整对照手册
+- 包含章节：概念映射总览（30+ 项对照表）、项目结构对比、Spider 迁移（完整代码对比）、Request/Response API 对照、选择器对照、Item 定义、Pipeline 迁移、中间件迁移、配置迁移、Feed Export、信号系统、CrawlSpider/Rule、命令行工具、不支持的特性及替代方案
+- 4 种常见迁移模式（yield→append、meta 传递、errback、from_crawler）
+- 性能对比数据表
+- 迁移检查清单（13 项）
+
+---
+
 ## [v0.6.0-alpha.9] - 2026-05-08
 
 > **Phase 4 Sprint 11 — 基础设施层 API 参考文档（godoc 格式）** — P4-005a-v
