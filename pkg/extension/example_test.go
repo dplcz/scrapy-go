@@ -55,10 +55,10 @@ func ExampleNewCloseSpiderExtension() {
 
 	// 创建 CloseSpider 扩展：达到 5 个 Item 后关闭
 	ext := extension.NewCloseSpiderExtension(
-		0,    // timeout（0=禁用）
-		5,    // itemCount
-		0,    // pageCount（0=禁用）
-		0,    // errorCount（0=禁用）
+		0, // timeout（0=禁用）
+		5, // itemCount
+		0, // pageCount（0=禁用）
+		0, // errorCount（0=禁用）
 		signals,
 		collector,
 		slog.Default(),
