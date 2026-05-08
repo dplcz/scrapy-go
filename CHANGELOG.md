@@ -9,6 +9,295 @@
 
 ---
 
+## [v0.6.0-alpha.9] - 2026-05-08
+
+> **Phase 4 Sprint 11 — 基础设施层 API 参考文档（godoc 格式）** — P4-005a-v
+
+### 新增
+
+#### 基础设施层 godoc（P4-005a-v）
+
+##### `pkg/settings` 包文档（`pkg/settings/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（配置中枢 ASCII 图）、六级优先级体系（Default/Command/Addon/Project/Spider/Cmdline）、配置冻结机制、TOML 配置文件加载、组件优先级字典（合并与禁用规则）、类型安全的值获取（9 种 Get 方法）、与 Scrapy 的差异、并发安全
+- 移除 `settings.go` 和 `loader.go` 中的包注释，统一由 `doc.go` 提供
+- 新增 `pkg/settings/example_test.go`：4 个 Example 函数
+  - `ExampleNew`：多优先级配置创建和覆盖
+  - `ExampleSettings_Freeze`：配置冻结机制
+  - `ExampleSettings_GetDuration`：时间间隔配置获取
+  - `ExampleSettings_GetComponentPriorityDictWithBase`：组件优先级字典合并与禁用
+
+##### `pkg/signal` 包文档（`pkg/signal/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（事件总线 ASCII 图）、信号类型（按生命周期分类：引擎/Spider/请求/响应/Item/调度器共 18 种信号）、处理器注册与注销、三种信号发送方式（Send/SendCatchLog/SendCatchLogCtx）、特殊错误语义（DontCloseSpider/CloseSpider）、与 Scrapy 的差异、并发安全
+- 移除 `signals.go` 中的包注释，统一由 `doc.go` 提供
+- 新增 `pkg/signal/example_test.go`：2 个 Example 函数
+  - `ExampleNewManager`：信号注册、发送和注销
+  - `ExampleManager_Send`：同步发送并收集错误
+
+##### `pkg/stats` 包文档（`pkg/stats/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（数据汇聚点 ASCII 图）、Collector 接口（8 个方法）、两种实现（MemoryCollector/DummyCollector）、常用统计项（核心统计/下载器统计/调度器统计/内存监控共 15+ 项）、与 Scrapy 的差异、并发安全
+- 移除 `collector.go` 中的包注释，统一由 `doc.go` 提供
+- 新增 `pkg/stats/example_test.go`：2 个 Example 函数
+  - `ExampleNewMemoryCollector`：内存统计收集器使用
+  - `ExampleNewDummyCollector`：空操作收集器
+
+##### `pkg/extension` 包文档（`pkg/extension/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（插件机制 ASCII 图）、Extension 接口（Open/Close 生命周期）、Manager（优先级排序/ErrNotConfigured 处理/逆序关闭）、5 个内置扩展详解（CoreStats/CloseSpider/LogStats/MemoryUsage/FeedExport）、自定义扩展示例、与 Scrapy 的差异、并发安全
+- 移除 `interface.go` 中的包注释，统一由 `doc.go` 提供
+- 新增 `pkg/extension/example_test.go`：2 个 Example 函数
+  - `ExampleNewManager`：扩展管理器生命周期
+  - `ExampleNewCloseSpiderExtension`：条件关闭扩展
+
+##### `pkg/spider` 包文档（`pkg/spider/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（用户代码入口 ASCII 图）、Spider 接口（5 个方法）、Base 默认实现（嵌入模式）、CrawlSpider（规则驱动自动爬取）、Output 类型、Settings 类型安全配置、回调函数类型（CallbackFunc/ErrbackFunc）、与 Scrapy 的差异、Panic 恢复
+- 移除 `spider.go` 和 `settings.go` 中的包注释，统一由 `doc.go` 提供
+- 新增 `pkg/spider/example_test.go`：2 个 Example 函数
+  - `ExampleBase`：使用 Base 创建 Spider
+  - `ExampleSettings_ToMap`：类型安全配置转换
+
+##### `pkg/errors` 包文档（`pkg/errors/doc.go`）
+- 新增完整包级别 godoc 文档：概述、职责边界、哨兵错误（13 个，按类别分组：组件配置/Spider 控制/请求处理/Item 处理/下载错误/其他）、结构化错误类型（6 种）、错误创建函数、辅助函数（IsRetryable）、与 Scrapy 的差异、使用模式（中间件/Pipeline/信号处理器示例）
+- 移除 `errors.go` 中的详细包注释，统一由 `doc.go` 提供
+
+##### `pkg/log` 包文档（`pkg/log/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（日志基础设施 ASCII 图）、Logger 创建（3 种：Text/JSON/Color）、ColorHandler（4 级颜色映射）、辅助颜色函数（ColorByPriority/ColorByStatusCode）、上下文关联（WithSpiderName/WithComponent）、便捷函数（ForSpider/ForComponent/ForSpiderComponent）、日志级别解析、与 Scrapy 的差异、并发安全
+- 移除 `logger.go` 中的包注释，统一由 `doc.go` 提供
+
+##### `pkg/pool` 包文档（`pkg/pool/doc.go`）
+- 新增完整包级别 godoc 文档：概述、设计决策（4 条原则）、3 个对象池（RequestPool/ResponsePool/BytesPool）、使用模式、注意事项（4 条）、性能收益、并发安全
+- 移除 `pool.go` 中的包注释，统一由 `doc.go` 提供
+
+##### `pkg/debug` 包文档（`pkg/debug/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（调试扩展 ASCII 图）、PprofExtension（8 个 pprof 端点）、配置（Settings + Option 模式）、使用方式（4 种 go tool pprof 命令）、安全注意事项（4 条）、并发安全
+- 移除 `pprof.go` 中的包注释，统一由 `doc.go` 提供
+
+### 设计说明
+
+- **godoc 最佳实践**：使用 Go 1.19+ 的 doc comment 语法（`# 标题`、列表、代码块、链接引用 `[Type]`）
+- **Example 函数**：遵循 Go 测试惯例，所有 12 个 Example 均带 Output 注释并验证通过
+- **包注释统一**：每个包仅在 `doc.go` 中保留一份包注释，其他文件使用裸 `package` 声明
+- **所有导出符号已有注释**：Settings/Loader/Signal/Manager/Collector/Extension/Spider/CrawlSpider/Rule 及其所有导出方法均有完整 godoc 注释
+- **全量测试通过**：24 个包全部通过 `go test -race`，无竞态条件
+
+---
+
+## [v0.6.0-alpha.8] - 2026-05-07
+
+> **Phase 4 Sprint 11 — 数据处理层 API 参考文档（godoc 格式）** — P4-005a-iv
+
+### 新增
+
+#### 数据处理层 godoc（P4-005a-iv）
+
+##### `pkg/item` 包文档（`pkg/item/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（ItemAdapter/MapAdapter/StructAdapter/FieldMeta/AdapterFactory）、使用方式（自动适配/转 map/判断可适配）、适配检测顺序（6 步）、Struct Tag 语法（item/required/default/serializer）、自定义适配器注册、与 Scrapy 的差异
+- 移除 `adapter.go` 中的详细包注释，统一由 `doc.go` 提供
+- 新增 `pkg/item/example_test.go`：4 个 Example 函数
+  - `ExampleAdapt`：自动适配 map 类型
+  - `ExampleAdapt_struct`：适配 struct 类型
+  - `ExampleIsItem`：判断值是否可适配
+  - `ExampleAsMap`：将 Item 转为 map
+
+##### `pkg/pipeline` 包文档（`pkg/pipeline/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（ItemPipeline/Manager/TypedItemPipeline/TypedPipeline/CrawlerAwarePipeline/Entry）、使用方式（基本 Pipeline/泛型 TypedPipeline/CrawlerAwarePipeline）、处理流程（5 步）、信号系统集成（3 种信号）、与 Scrapy 的差异
+- 移除 `pipeline.go` 和 `typed.go` 中的包注释，统一由 `doc.go` 提供
+- 新增 `pkg/pipeline/example_test.go`：2 个 Example 函数
+  - `ExampleNewManager`：Pipeline 管理器创建和使用
+  - `ExampleNewTypedPipeline`：泛型 TypedPipeline 说明
+
+##### `pkg/feedexport` 包文档（`pkg/feedexport/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（ItemExporter/FeedStorage/FeedSlot/FeedConfig/ExporterOptions/ItemFilterFunc）、内置 Exporter 一览表（4 种格式）、内置 Storage（FileStorage/StdoutStorage）、使用方式（单格式/多格式/标准输出）、Exporter 生命周期（3 步）、FeedSlot 工作流（4 步）、Item 序列化、与 Scrapy 的差异
+- 移除 `interface.go` 中的详细包注释，统一由 `doc.go` 提供
+- 新增 `pkg/feedexport/example_test.go`：3 个 Example 函数
+  - `ExampleNormalizeFormat`：格式名归一化
+  - `ExampleDefaultExporterOptions`：默认导出配置
+  - `ExampleAcceptAll`：默认 Item 过滤器
+
+### 设计说明
+
+- **godoc 最佳实践**：使用 Go 1.19+ 的 doc comment 语法（`# 标题`、列表、代码块、链接引用 `[Type]`）
+- **Example 函数**：遵循 Go 测试惯例，所有 9 个 Example 均带 Output 注释并验证通过
+- **包注释统一**：每个包仅在 `doc.go` 中保留一份包注释，其他文件使用裸 `package` 声明
+- **所有导出符号已有注释**：ItemAdapter/MapAdapter/StructAdapter/FieldMeta/ItemPipeline/Manager/TypedPipeline/ItemExporter/FeedStorage/FeedSlot 及其所有导出方法均有完整 godoc 注释
+
+---
+
+## [v0.6.0-alpha.7] - 2026-05-07
+
+> **Phase 4 Sprint 11 — 调度与下载层 API 参考文档（godoc 格式）** — P4-005a-iii
+
+### 新增
+
+#### 调度与下载层 godoc（P4-005a-iii）
+
+##### `pkg/scheduler` 包文档（`pkg/scheduler/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（Scheduler/DefaultScheduler/DupeFilter/RFPDupeFilter/Queue/PriorityAwareQueue/PriorityQueue/DiskQueue/MemoryQueue/RequestSerializer）、架构设计（双层队列 ASCII 图）、使用方式（纯内存/断点续爬/外部队列）、去重机制、优先级调度、断点续爬、与 Scrapy 的差异、并发安全
+- 移除 `scheduler.go` 和 `queue.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/scheduler/example_test.go`：3 个 Example 函数
+  - `ExampleNewDefaultScheduler`：基本调度器创建和使用
+  - `ExampleNewDefaultScheduler_withDupeFilter`：去重过滤演示
+  - `ExampleNewDefaultScheduler_withJobDir`：断点续爬配置
+
+##### `pkg/downloader` 包文档（`pkg/downloader/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（Downloader/Slot/DownloadHandler/HTTPDownloadHandler/MiddlewareManager/MiddlewareEntry）、架构设计（Slot 机制 ASCII 图）、Slot 调度模型（5 步流程）、中间件管理器、配置项、信号系统集成、与 Scrapy 的差异、并发安全
+- 移除 `handler.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/downloader/example_test.go`：3 个 Example 函数
+  - `ExampleNewDownloader`：下载器创建
+  - `ExampleNewHTTPDownloadHandler`：HTTP 处理器创建
+  - `ExampleNewMiddlewareManager`：中间件管理器创建
+
+##### `pkg/downloader/middleware` 包文档（`pkg/downloader/middleware/doc.go`）
+- 新增完整包级别 godoc 文档：概述、接口隔离设计（ISP）、处理流程（正序/逆序调用图）、返回值语义（3 种接口各 3 种返回值）、内置中间件一览表（12 个中间件 + 优先级 + 功能）、使用方式（自定义中间件/全功能接口）、与 Scrapy 的差异
+- 移除 `interface.go` 中的详细包注释，统一由 `doc.go` 提供
+- 新增 `pkg/downloader/middleware/example_test.go`：2 个 Example 函数
+  - `ExampleRequestProcessor`：接口隔离——仅处理请求的中间件
+  - `ExampleBaseDownloaderMiddleware`：Base 嵌入默认实现
+
+### 设计说明
+
+- **godoc 最佳实践**：使用 Go 1.19+ 的 doc comment 语法（`# 标题`、列表、代码块、链接引用 `[Type]`）
+- **ASCII 架构图**：在包文档中嵌入双层队列架构图和 Slot 机制图
+- **Example 函数**：遵循 Go 测试惯例，所有 8 个 Example 均带 Output 注释并验证通过
+- **包注释统一**：每个包仅在 `doc.go` 中保留一份包注释，其他文件使用裸 `package` 声明
+- **所有导出符号已有注释**：Scheduler/DefaultScheduler/DupeFilter/Downloader/Slot/Handler/MiddlewareManager 及其所有导出方法、Option 函数均有完整 godoc 注释
+
+---
+
+## [v0.6.0-alpha.6] - 2026-05-07
+
+> **Phase 4 Sprint 11 — HTTP 与选择器层 API 参考文档（godoc 格式）** — P4-005a-ii
+
+### 新增
+
+#### HTTP 与选择器层 godoc（P4-005a-ii）
+
+##### `pkg/http` 包文档（`pkg/http/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（Request/Response/CallbackRegistry/FormField/FormFile/FormLocator）、请求构造器一览表（ASCII 图）、Functional Options 模式说明、Response 选择器集成、序列化与反序列化、Headers 工具函数、与 Scrapy 的差异、并发安全说明
+- 移除 8 个源文件中的简短包注释（`request.go`/`curl.go`/`callback_registry.go`/`request_dict.go`/`jsonrequest.go`/`formrequest.go`/`form_from_response.go`/`multipart.go`），统一由 `doc.go` 提供
+- 新增 `pkg/http/example_test.go`：8 个 Example 函数
+  - `ExampleNewRequest`：基本 GET/POST 请求创建
+  - `ExampleNewFormRequest`：表单请求
+  - `ExampleNewJSONRequest`：JSON API 请求
+  - `ExampleFromCURL`：从 curl 命令创建请求
+  - `ExampleResponse_CSS`：Response CSS 选择器
+  - `ExampleResponse_Follow`：Response 跟踪链接
+  - `ExampleNewHeaders`：Headers 工具函数
+  - `ExampleCallbackRegistry`：回调注册表
+
+##### `pkg/selector` 包文档（`pkg/selector/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（Selector/List）、使用方式（CSS/XPath/CSSAttr/链式查询）、Scrapy 伪元素支持（::text/::attr）、与 Scrapy/parsel 的差异、性能说明
+- 移除 `selector.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/selector/example_test.go`：4 个 Example 函数
+  - `ExampleNewFromBytes`：从 HTML 创建 Selector
+  - `ExampleSelector_CSSAttr`：CSS 属性提取
+  - `ExampleSelector_XPath`：XPath 查询
+  - `ExampleList_CSS`：List 链式查询
+
+##### `pkg/linkextractor` 包文档（`pkg/linkextractor/doc.go`）
+- 新增完整包级别 godoc 文档：概述、核心类型（LinkExtractor/HTMLLinkExtractor/Link）、使用方式、过滤规则（7 种）、与 CrawlSpider 集成、配置选项、与 Scrapy 的差异
+- 移除 `interface.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/linkextractor/example_test.go`：3 个 Example 函数
+  - `ExampleNewHTMLLinkExtractor`：基本链接提取
+  - `ExampleNewHTMLLinkExtractor_withFilters`：过滤规则
+  - `ExampleHTMLLinkExtractor_Matches`：URL 匹配判断
+
+### 设计说明
+
+- **godoc 最佳实践**：使用 Go 1.19+ 的 doc comment 语法（`# 标题`、列表、代码块、链接引用 `[Type]`）
+- **ASCII 架构图**：在 `pkg/http` 包文档中嵌入请求构造器一览表，`go doc` 命令行和 pkg.go.dev 均可正确渲染
+- **Example 函数**：遵循 Go 测试惯例，放在 `_test.go` 文件中，使用 `_test` 包名避免循环依赖；所有 15 个 Example 均带 Output 注释并验证通过
+- **包注释统一**：每个包仅在 `doc.go` 中保留一份包注释，其他文件使用裸 `package` 声明
+- **所有导出符号已有注释**：Request/Response/Selector/List/LinkExtractor/HTMLLinkExtractor 及其所有导出方法、Option 函数、工具函数均有完整 godoc 注释
+
+---
+
+## [v0.6.0-alpha.5] - 2026-05-07
+
+> **Phase 4 Sprint 11 — 核心引擎层 API 参考文档（godoc 格式）** — P4-005a-i
+
+### 新增
+
+#### 核心引擎层 godoc（P4-005a-i）
+
+##### `pkg/crawler` 包文档（`pkg/crawler/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（ASCII 图）、使用方式（代码示例）、与 Scrapy 的差异、并发安全说明、优雅关闭机制
+- 移除 `crawler.go` 和 `runner.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/crawler/example_test.go`：4 个 Example 函数
+  - `ExampleNew`：基本 Crawler 创建和运行
+  - `ExampleNew_withOptions`：通过 Option 模式自定义配置
+  - `ExampleRunner_startConcurrent`：Runner 并发运行多个 Spider
+  - `ExampleRunner_startSequentially`：Runner 顺序运行多个 Spider
+
+##### `pkg/engine` 包文档（`pkg/engine/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（ASCII 图）、核心职责、并发模型（errgroup + 心跳/即时通知双驱动）、回退机制、优雅关闭流程（8 步）、信号系统集成（9 种信号）、与 Scrapy 的差异、Panic 恢复
+- 移除 `slot.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/engine/example_test.go`：2 个 Example 函数
+  - `ExampleNewEngine`：手动创建和配置 Engine
+  - `ExampleEngine_Pause`：Engine 暂停/恢复功能
+
+##### `pkg/scraper` 包文档（`pkg/scraper/doc.go`）
+- 新增完整包级别 godoc 文档：概述、架构定位（ASCII 图）、核心职责、并发控制（semaphore.Weighted）、回退机制、优雅关闭、错误处理、Panic 恢复、与 Scrapy 的差异
+- 移除 `scraper.go` 中的简短包注释，统一由 `doc.go` 提供
+- 新增 `pkg/scraper/example_test.go`：2 个 Example 函数
+  - `ExampleNewScraper`：创建和使用 Scraper
+  - `ExampleScraper_NeedsBackout`：回退机制演示
+
+### 设计说明
+
+- **godoc 最佳实践**：使用 Go 1.19+ 的 doc comment 语法（`# 标题`、列表、代码块、链接引用 `[Type]`）
+- **ASCII 架构图**：在包文档中嵌入 ASCII 架构图，`go doc` 命令行和 pkg.go.dev 均可正确渲染
+- **Example 函数**：遵循 Go 测试惯例，放在 `_test.go` 文件中，使用 `_test` 包名避免循环依赖
+- **包注释统一**：每个包仅在 `doc.go` 中保留一份包注释，其他文件使用裸 `package` 声明
+- **所有导出符号已有注释**：Crawler/Runner/Engine/Slot/Scraper 及其所有导出方法、Option 函数、错误变量均有完整 godoc 注释
+
+---
+
+## [v0.6.0-alpha.4] - 2026-05-07
+
+> **Phase 4 Sprint 11 — 可观测性接口定义** — 轻量级 Telemetry 扩展点
+
+### 新增
+
+#### 可观测性接口定义（P4-002）
+
+##### Tracer/Span/SpanContext 接口（`pkg/telemetry/tracer.go`，P4-002a）
+- 新增 `Tracer` 接口：`Start(ctx, operationName, ...SpanOption) (context.Context, Span)` + `Shutdown(ctx) error`
+- 新增 `Span` 接口：`End()` / `SetAttributes(map[string]string)` / `SetStatus(SpanStatus, string)` / `RecordError(error)` / `SpanContext() SpanContext` / `AddEvent(name, attrs)`
+- 新增 `SpanContext` 结构体：`TraceID` / `SpanID` / `TraceFlags` / `IsRemote` + `IsValid()` 方法
+- 新增 `SpanKind` 枚举：`Internal` / `Client` / `Server` / `Producer` / `Consumer`
+- 新增 `SpanStatus` 枚举：`Unset` / `OK` / `Error`
+- 新增 `SpanOption` 配置结构体：`Kind` / `Attributes` / `StartTime`
+- 零第三方依赖，仅使用标准库 `context` 和 `time`
+
+##### Counter/Gauge/Histogram/MetricsRegistry 接口（`pkg/telemetry/metrics.go`，P4-002b）
+- 新增 `MetricsRegistry` 接口：`Counter(name, desc)` / `Gauge(name, desc)` / `Histogram(name, desc, buckets)` / `Shutdown()`
+- 新增 `Counter` 接口：`Inc()` / `Add(delta float64)` — 单调递增计数器
+- 新增 `Gauge` 接口：`Set(value)` / `Inc()` / `Dec()` / `Add(delta)` — 可增可减仪表盘
+- 新增 `Histogram` 接口：`Observe(value)` / `ObserveDuration(time.Duration)` — 值分布直方图
+- 新增 `DefaultHistogramBuckets` 变量：HTTP 请求延迟场景的默认桶边界
+- 零第三方依赖，仅使用标准库 `time`
+
+##### NoopTracer + NoopMetricsRegistry 空操作实现（`pkg/telemetry/noop.go`，P4-002c）
+- 新增 `NoopTracer` / `NoopSpan`：零开销追踪器，所有方法为空操作
+- 新增 `NoopMetricsRegistry` / `NoopCounter` / `NoopGauge` / `NoopHistogram`：零开销指标注册中心
+- 编译期接口实现检查（`var _ Tracer = (*NoopTracer)(nil)` 等）
+- 未配置后端时框架默认使用 Noop 实现，无运行时开销
+
+##### 单元测试 + Extension 集成点（`pkg/telemetry/telemetry_test.go`，P4-002d）
+- 26 个测试用例，覆盖率 100%
+- 接口契约验证：Tracer.Start / Span 全部方法 / SpanContext.IsValid
+- 并发安全测试：100 goroutine 并发调用 Tracer 和 MetricsRegistry
+- Extension 集成点测试：模拟 Spider 生命周期追踪、HTTP 请求追踪、错误处理、指标收集
+- `go test -race` 竞态检测通过
+
+### 设计说明
+
+- **接口最小化**：仅暴露框架核心需要的追踪和指标能力，不引入 OpenTelemetry/Prometheus 概念污染
+- **零开销默认**：Noop 实现确保未启用可观测性时无任何性能影响
+- **可插拔架构**：具体的 OTel/Prometheus 适配器由 `contrib/telemetry` 独立子模块提供（Post-v1.0）
+- **信号钩子预留**：接口设计兼容框架信号系统，Extension 可通过信号监听自动创建 Span 和更新指标
+
+---
+
 ## [v0.6.0-alpha.3] - 2026-05-07
 
 > **Phase 4 Sprint 11 — CI 集成自动化 benchmark 回归** — 持续集成流水线完善

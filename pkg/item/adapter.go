@@ -1,34 +1,3 @@
-// Package item 提供 scrapy-go 框架的 Item 统一访问抽象（ItemAdapter 体系）。
-//
-// Scrapy Python 版本依赖独立的 `itemadapter` 库，对同一段 Pipeline/Exporter 代码
-// 无差别地适配 dict、Item、attrs、dataclass、pydantic 等多种数据模型。
-//
-// Go 版本借鉴该思想，但结合语言特性做了以下取舍：
-//
-//   - 仅保留两种内置适配：map（`map[string]any` / `map[string]string` 等）与 struct
-//     （通过 `reflect` 与 struct tag），分别由 [MapAdapter] 与 [StructAdapter] 实现。
-//   - 用户可通过实现 [ItemAdapter] 接口自定义适配，函数 [Adapt] 会优先识别。
-//   - 舍弃 Python 的动态注册机制与元类魔法；注册适配器工厂通过 [Register] 显式完成。
-//   - 字段元数据（Field metadata）以 [FieldMeta] 表达，默认从 struct tag 解析；
-//     框架内部仅用于 Feed Export/Pipeline 的辅助能力，不作为运行时校验依据。
-//
-// 典型使用场景：
-//
-//	// 1. 在 Pipeline 中读取任意 Item
-//	adapter := item.Adapt(it)
-//	for _, name := range adapter.FieldNames() {
-//	    value, _ := adapter.GetField(name)
-//	    // ...
-//	}
-//
-//	// 2. 将 Item 转为 map（Feed Export、日志、审计等）
-//	m := item.Adapt(it).AsMap()
-//
-// 与 Scrapy 原版差异：
-//
-//   - Scrapy 的 `ItemAdapter` 通过 `__getitem__` / `__setitem__` 动态操作。
-//     Go 版本使用显式方法名 `GetField/SetField`，错误通过 error 返回。
-//   - Scrapy 的 `is_item` 判断基于 MRO 查找；Go 版本通过 [IsItem] 判断是否能被 [Adapt] 适配。
 package item
 
 import (

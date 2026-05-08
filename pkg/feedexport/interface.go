@@ -1,29 +1,3 @@
-// Package feedexport 实现了 scrapy-go 框架的数据导出（Feed Export）系统。
-//
-// Feed Export 将爬取的 Item 数据导出为多种格式（JSON、JSON Lines、CSV、XML），
-// 并支持多种存储后端（本地文件、标准输出）。
-//
-// 对应 Scrapy Python 版本中 scrapy.extensions.feedexport 和 scrapy.exporters
-// 模块的功能。
-//
-// # 设计概述
-//
-// Feed Export 系统由以下核心组件构成：
-//
-//   - ItemExporter — 序列化器接口，负责把 Item 编码为指定格式的字节流。
-//   - FeedStorage  — 存储后端接口，负责管理导出文件的打开、写入、关闭以及最终持久化。
-//   - FeedSlot     — 组合 Exporter 与 Storage，代表一个正在进行中的导出任务。
-//
-// # 与 Scrapy 的差异
-//
-// 相比 Scrapy Python 版本，Go 实现做了以下调整：
-//
-//  1. 舍弃 ItemFilter 的动态加载机制，改为通过函数类型 `ItemFilterFunc` 注入过滤逻辑。
-//  2. 舍弃 PostProcessingManager（基于 gzip/zstd 流式压缩）——Go 可通过 io.Writer 包装实现，
-//     不作为 MVP 能力；后续按需在 Sprint 11 引入。
-//  3. 舍弃 S3 / GCS / FTP 等远程存储后端，仅保留本地文件与标准输出（需求 14 中标记为可选）。
-//  4. 基于 io.Writer 而非 Python 的文件句柄抽象，使用 Go 的 io 包原语自然组合。
-//  5. 使用 channel/goroutine 替代 Twisted Deferred，Close 阶段同步刷盘。
 package feedexport
 
 import (

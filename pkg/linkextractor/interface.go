@@ -1,7 +1,3 @@
-// Package linkextractor 提供链接提取器接口和实现。
-//
-// 对应 Scrapy 的 scrapy.linkextractors 模块，用于从 HTML 响应中提取链接。
-// 提取的链接可被 CrawlSpider 的 Rule 规则使用，实现基于规则的自动爬取。
 package linkextractor
 
 import (

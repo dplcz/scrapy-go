@@ -1,9 +1,3 @@
-// Package settings 实现了 scrapy-go 框架的多优先级配置系统。
-//
-// 配置系统支持六级优先级：default → command → addon → project → spider → cmdline，
-// 高优先级的配置会覆盖低优先级的同名配置。配置可以被冻结（freeze）以防止修改。
-//
-// 对应 Scrapy Python 版本中 scrapy.settings 模块的功能。
 package settings
 
 import (

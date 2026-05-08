@@ -1,7 +1,3 @@
-// Package spider 定义了 scrapy-go 框架的 Spider 接口和基础实现。
-//
-// Spider 是用户定义爬虫逻辑的核心组件，负责产出初始请求和解析响应。
-// 对应 Scrapy Python 版本中 scrapy.spiders 模块的功能。
 package spider
 
 import (

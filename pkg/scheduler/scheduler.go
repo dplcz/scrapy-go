@@ -1,7 +1,3 @@
-// Package scheduler 实现了 scrapy-go 框架的请求调度系统。
-//
-// 调度器负责请求的入队、去重和出队，是 Engine 和 Downloader 之间的桥梁。
-// 对应 Scrapy Python 版本中 scrapy.core.scheduler 模块的功能。
 package scheduler
 
 import (

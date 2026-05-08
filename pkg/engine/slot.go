@@ -1,8 +1,3 @@
-// Package engine 实现了 scrapy-go 框架的核心引擎。
-//
-// Engine 是整个框架的心脏，负责协调 Scheduler、Downloader、Scraper 和 Spider
-// 之间的交互，驱动整个爬取流程。
-// 对应 Scrapy Python 版本中 scrapy.core.engine 模块的功能。
 package engine
 
 import (

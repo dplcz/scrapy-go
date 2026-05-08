@@ -1,17 +1,3 @@
-// Package crawler 中的 Runner 实现了多爬虫的并发/顺序调度。
-//
-// Runner 对应 Scrapy Python 版本中的 CrawlerRunner / AsyncCrawlerRunner。
-// 它负责：
-//   - 跟踪和管理多个 Crawler 实例
-//   - 支持并发（StartConcurrent）与顺序（StartSequentially）两种调度模式
-//   - 统一 OS 信号处理（SIGINT/SIGTERM）与优雅关闭
-//   - 跨爬虫 Signal 传播（通过 ConnectSignal 为所有当前/未来 Crawler 注册处理器）
-//
-// 与 Scrapy 原版的差异：
-//   - 舍弃 Python spider_loader（通过字符串名加载 Spider 类）——Go 直接传入 Spider 实例
-//   - 舍弃 CrawlerProcess（reactor 生命周期管理）——Go 无全局 reactor，信号处理集成在 Runner 中
-//   - 使用 sync.WaitGroup + channel 替代 Twisted Deferred / asyncio.Task 集合
-//   - 使用 errors.Join 聚合多个 Crawler 的错误
 package crawler
 
 import (

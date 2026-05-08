@@ -1,7 +1,3 @@
-// Package signal 定义了 scrapy-go 框架的信号/事件系统。
-//
-// 信号用于框架内部组件之间的松耦合通信，对应 Scrapy Python 版本中
-// scrapy.signals 模块和 scrapy.signalmanager 模块的功能。
 package signal
 
 // Signal 表示一个信号类型。

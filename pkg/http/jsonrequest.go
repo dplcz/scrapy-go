@@ -1,4 +1,3 @@
-// Package http 定义了 scrapy-go 框架的 HTTP 请求和响应模型。
 package http
 
 import (

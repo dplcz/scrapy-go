@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v0.6.0-alpha.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v0.6.0-alpha.9** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -234,6 +234,14 @@ go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAccep
 - **彩色结构化日志** — 基于 `slog` 的英文日志，终端彩色输出
 - **Scrapy 风格日志** — 中间件、Pipeline、统计信息使用列表格式输出
 - **优雅关闭** — 监听 SIGINT/SIGTERM 信号
+
+### 🔭 可观测性扩展点
+
+- **Tracer 接口** — `pkg/telemetry` 定义轻量级 `Tracer`/`Span`/`SpanContext` 接口，支持分布式追踪
+- **MetricsRegistry 接口** — 定义 `Counter`/`Gauge`/`Histogram` 指标接口，支持 Prometheus 等后端
+- **零开销默认** — `NoopTracer` + `NoopMetricsRegistry` 空操作实现，未配置后端时无运行时开销
+- **可插拔架构** — 具体的 OpenTelemetry/Prometheus 适配器由 `contrib/telemetry` 独立子模块提供
+- **信号钩子预留** — 接口设计兼容框架信号系统，Extension 可通过信号监听自动创建 Span 和更新指标
 
 ### 🛡️ Panic Recovery
 
@@ -946,6 +954,73 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v0.6.0-alpha.9
+
+> **Phase 4 Sprint 11 — 基础设施层 API 参考文档（godoc 格式）** — P4-005a-v
+
+- 📖 **`pkg/settings` 包文档** — `doc.go` 完整包级别 godoc（六级优先级体系/配置冻结/TOML 加载/组件优先级字典/9 种 Get 方法）
+- 📖 **`pkg/signal` 包文档** — `doc.go` 完整包级别 godoc（18 种信号/处理器注册注销/三种发送方式/特殊错误语义）
+- 📖 **`pkg/stats` 包文档** — `doc.go` 完整包级别 godoc（Collector 接口/MemoryCollector/DummyCollector/15+ 常用统计项）
+- 📖 **`pkg/extension` 包文档** — `doc.go` 完整包级别 godoc（Extension 接口/Manager/5 个内置扩展详解/自定义扩展示例）
+- 📖 **`pkg/spider` 包文档** — `doc.go` 完整包级别 godoc（Spider 接口/Base/CrawlSpider/Rule/Settings 类型安全配置）
+- 📖 **`pkg/errors` 包文档** — `doc.go` 完整包级别 godoc（13 个哨兵错误/6 种结构化错误/IsRetryable/使用模式）
+- 📖 **`pkg/log` 包文档** — `doc.go` 完整包级别 godoc（3 种 Logger/ColorHandler/上下文关联/便捷函数）
+- 📖 **`pkg/pool` 包文档** — `doc.go` 完整包级别 godoc（3 个对象池/使用模式/性能收益/注意事项）
+- 📖 **`pkg/debug` 包文档** — `doc.go` 完整包级别 godoc（PprofExtension/8 个端点/安全注意事项）
+- 🧪 **Example 函数** — 12 个 godoc Example（Settings 多优先级/冻结/Duration/组件字典/Signal 注册/发送/Stats 收集器/Extension 管理器/CloseSpider/Spider Base/Settings ToMap）
+- ✅ **所有导出符号注释完备** — Settings/Signal/Manager/Collector/Extension/Spider/CrawlSpider/Rule 及全部导出方法均有 godoc 注释
+- ✅ **P4-005a API 参考文档全部完成** — 5 层 godoc 全部交付（核心引擎层 ✅ / HTTP 与选择器层 ✅ / 调度与下载层 ✅ / 数据处理层 ✅ / 基础设施层 ✅）
+
+### v0.6.0-alpha.8
+
+> **Phase 4 Sprint 11 — 数据处理层 API 参考文档（godoc 格式）** — P4-005a-iv
+
+- 📖 **`pkg/item` 包文档** — `doc.go` 完整包级别 godoc（ItemAdapter 体系/适配检测顺序/Struct Tag 语法/自定义适配器）
+- 📖 **`pkg/pipeline` 包文档** — `doc.go` 完整包级别 godoc（Pipeline 接口/泛型 TypedPipeline/CrawlerAwarePipeline/处理流程/信号集成）
+- 📖 **`pkg/feedexport` 包文档** — `doc.go` 完整包级别 godoc（4 种 Exporter/2 种 Storage/Exporter 生命周期/FeedSlot 工作流）
+- 🧪 **Example 函数** — 9 个 godoc Example（Adapt/Struct/IsItem/AsMap/Manager/TypedPipeline/NormalizeFormat/ExporterOptions/AcceptAll）
+- ✅ **所有导出符号注释完备** — ItemAdapter/MapAdapter/StructAdapter/Pipeline/Manager/TypedPipeline/ItemExporter/FeedStorage 及全部导出方法均有 godoc 注释
+
+### v0.6.0-alpha.7
+
+> **Phase 4 Sprint 11 — 调度与下载层 API 参考文档（godoc 格式）** — P4-005a-iii
+
+- 📖 **`pkg/scheduler` 包文档** — `doc.go` 完整包级别 godoc（双层队列架构/去重机制/优先级调度/断点续爬）
+- 📖 **`pkg/downloader` 包文档** — `doc.go` 完整包级别 godoc（Slot 机制/并发控制/延迟控制/信号集成）
+- 📖 **`pkg/downloader/middleware` 包文档** — `doc.go` 完整包级别 godoc（ISP 接口隔离/12 个内置中间件一览/处理流程/返回值语义）
+- 🧪 **Example 函数** — 8 个 godoc Example（Scheduler 创建/去重/断点续爬/Downloader/Handler/MiddlewareManager/RequestProcessor/Base 嵌入）
+- ✅ **所有导出符号注释完备** — Scheduler/DupeFilter/Queue/Downloader/Slot/Handler/MiddlewareManager 及全部导出方法均有 godoc 注释
+
+### v0.6.0-alpha.6
+
+> **Phase 4 Sprint 11 — HTTP 与选择器层 API 参考文档（godoc 格式）** — P4-005a-ii
+
+- 📖 **`pkg/http` 包文档** — `doc.go` 完整包级别 godoc（核心类型/请求构造器/Options/序列化/Headers 工具/与 Scrapy 差异）
+- 📖 **`pkg/selector` 包文档** — `doc.go` 完整包级别 godoc（CSS/XPath/链式查询/伪元素支持/性能说明）
+- 📖 **`pkg/linkextractor` 包文档** — `doc.go` 完整包级别 godoc（过滤规则/CrawlSpider 集成/配置选项）
+- 🧪 **Example 函数** — 15 个 godoc Example（Request/FormRequest/JSON/cURL/Response CSS/Follow/Headers/Registry/Selector/XPath/CSSAttr/List/LinkExtractor/Filters/Matches）
+- ✅ **所有导出符号注释完备** — Request/Response/Selector/List/LinkExtractor/HTMLLinkExtractor 及全部导出方法均有 godoc 注释
+
+### v0.6.0-alpha.5
+
+> **Phase 4 Sprint 11 — 核心引擎层 API 参考文档（godoc 格式）** — P4-005a-i
+
+- 📖 **`pkg/crawler` 包文档** — `doc.go` 完整包级别 godoc（概述/架构图/使用方式/与 Scrapy 差异/并发安全/优雅关闭）
+- 📖 **`pkg/engine` 包文档** — `doc.go` 完整包级别 godoc（核心职责/并发模型/回退机制/优雅关闭 8 步流程/信号系统 9 种信号）
+- 📖 **`pkg/scraper` 包文档** — `doc.go` 完整包级别 godoc（并发控制/回退机制/错误处理/Panic 恢复）
+- 🧪 **Example 函数** — 8 个 godoc Example（Crawler 创建/Option 配置/Runner 并发/Runner 顺序/Engine 创建/Engine 暂停/Scraper 创建/Scraper 回退）
+- ✅ **所有导出符号注释完备** — Crawler/Runner/Engine/Slot/Scraper 及全部导出方法、Option、错误变量均有 godoc 注释
+
+### v0.6.0-alpha.4
+
+> **Phase 4 Sprint 11 — 可观测性接口定义** — 轻量级 Telemetry 扩展点
+
+- 🔭 **Tracer 接口** — `pkg/telemetry/tracer.go`，定义 `Tracer`/`Span`/`SpanContext` 轻量级接口，支持分布式追踪
+- 📊 **Metrics 接口** — `pkg/telemetry/metrics.go`，定义 `Counter`/`Gauge`/`Histogram`/`MetricsRegistry` 指标接口
+- ⚡ **零开销 Noop 实现** — `pkg/telemetry/noop.go`，`NoopTracer` + `NoopMetricsRegistry` 默认实现，未配置后端时无运行时开销
+- ✅ **100% 测试覆盖** — 26 个测试用例，覆盖接口契约/并发安全/Extension 集成点，`go test -race` 通过
+- 🧩 **可插拔架构** — 具体 OTel/Prometheus 适配器由 `contrib/telemetry` 独立子模块提供（Post-v1.0）
 
 ### v0.6.0-alpha.3
 

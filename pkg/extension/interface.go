@@ -1,7 +1,3 @@
-// Package extension 定义了 scrapy-go 框架的扩展（Extension）系统。
-//
-// 扩展通过监听框架信号来实现自定义逻辑，如统计收集、内存监控、条件关闭等。
-// 对应 Scrapy Python 版本中 scrapy.extensions 模块和 scrapy.extension 模块的功能。
 package extension
 
 import (

@@ -1,13 +1,3 @@
-// Package pool 提供 Request/Response 对象池，用于减少 GC 压力。
-//
-// 通过 sync.Pool 复用 HTTP 请求和响应对象，在高并发场景下
-// 可以显著减少内存分配和 GC 开销。
-//
-// 设计决策：
-//   - 作为可选优化，仅在 Benchmark 验证 GC 为瓶颈时启用
-//   - 提供 Get/Put 接口，由调用方负责在使用完毕后归还对象
-//   - Reset 方法确保归还的对象不会泄漏上一次请求的数据
-//   - Go 特有优化，Scrapy 无此需求
 package pool
 
 import (

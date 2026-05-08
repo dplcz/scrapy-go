@@ -1,4 +1,3 @@
-// Package scheduler 实现了 scrapy-go 框架的请求调度系统。
 package scheduler
 
 // Queue 定义了统一的队列接口，用于抽象内存队列和磁盘队列。

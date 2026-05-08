@@ -1,7 +1,3 @@
-// Package crawler 实现了 scrapy-go 框架的顶层编排器。
-//
-// Crawler 负责组装所有组件（Engine、Scheduler、Downloader、Scraper 等），
-// 提供简洁的 API 供用户启动爬虫。
 package crawler
 
 import (

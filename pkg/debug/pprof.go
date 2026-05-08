@@ -1,8 +1,3 @@
-// Package debug 提供调试和性能分析工具。
-//
-// 包含 pprof HTTP 端点扩展，允许在运行时通过标准 Go pprof 工具
-// 分析 CPU、内存、goroutine 等性能指标。
-// 这是 Go 特有的调试手段，Scrapy 无此功能。
 package debug
 
 import (

@@ -1,7 +1,3 @@
-// Package log 提供了 scrapy-go 框架的结构化日志封装。
-//
-// 基于 Go 标准库 log/slog 包，提供框架级别的日志工具函数，
-// 支持日志级别配置和 Spider 上下文关联。
 package log
 
 import (

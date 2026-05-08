@@ -1,14 +1,3 @@
-// Package selector 提供 HTML/XML 文档的 CSS 和 XPath 选择器。
-//
-// 对应 Scrapy 的 parsel/Selector 模块，提供链式调用的选择器 API。
-// 底层使用 goquery（CSS 选择器）和 htmlquery（XPath 选择器）。
-//
-// 用法：
-//
-//	sel := selector.NewFromBytes(htmlBody)
-//	titles := sel.CSS("h1.title").GetAll()
-//	links := sel.XPath("//a/@href").GetAll()
-//	firstTitle := sel.CSS("h1.title").Get("")
 package selector
 
 import (

@@ -1,30 +1,3 @@
-// Package pipeline 的泛型扩展：TypedPipeline[T]。
-//
-// TypedPipeline[T] 提供编译期类型约束的 Pipeline 包装器，
-// 替代 Scrapy Python 版本中运行时类型检查的模式。
-//
-// # 设计动机
-//
-// Scrapy Python 的 Pipeline.process_item 接收 `item: Any` 参数，
-// 需要在运行时通过 isinstance() 判断 Item 类型。
-// Go 1.18+ 泛型允许在编译期约束 Item 类型，消除运行时类型断言开销。
-//
-// # 使用方式
-//
-//	type BookPipeline struct{}
-//
-//	func (p *BookPipeline) Open(ctx context.Context) error { return nil }
-//	func (p *BookPipeline) Close(ctx context.Context) error { return nil }
-//	func (p *BookPipeline) ProcessItem(ctx context.Context, item *Book) (*Book, error) {
-//	    item.Title = strings.TrimSpace(item.Title)
-//	    return item, nil
-//	}
-//
-//	// 注册到 Manager：
-//	typed := pipeline.NewTypedPipeline[*Book](&BookPipeline{})
-//	manager.AddPipeline(typed, "BookPipeline", 300)
-//
-// TypedPipeline 内部通过类型断言将 any 转为 T，若类型不匹配则跳过处理。
 package pipeline
 
 import (

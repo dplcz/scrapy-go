@@ -1,7 +1,3 @@
-// Package http 定义了 scrapy-go 框架的 HTTP 请求和响应模型。
-//
-// 这是框架最底层的数据模型包，不依赖任何其他框架包。
-// 对应 Scrapy Python 版本中 scrapy.http 模块的功能。
 package http
 
 import (

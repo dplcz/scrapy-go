@@ -1,7 +1,3 @@
-// Package stats 实现了 scrapy-go 框架的统计收集系统。
-//
-// 提供 Collector 接口和基于内存的默认实现，
-// 对应 Scrapy Python 版本中 scrapy.statscollectors 模块的功能。
 package stats
 
 import (

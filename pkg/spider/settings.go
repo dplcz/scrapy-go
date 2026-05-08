@@ -1,7 +1,3 @@
-// Package spider 定义了 scrapy-go 框架的 Spider 配置结构体。
-//
-// Settings 提供类型安全的 Spider 级别配置，
-// 替代原有的 map[string]any 方式，避免字符串 key 拼写错误和类型不匹配。
 package spider
 
 import "time"

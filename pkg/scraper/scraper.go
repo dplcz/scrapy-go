@@ -1,8 +1,3 @@
-// Package scraper 实现了 scrapy-go 框架的 Scraper 组件。
-//
-// Scraper 负责处理下载的响应，调用 Spider 回调，
-// 并将结果分发到 Item Pipeline 和 Engine。
-// 对应 Scrapy Python 版本中 scrapy.core.scraper 模块的功能。
 package scraper
 
 import (

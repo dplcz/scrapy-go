@@ -1,27 +1,3 @@
-// Package middleware 定义了下载器中间件的接口和管理器。
-//
-// 下载器中间件拦截请求和响应，可以修改、过滤或短路请求处理流程。
-// 对应 Scrapy Python 版本中 scrapy.downloadermiddlewares 和
-// scrapy.core.downloader.middleware 模块的功能。
-//
-// # 接口隔离设计（ISP）
-//
-// Go 版本采用接口隔离原则（Interface Segregation Principle），将原本的
-// 单一 DownloaderMiddleware 接口拆分为三个细粒度接口：
-//
-//   - [RequestProcessor]：仅处理请求（正序调用）
-//   - [ResponseProcessor]：仅处理响应（逆序调用）
-//   - [ExceptionProcessor]：仅处理异常（逆序调用）
-//
-// 中间件只需实现自己关心的接口，无需为不需要的方法提供空实现。
-// Manager 通过类型断言（type assertion）在运行时适配。
-//
-// 原有的 [DownloaderMiddleware] 接口保留作为"全功能"便捷接口，
-// 同时满足三个细粒度接口，实现完全向后兼容。
-//
-// 对比 Scrapy Python 版本：Scrapy 要求中间件类必须定义全部三个方法
-// （process_request / process_response / process_exception），
-// 未实现的方法需要返回 None 或原样传递。Go 版本通过 ISP 消除了这一约束。
 package middleware
 
 import (

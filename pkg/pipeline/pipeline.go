@@ -1,8 +1,3 @@
-// Package pipeline 定义了 scrapy-go 框架的 Item Pipeline 接口和管理器。
-//
-// Item Pipeline 负责处理 Spider 产出的数据项（Item），
-// 支持数据清洗、验证、去重和持久化等操作。
-// 对应 Scrapy Python 版本中 scrapy.pipelines 模块的功能。
 package pipeline
 
 import (

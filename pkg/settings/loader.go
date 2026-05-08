@@ -1,18 +1,3 @@
-// Package settings 的 TOML 配置文件加载模块。
-//
-// 支持从 TOML 文件加载配置，以 PriorityAddon(15) 优先级注入到 Settings 中。
-// 优先级层级：PriorityDefault(0) < PriorityAddon(15) < PriorityProject(20)
-//
-// 配置文件探测顺序：
-//  1. SCRAPY_GO_CONFIG 环境变量指定的路径
-//  2. 当前目录下的 scrapy-go.toml
-//
-// 支持的类型：
-//   - 标量：int、bool、string、float、duration（如 "5s"、"1m30s"）
-//   - 列表：[]int、[]string
-//   - 简单 map：map[string]string（如 http.Header）
-//
-// 不支持从配置文件加载组件优先级字典（Go 静态编译限制）。
 package settings
 
 import (
