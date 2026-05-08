@@ -61,23 +61,33 @@ func NewHTTPDownloadHandler(timeout time.Duration) *HTTPDownloadHandler {
 // Download 执行 HTTP 下载。
 // 如果 request.Meta["proxy"] 设置了代理 URL，则通过该代理发送请求。
 func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
-	// 构建 net/http.Request
-	httpReq, err := http.NewRequestWithContext(ctx, request.Method, request.URL.String(), nil)
-	if err != nil {
-		return nil, err
+	// 直接构造 net/http.Request，避免 URL 重复解析。
+	// 原实现使用 http.NewRequestWithContext(ctx, method, url.String(), nil)，
+	// 会将已解析的 *url.URL 序列化为字符串后再次解析，造成不必要的 CPU 和内存开销。
+	// 优化后直接复用 request.URL（已是 *url.URL），消除序列化+反序列化过程。
+	httpReq := &http.Request{
+		Method:     request.Method,
+		URL:        request.URL,
+		Host:       request.URL.Host,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(http.Header, len(request.Headers)),
 	}
+	httpReq = httpReq.WithContext(ctx)
 
 	// 设置请求体
 	if len(request.Body) > 0 {
 		httpReq.Body = io.NopCloser(newBytesReader(request.Body))
 		httpReq.ContentLength = int64(len(request.Body))
+		httpReq.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(newBytesReader(request.Body)), nil
+		}
 	}
 
 	// 复制请求头
 	for key, values := range request.Headers {
-		for _, v := range values {
-			httpReq.Header.Add(key, v)
-		}
+		httpReq.Header[key] = values
 	}
 
 	// 设置 Cookies

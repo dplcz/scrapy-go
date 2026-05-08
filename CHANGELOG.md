@@ -9,6 +9,39 @@
 
 ---
 
+## [v1.0.1-alpha.1] - 2026-05-08
+
+> **Phase 4 Sprint 11 — 性能优化 P4-007a：HTTPDownloadHandler 避免 URL 重复解析**
+
+### 优化
+
+#### P4-007a：HTTPDownloadHandler 避免 URL 重复解析
+
+- ⚡ **消除 URL 序列化+反序列化** — `Download()` 方法直接构造 `http.Request{URL: request.URL}` 替代 `http.NewRequestWithContext(ctx, method, url.String(), nil)`，避免已解析的 `*url.URL` 被序列化为字符串后再次解析
+- ⚡ **请求头零拷贝赋值** — Header 复制从逐个 `Header.Add(key, v)` 改为直接 slice 引用赋值 `httpReq.Header[key] = values`，减少不必要的内存分配
+- ⚡ **预分配 Header map** — 使用 `make(http.Header, len(request.Headers))` 预分配容量，减少 map 扩容
+- ✅ **新增 `GetBody` 支持** — 为带请求体的请求添加 `GetBody` 函数，支持重定向时重新读取请求体
+
+#### 性能基准数据
+
+<!-- 测量条件：BenchmarkHTTPDownloadHandler_RequestBuild，count=5，GOMAXPROCS=96，Intel Xeon 6981E-C -->
+
+| 指标 | 优化前 | 优化后 | 提升幅度 |
+|------|--------|--------|---------|
+| URL 解析 ns/op | 754 ns | 58 ns | **-92% (13x faster)** |
+| URL 解析 B/op | 576 B | 48 B | **-92%** |
+| URL 解析 allocs/op | 4 | 1 | **-75%** |
+| 完整请求构建 ns/op | 2,300 ns | 1,525 ns | **-34% (CPU)** |
+| 完整请求构建 B/op | 1,142 B | 611 B | **-46% (Allocs)** |
+| 完整请求构建 allocs/op | 17 | 14 | **-18%** |
+
+#### 变更文件
+
+- `pkg/downloader/handler.go` — `Download()` 方法重构，避免 URL 重复解析
+- `pkg/downloader/handler_bench_test.go` — 新增 HTTPDownloadHandler 性能基准测试套件（6 个 benchmark）
+
+---
+
 ## [v1.0.0] - 2026-05-08
 
 > **🎉 scrapy-go v1.0.0 正式发布** — 生产就绪的 Go 语言高性能爬虫框架

@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.0.0** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.0.1-alpha.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -960,6 +960,14 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.0.1-alpha.1
+
+> **性能优化 P4-007a：HTTPDownloadHandler 避免 URL 重复解析**
+
+- ⚡ **消除 URL 重复解析** — `Download()` 直接构造 `http.Request{URL: request.URL}`，避免 URL 序列化+反序列化（CPU -34%, Allocs -46%）
+- ⚡ **请求头零拷贝赋值** — Header 复制改为直接 slice 引用赋值，减少内存分配
+- 🧪 **新增 Benchmark 套件** — `pkg/downloader/handler_bench_test.go` 提供 6 个性能基准测试
 
 ### v1.0.0 🎉
 
