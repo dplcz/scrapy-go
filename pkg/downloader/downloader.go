@@ -103,29 +103,35 @@ func (d *Downloader) Download(ctx context.Context, request *shttp.Request) (*sht
 		slot.RemoveActive(request)
 	}()
 
-	// 发送 request_reached_downloader 信号
-	d.signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
-		"request": request,
-	})
+	// 发送 request_reached_downloader 信号（热路径快速跳过：无处理器时避免 map 分配）
+	if d.signals.HasHandlers(signal.RequestReachedDownloader) {
+		d.signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+			"request": request,
+		})
+	}
 
 	// 将请求入队到 Slot，等待结果
 	// Slot 内部的 processQueue 会负责延迟控制和并发控制
 	response, err := slot.Enqueue(ctx, request)
 
-	// 发送 request_left_downloader 信号
-	d.signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
-		"request": request,
-	})
+	// 发送 request_left_downloader 信号（热路径快速跳过：无处理器时避免 map 分配）
+	if d.signals.HasHandlers(signal.RequestLeftDownloader) {
+		d.signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+			"request": request,
+		})
+	}
 
 	if err != nil {
 		return nil, err
 	}
 
-	// 发送 response_downloaded 信号
-	d.signals.SendCatchLog(signal.ResponseDownloaded, map[string]any{
-		"response": response,
-		"request":  request,
-	})
+	// 发送 response_downloaded 信号（热路径快速跳过：无处理器时避免 map 分配）
+	if d.signals.HasHandlers(signal.ResponseDownloaded) {
+		d.signals.SendCatchLog(signal.ResponseDownloaded, map[string]any{
+			"response": response,
+			"request":  request,
+		})
+	}
 
 	return response, nil
 }

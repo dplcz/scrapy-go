@@ -407,7 +407,10 @@ func (e *Engine) processScheduledRequests(ctx context.Context) {
 	for !e.needsBackout() {
 		req := e.scheduler.NextRequest()
 		if req == nil {
-			e.signals.SendCatchLog(ssignal.SchedulerEmpty, nil)
+			// 热路径快速跳过：无处理器时避免锁获取和快照创建
+			if e.signals.HasHandlers(ssignal.SchedulerEmpty) {
+				e.signals.SendCatchLog(ssignal.SchedulerEmpty, nil)
+			}
 			break
 		}
 
@@ -533,11 +536,13 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 		return
 	}
 
-	// 发送 response_received 信号
-	e.signals.SendCatchLog(ssignal.ResponseReceived, map[string]any{
-		"response": resp,
-		"request":  request,
-	})
+	// 发送 response_received 信号（热路径快速跳过：无处理器时避免 map 分配）
+	if e.signals.HasHandlers(ssignal.ResponseReceived) {
+		e.signals.SendCatchLog(ssignal.ResponseReceived, map[string]any{
+			"response": resp,
+			"request":  request,
+		})
+	}
 
 	e.logger.Debug("response received",
 		"status", fmt.Sprintf("%s%d%s", sslog.ColorByStatusCode(resp.Status), resp.Status, sslog.ColorReset),
@@ -593,16 +598,21 @@ func (e *Engine) consumeStartRequests(ctx context.Context) {
 // crawl 将请求注入调度器。
 func (e *Engine) crawl(request *shttp.Request) {
 	if !e.scheduler.EnqueueRequest(request) {
-		// 请求被过滤（去重）
-		e.signals.SendCatchLog(ssignal.RequestDropped, map[string]any{
-			"request": request,
-		})
+		// 请求被过滤（去重）— 热路径快速跳过：无处理器时避免 map 分配
+		if e.signals.HasHandlers(ssignal.RequestDropped) {
+			e.signals.SendCatchLog(ssignal.RequestDropped, map[string]any{
+				"request": request,
+			})
+		}
 		return
 	}
 
-	e.signals.SendCatchLog(ssignal.RequestScheduled, map[string]any{
-		"request": request,
-	})
+	// 热路径快速跳过：无处理器时避免 map 分配
+	if e.signals.HasHandlers(ssignal.RequestScheduled) {
+		e.signals.SendCatchLog(ssignal.RequestScheduled, map[string]any{
+			"request": request,
+		})
+	}
 
 	e.notifySchedule()
 }
