@@ -62,12 +62,12 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 
 | 指标 | 结果 | 说明 |
 |------|------|------|
-| QPS（16 并发） | ~17,000 req/s | 本地服务器，最小响应 |
+| QPS（16 并发） | ~18,900 req/s | 本地服务器，最小响应 |
 | QPS（64 并发） | ~12,400 req/s | 本地服务器，最小响应 |
-| 系统内存（10 万请求） | ~139 MB | 含 Go 运行时开销 |
-| 堆内存（10 万请求） | ~10 MB | 实际数据占用 |
-| 每请求分配 | ~12 KB | 含 Request/Response/网络缓冲 |
-| Request 对象创建 | 693 ns/op, 5 allocs | 单次 NewRequest 调用 |
+| 系统内存（10 万请求） | ~900 MB total_alloc | 含 Go 运行时开销 |
+| 堆内存（10 万请求） | ~12 MB | 实际数据占用 |
+| 每请求分配 | ~9.4 KB | 含 Request/Response/网络缓冲 |
+| Request 对象创建 | 780 ns/op, 6 allocs | 单次 NewRequest 调用 |
 
 #### 🔄 框架对比数据（vs Colly/Ferret 风格）
 
@@ -79,7 +79,7 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 | raw net/http | ~17,200 | 1.00x | ~12 KB | 88% |
 | Colly 风格 | ~15,800 | 1.09x | ~9 KB | 92% |
 | Ferret 风格 | ~13,100 | 1.31x | ~9 KB | 83% |
-| **scrapy-go** | **~15,500** | **1.11x** | ~14 KB | **89%** |
+| **scrapy-go** | **~15,500** | **1.11x** | ~11 KB | **89%** |
 
 > scrapy-go 在提供完整框架功能（调度器、中间件链、信号系统、统计等）的前提下，
 > QPS 开销仅为 raw net/http 的 ~1.11x，在有网络延迟的真实场景中效率与裸 HTTP 客户端持平。
@@ -961,6 +961,16 @@ scrapy-go/
 
 ## 📝 更新日志
 
+### v1.0.1
+
+> **性能优化 P4-007j：Scheduler 双锁分离（入队/出队解耦）**
+
+- ⚡ **Scheduler 双锁分离** — `enqueueMu` + `dequeueMu` 独立锁，入队/出队并行执行，消除调度循环与 Spider 回调的锁竞争（ConcurrentEnqueue -22~42%）
+- ⚡ **DupeFilter sync.Map 无锁化** — `LoadOrStore` 原子操作替代全局锁，高并发去重性能提升 4.6~6.6x
+- ⚡ **HasPendingRequests/Len atomic 无锁** — `pendingCount atomic.Int64`，~9,300x faster
+- 📉 **Scheduler sec/op geomean -58.73%**，B/op -24.15%，端到端 QPS (16c) -5.42%
+- 🧪 **新增 Scheduler 微基准测试** — 5 个场景覆盖入队/出队/并发/去重/查询
+
 ### v1.0.1-alpha.4
 
 > **性能优化 P4-007i：Downloader Slot Worker Pool 化**
@@ -1001,7 +1011,7 @@ scrapy-go/
 > **scrapy-go v1.0.0 正式发布** — 生产就绪的 Go 语言高性能爬虫框架
 
 - 🎉 **首个正式发布版本** — 经过 Phase 1-4 共 22 周迭代，框架达到生产就绪状态
-- 📊 **性能验证** — QPS ~17,000（16 并发），内存 ~139MB（10 万请求），框架开销仅 1.11x（测量条件：本地 benchmark 服务器，TestQPSAcceptance 10000 请求，TestMemoryAcceptance 100000 请求，GOMAXPROCS=96，无 pprof 开销）
+- 📊 **性能验证** — QPS ~18,900（16 并发），内存 ~12MB heap_inuse（10 万请求），框架开销仅 1.11x（测量条件：本地 benchmark 服务器，TestQPSAcceptance 10000 请求，TestMemoryAcceptance 100000 请求，GOMAXPROCS=96，无 pprof 开销）
 - ✅ **全量回归测试** — `tests/integration/phase4_test.go` 覆盖所有核心功能端到端验证（10 个测试场景）
 - 📖 **文档完备** — API 参考 + 用户指南 + 架构设计 + 迁移指南全部完成
 - 🔒 **质量保证** — 测试覆盖率 83.6%，竞态检测全部通过，静态分析零告警

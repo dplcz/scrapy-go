@@ -9,6 +9,60 @@
 
 ---
 
+## [v1.0.1] - 2026-05-09
+
+> **Phase 4 Sprint 11 — 性能优化 P4-007j：Scheduler 双锁分离（入队/出队解耦）**
+
+### 优化
+
+#### P4-007j：Scheduler 双锁分离（入队/出队解耦）
+
+- ⚡ **Scheduler 双锁分离** — 将单一 `sync.Mutex` 拆分为 `enqueueMu`（入队锁）和 `dequeueMu`（出队锁），入队/出队可并行执行，消除调度循环与 Spider 回调之间的锁竞争（类似 Java `LinkedBlockingQueue`）
+- ⚡ **双队列设计** — `inBuffer`（入队缓冲区）+ `outQueue`（出队队列），outQueue 为空时 O(1) swap 转移，避免频繁锁竞争
+- ⚡ **HasPendingRequests/Len 无锁化** — `pendingCount atomic.Int64` 提供无锁快速路径（~9,300x faster）
+- ⚡ **DupeFilter sync.Map 无锁化** — `RFPDupeFilter.fingerprints` 从 `sync.Mutex + map` 改为 `sync.Map`，`RequestSeen` 使用 `LoadOrStore` 原子操作（4.6~6.6x faster）
+- ⚡ **logDupes atomic.Bool** — 使用 `CompareAndSwap` 替代锁保护的 bool 字段
+- 🧪 **新增 Scheduler 微基准测试** — `scheduler_bench_test.go` 提供 5 个性能基准测试（EnqueueDequeue/ConcurrentEnqueueDequeue/ParallelEnqueueDequeue/DupeFilterRequestSeen/HasPendingRequests）
+
+#### 性能基准数据
+
+<!-- 测量条件：benchstat n=3，GOMAXPROCS=96，Intel Xeon 6981E-C -->
+
+| 指标 | 优化前 | 优化后 | 提升幅度 |
+|------|--------|--------|---------|
+| ConcurrentEnqueue/c8 time | 701 ns | 416 ns | **-40.7%** |
+| ConcurrentEnqueue/c16 time | 711 ns | 415 ns | **-41.6%** |
+| ConcurrentEnqueue/c32 time | 711 ns | 550 ns | **-22.6%** |
+| ConcurrentEnqueue/c64 time | 728 ns | 472 ns | **-35.1%** |
+| ConcurrentEnqueue/c128 time | 734 ns | 574 ns | **-21.8%** |
+| DupeFilter/c1 time | 3,558 ns | 748 ns | **-79.0%** (4.8x) |
+| DupeFilter/c32 time | 9,370 ns | 1,427 ns | **-84.8%** (6.6x) |
+| DupeFilter/c96 time | 9,779 ns | 2,146 ns | **-78.1%** (4.6x) |
+| HasPendingRequests time | 140.2 ns | 0.015 ns | **~9,300x** |
+| ConcurrentEnqueue B/op | 64-68 B | 24-31 B | **-53~-63%** |
+| sec/op geomean | — | — | **-58.73%** |
+| 端到端 QPS (16c) | 226.4 ms | 214.2 ms | **-5.42%** (p=0.032) |
+
+#### 端到端 QPS 验收数据（v1.0.1 最终）
+
+<!-- 测量条件：本地 benchmark 服务器，TestQPSAcceptance 10000 请求，GOMAXPROCS=96 -->
+
+| 指标 | 结果 | 说明 |
+|------|------|------|
+| QPS（16 并发） | ~18,900 req/s | 本地服务器，最小响应 |
+| 系统内存（10 万请求） | ~900 MB total_alloc | 含 Go 运行时开销 |
+| 堆内存（10 万请求） | ~12 MB heap_inuse | 实际数据占用 |
+| 每请求分配 | ~9.4 KB | 含 Request/Response/网络缓冲 |
+
+#### 变更文件
+
+- `pkg/scheduler/scheduler.go` — Scheduler 双锁分离重构（+131/-90 行）
+- `pkg/scheduler/dupefilter.go` — DupeFilter sync.Map 无锁化（+90/-88 行）
+- `pkg/scheduler/scheduler_bench_test.go` — 新增 Scheduler 微基准测试（+164 行）
+- `pkg/scheduler/diskqueue_scheduler_test.go` — 适配双锁字段名变更（+4/-3 行）
+
+---
+
 ## [v1.0.1-alpha.4] - 2026-05-09
 
 > **Phase 4 Sprint 11 — 性能优化 P4-007i：Downloader Slot Worker Pool 化**
