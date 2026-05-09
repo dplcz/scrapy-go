@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.0.1-alpha.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.0.1-alpha.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -960,6 +960,15 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.0.1-alpha.2
+
+> **性能优化 P4-007c + P4-007d：信号系统快速跳过 & NeedsBackout atomic 无锁化**
+
+- ⚡ **信号系统快速跳过** — `HasHandlers` atomic 无锁快速路径，无处理器时跳过 map 创建（Allocs -7.3%, B/op -9.9%）
+- ⚡ **NeedsBackout 无锁化** — `activeCount atomic.Int64` 替代 RWMutex，调度循环高频调用性能提升 ~30,000x
+- ⚡ **热路径前置检查** — 每请求节省 4 次 map 分配 + 4 次 RLock
+- 🧪 **新增微基准测试** — NeedsBackout atomic vs RWMutex 对比 benchmark（6 个场景）
 
 ### v1.0.1-alpha.1
 

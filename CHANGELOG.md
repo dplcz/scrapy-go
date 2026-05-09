@@ -9,6 +9,50 @@
 
 ---
 
+## [v1.0.1-alpha.2] - 2026-05-09
+
+> **Phase 4 Sprint 11 — 性能优化 P4-007c + P4-007d：信号系统快速跳过 & Downloader.NeedsBackout atomic 无锁化**
+
+### 优化
+
+#### P4-007c：信号系统快速跳过 + 延迟 map 创建
+
+- ⚡ **`HasHandlers` atomic 无锁快速路径** — `SendCatchLog` 前置 `HasHandlers` 检查，无处理器时跳过 map 创建和锁获取
+- ⚡ **单处理器快速路径** — 仅有一个处理器时避免快照分配，直接调用
+- ⚡ **热路径信号调用点前置检查** — `downloadAndScrape`/`Downloader.Download`/`crawl`/调度循环添加 `HasHandlers` 前置检查，每请求节省 4 次 map 分配 + 4 次 RLock
+
+#### P4-007d：Downloader.NeedsBackout 使用 atomic 替代 RWMutex
+
+- ⚡ **`activeCount atomic.Int64` 无锁计数器** — `NeedsBackout()` 直接读取 atomic 值，消除调度循环高频调用时的 RWMutex 竞争
+- ⚡ **`ActiveCount()` 无锁读取** — 同样使用 atomic 计数器，避免 RLock/RUnlock 开销
+- ⚡ **移除 `defer` 开销** — `AddActive`/`RemoveActive` 移除 defer，减少函数调用开销
+- 🧪 **新增微基准测试** — `pkg/downloader/needsbackout_bench_test.go` 提供 6 个对比 benchmark（atomic vs RWMutex，无竞争/有竞争场景）
+
+#### 性能基准数据
+
+<!-- 测量条件：BenchmarkNeedsBackout_*，count=3，GOMAXPROCS=96，Intel Xeon 6981E-C -->
+
+| 场景 | RWMutex (旧) | Atomic (新) | 提升倍数 |
+|------|-------------|-------------|---------|
+| NeedsBackout 无竞争（96 并行） | ~475 ns/op | ~0.015 ns/op | **~30,000x** |
+| NeedsBackout 有写竞争（96 并行 + 4 writer） | ~250 ns/op | ~0.11 ns/op | **~2,500x** |
+
+<!-- 测量条件：BenchmarkQPS_Concurrent16，count=3，GOMAXPROCS=96，Intel Xeon 6981E-C，5000 请求 -->
+
+| 指标 | 优化前 | 优化后 | 提升幅度 |
+|------|--------|--------|---------|
+| P4-007c Allocs/op | 基线 | -7.3% | **Allocs -7.3%** |
+| P4-007c B/op | 基线 | -9.9% | **B/op -9.9%** |
+
+#### 变更文件
+
+- `pkg/signal/manager.go` — `HasHandlers` atomic 快速路径 + 单处理器快速路径 + 延迟 map 创建
+- `pkg/downloader/downloader.go` — `activeCount atomic.Int64` + `NeedsBackout()`/`ActiveCount()` 无锁化
+- `pkg/engine/engine.go` — 热路径信号调用点添加 `HasHandlers` 前置检查
+- `pkg/downloader/needsbackout_bench_test.go` — 新增 NeedsBackout 微基准测试套件（6 个 benchmark）
+
+---
+
 ## [v1.0.1-alpha.1] - 2026-05-08
 
 > **Phase 4 Sprint 11 — 性能优化 P4-007a：HTTPDownloadHandler 避免 URL 重复解析**
