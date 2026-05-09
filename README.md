@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.0.1-alpha.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.0.1-alpha.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -960,6 +960,15 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.0.1-alpha.3
+
+> **性能优化 P4-007k + P4-007l + P4-007m：Meta 预初始化 & DefaultHeaders 直接赋值 & Handler Header 复用**
+
+- ⚡ **Meta 预初始化** — `NewRequest` 预分配 `make(map[string]any, 4)`，消除中间件 SetMeta 懒初始化分配（~90 MB）
+- ⚡ **DefaultHeaders 直接赋值** — slice 引用直接赋值替代逐个 Add，消除 slice 扩容分配（~91 MB）
+- ⚡ **Handler Header 复用** — `httpReq.Header = request.Headers` 零拷贝复用，消除 make(http.Header) 分配（~65 MB）
+- ⚠️ **安全性注释增强** — 三处优化均添加详细的对象复用安全约束警告注释
 
 ### v1.0.1-alpha.2
 

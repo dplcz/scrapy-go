@@ -9,6 +9,42 @@
 
 ---
 
+## [v1.0.1-alpha.3] - 2026-05-09
+
+> **Phase 4 Sprint 11 — 性能优化 P4-007k + P4-007l + P4-007m：Meta 预初始化 & DefaultHeaders 直接赋值 & Handler Header 复用**
+
+### 优化
+
+#### P4-007k：Request.Meta 预初始化
+
+- ⚡ **`NewRequest` 预分配 Meta map** — `Meta: make(map[string]any, 4)` 预分配 4 slot，覆盖常见 meta 数量（download_timeout/download_slot/proxy/retry_times），消除中间件触发的 SetMeta 懒初始化分配
+- 📉 **预期减少 ~90 MB 分配**（pprof: request.go:360 SetMeta 懒初始化）
+
+#### P4-007l：DefaultHeadersMiddleware 直接赋值优化
+
+- ⚡ **slice 引用直接赋值** — 将 `request.Headers.Add(key, v)` 改为 `request.Headers[key] = values`（直接赋值 slice 引用），避免逐个 Add 触发 slice 扩容
+- 📉 **预期减少 ~91 MB 分配**（pprof: DefaultHeadersMiddleware.ProcessRequest 91.53 MB cum）
+- ⚠️ **安全约束** — `m.headers` 为只读配置，后续中间件对相同 key 必须使用 `Set` 而非 `Add`，否则会污染全局配置；已通过代码注释标注
+
+#### P4-007m：HTTPDownloadHandler Header 复用
+
+- ⚡ **Header 零拷贝复用** — `httpReq.Header = request.Headers` 直接复用请求 Headers，替代 `make(http.Header) + copy`；net/http.Client.Do 仅读取 Header 不修改，复用安全
+- 📉 **预期减少 ~65 MB 分配**（pprof: handler.go:68 分配 65.52 MB）
+- ⚠️ **已知副作用** — `AddCookie` 会修改原始 `request.Headers`（追加 Cookie 头），但 Handler 为下载链路最后一环，不影响后续流程；已通过代码注释标注
+
+### 文档
+
+- 📝 **增强安全性注释** — 三处优化均添加了详细的 ⚠️ 警告注释，说明对象复用的安全约束和已知副作用
+- 📝 **迭代日程文档同步** — P4-007k/l/m 状态更新为 ✅ 已完成，新增安全性说明子条目
+
+#### 变更文件
+
+- `pkg/http/request.go` — `NewRequest` Meta 预分配 4 slot + 安全性注释
+- `pkg/downloader/middleware/defaultheaders.go` — `ProcessRequest` 直接赋值 slice 引用 + ⚠️ 安全约束注释
+- `pkg/downloader/handler.go` — Header 零拷贝复用 + AddCookie 副作用注释
+
+---
+
 ## [v1.0.1-alpha.2] - 2026-05-09
 
 > **Phase 4 Sprint 11 — 性能优化 P4-007c + P4-007d：信号系统快速跳过 & Downloader.NeedsBackout atomic 无锁化**

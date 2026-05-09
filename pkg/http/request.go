@@ -106,10 +106,13 @@ func NewRequest(rawURL string, opts ...RequestOption) (*Request, error) {
 	}
 
 	r := &Request{
-		URL:      u,
-		Method:   "GET",
-		Headers:  make(http.Header),
-		Meta:     make(map[string]any, 4), // 预分配 4 slot，覆盖常见 meta 数量（download_timeout/download_slot/proxy/retry_times）
+		URL:     u,
+		Method:  "GET",
+		Headers: make(http.Header),
+		// 预分配 4 slot，覆盖常见 meta 数量（download_timeout/download_slot/proxy/retry_times）。
+		// 消除中间件（如 DownloadTimeoutMiddleware）调用 SetMeta 时的懒初始化分配。
+		// ⚠️ 注意：使用 WithMeta option 会直接替换此 map，预分配不影响用户自定义 Meta。
+		Meta:     make(map[string]any, 4),
 		Encoding: "utf-8",
 	}
 
