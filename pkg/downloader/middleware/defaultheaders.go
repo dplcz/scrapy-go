@@ -27,9 +27,9 @@ func NewDefaultHeadersMiddleware(headers http.Header) *DefaultHeadersMiddleware 
 func (m *DefaultHeadersMiddleware) ProcessRequest(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
 	for key, values := range m.headers {
 		if request.Headers.Get(key) == "" {
-			for _, v := range values {
-				request.Headers.Add(key, v)
-			}
+			// 直接赋值 slice 引用，避免逐个 Add 触发 slice 扩容。
+			// m.headers 为只读配置（初始化后不再修改），直接引用安全。
+			request.Headers[key] = values
 		}
 	}
 	return nil, nil

@@ -109,6 +109,7 @@ func NewRequest(rawURL string, opts ...RequestOption) (*Request, error) {
 		URL:      u,
 		Method:   "GET",
 		Headers:  make(http.Header),
+		Meta:     make(map[string]any, 4), // 预分配 4 slot，覆盖常见 meta 数量（download_timeout/download_slot/proxy/retry_times）
 		Encoding: "utf-8",
 	}
 
@@ -240,7 +241,7 @@ func WithRawBody(body []byte) RequestOption {
 func WithBasicAuth(user, pass string) RequestOption {
 	return func(r *Request) {
 		if r.Meta == nil {
-			r.Meta = make(map[string]any)
+			r.Meta = make(map[string]any, 4)
 		}
 		r.Meta["http_user"] = user
 		r.Meta["http_pass"] = pass
@@ -355,7 +356,7 @@ func (r *Request) GetMeta(key string) (any, bool) {
 // SetMeta 安全地设置 Meta 中的值。
 func (r *Request) SetMeta(key string, value any) {
 	if r.Meta == nil {
-		r.Meta = make(map[string]any)
+		r.Meta = make(map[string]any, 4)
 	}
 	r.Meta[key] = value
 }

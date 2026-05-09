@@ -72,7 +72,7 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
-		Header:     make(http.Header, len(request.Headers)),
+		Header:     request.Headers, // 直接复用请求 Headers，net/http.Client.Do 仅读取不修改
 	}
 	httpReq = httpReq.WithContext(ctx)
 
@@ -83,11 +83,6 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 		httpReq.GetBody = func() (io.ReadCloser, error) {
 			return io.NopCloser(newBytesReader(request.Body)), nil
 		}
-	}
-
-	// 复制请求头
-	for key, values := range request.Headers {
-		httpReq.Header[key] = values
 	}
 
 	// 设置 Cookies
