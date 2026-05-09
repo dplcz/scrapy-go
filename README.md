@@ -2,7 +2,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.0.1-alpha.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.0.1-alpha.4** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -960,6 +960,15 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.0.1-alpha.4
+
+> **性能优化 P4-007i：Downloader Slot Worker Pool 化**
+
+- ⚡ **Slot Worker Pool 化** — 将 per-request `go func()` 重构为固定大小 Worker Pool（N = concurrency），消除 goroutine 创建/销毁开销
+- ⚡ **移除 transferSem** — 由 worker 数量天然限制并发，减少信号量 Acquire/Release 开销
+- 📉 **SlotEnqueue allocs -50%**，time -19~24%，1ms-c128 并发利用率 +46%（benchstat p<0.01）
+- ⚠️ **P4-007i-4 决策** — Engine 层 Worker Pool 经实测收益为负，仅保留 Slot 层优化
 
 ### v1.0.1-alpha.3
 

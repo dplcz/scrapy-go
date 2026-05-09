@@ -9,6 +9,40 @@
 
 ---
 
+## [v1.0.1-alpha.4] - 2026-05-09
+
+> **Phase 4 Sprint 11 — 性能优化 P4-007i：Downloader Slot Worker Pool 化**
+
+### 优化
+
+#### P4-007i：Downloader Slot Worker Pool 化
+
+- ⚡ **Slot Worker Pool 化** — 将 `Slot.processTask` 的 per-request `go func()` 重构为固定大小 Worker Pool（N = concurrency），消除每请求 goroutine 创建/销毁开销
+- ⚡ **移除 transferSem** — 移除 `semaphore.Weighted`，由 worker 数量天然限制并发，减少信号量 Acquire/Release 开销
+- ⚡ **gateMu 串行化 delay 路径** — `delay > 0` 时通过 `gateMu` 串行化等待路径，保证请求间隔语义；`delay == 0` 时走快速路径，多 worker 完全并行
+- ⚡ **worker panic 自动重启** — worker 内 panic 自动重启维持 pool 容量，processTask 内 panic 转为 error 不影响 pool
+- ⚠️ **P4-007i-4 决策** — Engine 层 Worker Pool 经实测在 IO-bound 场景下收益为负（jobs channel 缓冲常被填满触发 fork 兜底），仅保留 Slot 层 Worker Pool 化
+
+#### 性能基准数据
+
+<!-- 测量条件：benchstat n=6，GOMAXPROCS=96，Intel Xeon 6981E-C -->
+
+| 指标 | 优化前 | 优化后 | 提升幅度 |
+|------|--------|--------|---------|
+| SlotEnqueue time | 2.075 µs | 1.679 µs | **-19.1%** (p=0.004) |
+| SlotEnqueue B/op | 158 B | 128 B | **-19.0%** |
+| SlotEnqueue allocs/op | 2 | 1 | **-50.0%** |
+| SlotEnqueue_Sequential time | 1.657 µs | 1.264 µs | **-23.8%** (p=0.002) |
+| 1ms-c128 MaxConcurrent | 82 | 120 | **+46.3%** (p=0.008) |
+| 10ms-c16 allocs/op | 52,810 | 51,950 | **-1.6%** |
+| 10ms-c128 B/op | 24.29 Mi | 23.72 Mi | **-2.2%** |
+
+#### 变更文件
+
+- `pkg/downloader/slot.go` — Slot Worker Pool 化重构（+123/-92 行）
+
+---
+
 ## [v1.0.1-alpha.3] - 2026-05-09
 
 > **Phase 4 Sprint 11 — 性能优化 P4-007k + P4-007l + P4-007m：Meta 预初始化 & DefaultHeaders 直接赋值 & Handler Header 复用**
