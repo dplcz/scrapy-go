@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
@@ -36,6 +37,7 @@ type Downloader struct {
 	handler           DownloadHandler
 	slots             map[string]*Slot
 	active            map[*shttp.Request]struct{}
+	activeCount       atomic.Int64 // 无锁活跃计数器，供 NeedsBackout() 快速路径使用
 	totalConcurrency  int
 	domainConcurrency int
 	randomizeDelay    bool
@@ -131,17 +133,15 @@ func (d *Downloader) Download(ctx context.Context, request *shttp.Request) (*sht
 }
 
 // NeedsBackout 检查是否需要回退（活跃请求数达到总并发上限）。
+// 使用 atomic 计数器实现无锁快速路径，避免调度循环高频调用时的 RWMutex 竞争。
 func (d *Downloader) NeedsBackout() bool {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return len(d.active) >= d.totalConcurrency
+	return d.activeCount.Load() >= int64(d.totalConcurrency)
 }
 
 // ActiveCount 返回当前活跃请求数。
+// 使用 atomic 计数器实现无锁读取。
 func (d *Downloader) ActiveCount() int {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return len(d.active)
+	return int(d.activeCount.Load())
 }
 
 // TotalConcurrency 返回全局并发限制值。
@@ -152,18 +152,26 @@ func (d *Downloader) TotalConcurrency() int {
 // AddActive 将请求添加到全局活跃集合。
 // 由 Engine 在同步调度路径中调用，确保 NeedsBackout() 能立即看到最新计数。
 // 对齐 Scrapy 原版：Downloader.fetch() 入口处同步执行 self.active.add(request)。
+//
+// 先更新 atomic 计数器（NeedsBackout 无锁快速路径立即可见），
+// 再更新 active map（用于精确追踪和调试）。
 func (d *Downloader) AddActive(request *shttp.Request) {
+	d.activeCount.Add(1)
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	d.active[request] = struct{}{}
+	d.mu.Unlock()
 }
 
 // RemoveActive 从全局活跃集合中移除请求。
 // 由 Engine 在请求完成后调用。
+//
+// 先更新 active map，再减少 atomic 计数器，
+// 确保不会出现计数器已减但 map 中仍存在的短暂不一致。
 func (d *Downloader) RemoveActive(request *shttp.Request) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	delete(d.active, request)
+	d.mu.Unlock()
+	d.activeCount.Add(-1)
 }
 
 // Close 关闭下载器，释放所有资源。
