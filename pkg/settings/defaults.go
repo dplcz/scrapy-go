@@ -246,6 +246,25 @@ func (s *Settings) loadDefaults() {
 	s.Set("DOWNLOAD_HANDLERS", map[string]string{}, d)
 
 	// ========================================================================
+	// HTTP/2 与连接池配置
+	// ========================================================================
+
+	s.Set("HTTP2_ENABLED", false, d)                    // 是否启用 HTTP/2 优化下载处理器
+	s.Set("DOWNLOAD_PROGRESS_ENABLED", false, d)        // 是否启用下载进度回调
+	s.Set("DOWNLOAD_PROGRESS_MIN_INTERVAL", 100, d)     // 进度报告最小间隔（毫秒）
+	s.Set("CONNPOOL_MAX_IDLE_CONNS", 100, d)            // 最大空闲连接总数
+	s.Set("CONNPOOL_MAX_IDLE_CONNS_PER_HOST", 10, d)    // 每 host 最大空闲连接数
+	s.Set("CONNPOOL_MAX_CONNS_PER_HOST", 0, d)          // 每 host 最大连接数（0=不限制）
+	s.Set("CONNPOOL_IDLE_CONN_TIMEOUT", 90, d)          // 空闲连接超时（秒）
+	s.Set("CONNPOOL_TLS_HANDSHAKE_TIMEOUT", 10, d)      // TLS 握手超时（秒）
+	s.Set("CONNPOOL_DIAL_TIMEOUT", 30, d)               // TCP 连接超时（秒）
+	s.Set("CONNPOOL_DIAL_KEEPALIVE", 30, d)             // TCP keep-alive 间隔（秒）
+	s.Set("CONNPOOL_DISABLE_KEEPALIVES", false, d)      // 是否禁用 HTTP keep-alive
+	s.Set("CONNPOOL_WRITE_BUFFER_SIZE", 0, d)           // 写缓冲区大小（0=默认 4KB）
+	s.Set("CONNPOOL_READ_BUFFER_SIZE", 0, d)            // 读缓冲区大小（0=默认 4KB）
+	s.Set("CONNPOOL_TLS_INSECURE_SKIP_VERIFY", false, d) // 是否跳过 TLS 证书验证
+
+	// ========================================================================
 	// 去重过滤器
 	// ========================================================================
 
