@@ -65,6 +65,12 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 	// 原实现使用 http.NewRequestWithContext(ctx, method, url.String(), nil)，
 	// 会将已解析的 *url.URL 序列化为字符串后再次解析，造成不必要的 CPU 和内存开销。
 	// 优化后直接复用 request.URL（已是 *url.URL），消除序列化+反序列化过程。
+	//
+	// ⚠️ 注意：Header 直接复用 request.Headers（零拷贝），net/http.Client.Do 仅读取不修改。
+	// 但下方 AddCookie 会通过 httpReq.Header.Add("Cookie", ...) 修改原始 request.Headers。
+	// 这是可接受的，因为 Handler 是下载链路的最后一环，Headers 修改不影响后续流程。
+	// 如果未来 ProcessResponse 中间件需要依赖 request.Headers 中 Cookie 头的精确值，
+	// 需要注意此行为（CookiesMiddleware 已在 ProcessRequest 阶段通过 Headers.Set 设置了 Cookie）。
 	httpReq := &http.Request{
 		Method:     request.Method,
 		URL:        request.URL,
@@ -72,7 +78,7 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 		Proto:      "HTTP/1.1",
 		ProtoMajor: 1,
 		ProtoMinor: 1,
-		Header:     make(http.Header, len(request.Headers)),
+		Header:     request.Headers, // 直接复用请求 Headers（零拷贝），net/http.Client.Do 仅读取不修改
 	}
 	httpReq = httpReq.WithContext(ctx)
 
@@ -85,12 +91,12 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 		}
 	}
 
-	// 复制请求头
-	for key, values := range request.Headers {
-		httpReq.Header[key] = values
-	}
-
 	// 设置 Cookies
+	// ⚠️ AddCookie 会调用 httpReq.Header.Add("Cookie", ...)，由于 Header 直接引用
+	// request.Headers，这会修改原始请求的 Headers。此副作用是安全的：
+	// 1. Handler 是请求处理的最后一步，修改后请求即发出，不再被 ProcessRequest 使用；
+	// 2. 启用 CookiesMiddleware（优先级 700）时，Cookie 已通过 Headers.Set 注入，
+	//    request.Cookies 通常为空，此分支不会执行。
 	for _, cookie := range request.Cookies {
 		httpReq.AddCookie(cookie)
 	}
