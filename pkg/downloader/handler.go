@@ -5,7 +5,6 @@
 package downloader
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
-	"github.com/dplcz/scrapy-go/pkg/pool"
 )
 
 // DownloadHandler 定义下载处理器接口。
@@ -116,9 +114,9 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 	}
 	defer httpResp.Body.Close()
 
-	// 读取响应体（使用 BytesPool 复用缓冲区，减少 io.ReadAll 的内存分配）。
-	// 当 Content-Length 已知时，预分配精确大小 buffer 避免 bytes.Buffer 多次 grow+copy。
-	// 读取完成后将 pool buffer 归还，body 使用独立的 slice 持有数据。
+	// 读取响应体。
+	// 当 Content-Length 已知时，预分配精确大小 buffer 避免多次 grow+copy。
+	// Content-Length 未知时（chunked），直接使用 io.ReadAll。
 	var body []byte
 	if httpResp.ContentLength > 0 {
 		// Content-Length 已知：精确预分配，避免 grow
@@ -128,23 +126,14 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 			return nil, err
 		}
 	} else {
-		// Content-Length 未知或 chunked：使用 BytesPool 复用中间缓冲区
-		bufPtr := pool.BytesPool.Get()
-		buf := bytes.NewBuffer(*bufPtr)
-		buf.Reset()
-		_, err = io.Copy(buf, httpResp.Body)
+		// Content-Length 未知或 chunked：直接读取全部内容。
+		// 经分析，BytesPool 复用中间缓冲区的收益有限：
+		// 最终仍需 make+copy 创建独立 slice，池化仅节省 Buffer grow 中间分配；
+		// 且大响应体会导致池中 buffer 膨胀，长期驻留内存。
+		body, err = io.ReadAll(httpResp.Body)
 		if err != nil {
-			// 归还 buffer 到池
-			*bufPtr = buf.Bytes()
-			pool.BytesPool.Put(bufPtr)
 			return nil, err
 		}
-		// 将数据复制到独立 slice（脱离 pool buffer 生命周期）
-		body = make([]byte, buf.Len())
-		copy(body, buf.Bytes())
-		// 归还 buffer 到池
-		*bufPtr = buf.Bytes()
-		pool.BytesPool.Put(bufPtr)
 	}
 
 	// 构建 scrapy Response
