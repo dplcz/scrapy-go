@@ -246,10 +246,11 @@ func TestSchedulerDiskQueueMemoryPriority(t *testing.T) {
 	s.EnqueueRequest(diskReq)
 
 	// 手动向内存队列推入请求（模拟不可序列化的请求）
-	s.mu.Lock()
+	s.enqueueMu.Lock()
 	memReq := shttp.MustNewRequest("https://example.com/memory")
-	s.pq.Push(memReq)
-	s.mu.Unlock()
+	s.inBuffer.Push(memReq)
+	s.pendingCount.Add(1)
+	s.enqueueMu.Unlock()
 
 	// 内存队列应优先出队
 	first := s.NextRequest()

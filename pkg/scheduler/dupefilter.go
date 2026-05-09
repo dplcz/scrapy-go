@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dplcz/scrapy-go/internal/utils"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
@@ -42,18 +43,23 @@ type DupeFilter interface {
 // RFPDupeFilter 基于请求指纹的去重过滤器。
 // 使用请求的 URL（规范化后）、Method 和 Body 计算 SHA1 指纹进行去重。
 //
+// 使用 sync.Map 实现高并发无锁去重（P4-007j 优化）：
+//   - RequestSeen 使用 LoadOrStore 原子操作，无需全局锁
+//   - 适合写少读多的去重场景（大部分请求是新请求）
+//
 // 当配置了 jobDir 时，支持指纹集合的持久化：
 //   - Open 时从磁盘加载已有指纹（用于断点续爬）
 //   - Close 时将指纹集合保存到磁盘
 //
 // 对应 Scrapy 的 RFPDupeFilter 类。
 type RFPDupeFilter struct {
-	mu           sync.Mutex
-	fingerprints map[string]struct{}
+	fingerprints sync.Map       // map[string]struct{}，无锁并发安全
+	seenCount    atomic.Int64   // 已记录的指纹数量（用于统计和持久化）
+	mu           sync.Mutex     // 仅保护持久化操作（Open/Close）
 	logger       *slog.Logger
-	debug        bool   // 是否输出调试日志（对应 DUPEFILTER_DEBUG）
-	logDupes     bool   // 是否已输出过重复日志（仅输出一次提示）
-	jobDir       string // 持久化目录（空字符串表示不持久化）
+	debug        bool           // 是否输出调试日志（对应 DUPEFILTER_DEBUG）
+	logDupes     atomic.Bool    // 是否已输出过重复日志（仅输出一次提示）
+	jobDir       string         // 持久化目录（空字符串表示不持久化）
 }
 
 // NewRFPDupeFilter 创建一个新的基于请求指纹的去重过滤器。
@@ -65,12 +71,12 @@ func NewRFPDupeFilter(logger *slog.Logger, debug bool) *RFPDupeFilter {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &RFPDupeFilter{
-		fingerprints: make(map[string]struct{}),
-		logger:       logger,
-		debug:        debug,
-		logDupes:     true,
+	df := &RFPDupeFilter{
+		logger: logger,
+		debug:  debug,
 	}
+	df.logDupes.Store(true)
+	return df
 }
 
 // NewPersistentRFPDupeFilter 创建一个支持持久化的请求指纹去重过滤器。
@@ -98,9 +104,10 @@ func (f *RFPDupeFilter) Open(ctx context.Context) error {
 		if err := f.loadFingerprints(); err != nil {
 			return fmt.Errorf("failed to load dupefilter state: %w", err)
 		}
-		if len(f.fingerprints) > 0 {
+		count := f.seenCount.Load()
+		if count > 0 {
 			f.logger.Info("loaded dupefilter fingerprints from disk",
-				"count", len(f.fingerprints),
+				"count", count,
 				"jobdir", f.jobDir,
 			)
 		}
@@ -115,7 +122,7 @@ func (f *RFPDupeFilter) Close(reason string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.jobDir != "" && f.fingerprints != nil {
+	if f.jobDir != "" {
 		if err := f.saveFingerprints(); err != nil {
 			f.logger.Error("failed to save dupefilter state", "error", err)
 			return err
@@ -123,35 +130,32 @@ func (f *RFPDupeFilter) Close(reason string) error {
 	}
 
 	// 清空指纹集合释放内存
-	f.fingerprints = nil
+	f.fingerprints = sync.Map{}
+	f.seenCount.Store(0)
 	return nil
 }
 
 // RequestSeen 检查请求是否已见过。
 //
-// 使用 RequestFingerprint 计算请求指纹，如果指纹已存在于集合中，
-// 则认为是重复请求。否则将指纹加入集合并返回 false。
+// 使用 RequestFingerprint 计算请求指纹，通过 sync.Map.LoadOrStore
+// 原子操作实现无锁并发去重。
 func (f *RFPDupeFilter) RequestSeen(request *shttp.Request) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	fp := f.requestFingerprint(request)
 
-	if _, exists := f.fingerprints[fp]; exists {
+	// LoadOrStore 是原子操作：如果 key 已存在返回 true，否则存入并返回 false
+	_, loaded := f.fingerprints.LoadOrStore(fp, struct{}{})
+	if loaded {
 		f.logDupe(request)
 		return true
 	}
 
-	f.fingerprints[fp] = struct{}{}
+	f.seenCount.Add(1)
 	return false
 }
 
 // SeenCount 返回已记录的指纹数量（用于统计和测试）。
 func (f *RFPDupeFilter) SeenCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	return len(f.fingerprints)
+	return int(f.seenCount.Load())
 }
 
 // requestFingerprint 计算请求的指纹。
@@ -166,11 +170,10 @@ func (f *RFPDupeFilter) logDupe(request *shttp.Request) {
 		f.logger.Debug("filtered duplicate request",
 			"request", request.String(),
 		)
-	} else if f.logDupes {
+	} else if f.logDupes.CompareAndSwap(true, false) {
 		f.logger.Debug("filtered duplicate request (further duplicates will not be shown, set DUPEFILTER_DEBUG=true to see all)",
 			"request", request.String(),
 		)
-		f.logDupes = false
 	}
 }
 
@@ -196,14 +199,17 @@ func (f *RFPDupeFilter) loadFingerprints() error {
 	}
 	defer file.Close()
 
+	var count int64
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		fp := scanner.Text()
 		if fp != "" {
-			f.fingerprints[fp] = struct{}{}
+			f.fingerprints.Store(fp, struct{}{})
+			count++
 		}
 	}
 
+	f.seenCount.Store(count)
 	return scanner.Err()
 }
 
@@ -223,12 +229,18 @@ func (f *RFPDupeFilter) saveFingerprints() error {
 	}
 
 	writer := bufio.NewWriter(file)
-	for fp := range f.fingerprints {
-		if _, err := writer.WriteString(fp + "\n"); err != nil {
-			file.Close()
-			os.Remove(tmpFile)
-			return fmt.Errorf("failed to write fingerprint: %w", err)
+	var writeErr error
+	f.fingerprints.Range(func(key, value any) bool {
+		if _, err := writer.WriteString(key.(string) + "\n"); err != nil {
+			writeErr = err
+			return false
 		}
+		return true
+	})
+	if writeErr != nil {
+		file.Close()
+		os.Remove(tmpFile)
+		return fmt.Errorf("failed to write fingerprint: %w", writeErr)
 	}
 
 	if err := writer.Flush(); err != nil {
@@ -256,11 +268,8 @@ func (f *RFPDupeFilter) saveFingerprints() error {
 
 // DupeFilterStats 返回去重过滤器的统计信息。
 func (f *RFPDupeFilter) DupeFilterStats() map[string]any {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	stats := map[string]any{
-		"seen_count": len(f.fingerprints),
+		"seen_count": int(f.seenCount.Load()),
 		"persistent": f.jobDir != "",
 	}
 	if f.jobDir != "" {
@@ -271,15 +280,12 @@ func (f *RFPDupeFilter) DupeFilterStats() map[string]any {
 
 // ExportState 导出去重过滤器状态为 JSON（用于调试）。
 func (f *RFPDupeFilter) ExportState() ([]byte, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	state := struct {
-		SeenCount  int    `json:"seen_count"`
+		SeenCount  int64  `json:"seen_count"`
 		Persistent bool   `json:"persistent"`
 		JobDir     string `json:"jobdir,omitempty"`
 	}{
-		SeenCount:  len(f.fingerprints),
+		SeenCount:  f.seenCount.Load(),
 		Persistent: f.jobDir != "",
 		JobDir:     f.jobDir,
 	}
