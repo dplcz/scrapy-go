@@ -124,6 +124,121 @@ go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAccep
 - **Response** — 支持 Text/JSON 解析、URLJoin 相对路径解析、Follow 链接跟踪、CSS/XPath 选择器
 - **Functional Options** — 类型安全的构建模式
 
+### 🏷️ Request Meta 参考
+
+`Request.Meta` 是一个 `map[string]any` 类型的元数据字典，用于在请求生命周期中传递控制参数和上下文信息。
+以下是框架内置支持的所有 Meta 键：
+
+#### 下载器控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `download_slot` | string | 域名 | 自定义 Slot 分组键，覆盖默认的按域名分组 | Downloader |
+| `download_timeout` | time.Duration | Settings 值 | 请求级超时覆盖 | DownloadTimeout 中间件 |
+| `proxy` | string/nil | Settings 值 | 请求级代理 URL，设为 `nil` 显式禁用代理 | HttpProxy 中间件 / Handler |
+| `download_maxsize` | int | Settings 值 | 请求级最大下载大小（字节） | HttpCompression 中间件 |
+| `download_warnsize` | int | Settings 值 | 请求级下载警告阈值（字节） | HttpCompression 中间件 |
+| `download_progress_callback` | func(bytesRead, totalSize int64) | nil | 下载进度回调函数 | ProgressHTTPDownloadHandler |
+
+#### 重试控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `dont_retry` | bool | false | 设为 true 跳过自动重试 | Retry 中间件 |
+| `retry_times` | int | 0 | 当前已重试次数（框架自动设置） | Retry 中间件 |
+| `max_retry_times` | int | Settings 值 | 请求级最大重试次数覆盖 | Retry 中间件 |
+
+#### 重定向控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `dont_redirect` | bool | false | 设为 true 禁止自动重定向 | Redirect 中间件 |
+| `redirect_times` | int | 0 | 当前已重定向次数（框架自动设置） | Redirect 中间件 |
+| `redirect_ttl` | int | Settings 值 | 剩余重定向次数 | Redirect 中间件 |
+| `redirect_urls` | []string | nil | 重定向历史 URL 列表（框架自动追加） | Redirect 中间件 |
+| `redirect_reasons` | []int | nil | 重定向状态码列表（框架自动追加） | Redirect 中间件 |
+
+#### Cookie 控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `dont_merge_cookies` | bool | false | 设为 true 跳过 Cookie 处理 | Cookies 中间件 |
+| `cookiejar` | any | "default" | Cookie Jar 标识键，不同值使用不同会话 | Cookies 中间件 |
+
+#### 认证控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `http_user` | string | Settings 值 | 请求级 Basic Auth 用户名覆盖 | HttpAuth 中间件 |
+| `http_pass` | string | Settings 值 | 请求级 Basic Auth 密码覆盖 | HttpAuth 中间件 |
+
+#### 缓存控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `dont_cache` | bool | false | 设为 true 跳过 HTTP 缓存 | HttpCache 中间件 |
+| `cached_response` | *Response | nil | 缓存命中时存储的缓存响应（框架自动设置） | HttpCache 中间件 |
+
+#### Robots.txt 控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `dont_obey_robotstxt` | bool | false | 设为 true 跳过 robots.txt 检查 | RobotsTxt 中间件 |
+
+#### Spider 中间件控制
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `depth` | int | 0 | 当前请求深度（框架自动设置和递增） | Depth 中间件 |
+| `allow_offsite` | bool | false | 设为 true 允许跨域请求 | Offsite 中间件 |
+| `handle_httpstatus_all` | bool | false | 设为 true 允许所有 HTTP 状态码通过 | HttpError 中间件 |
+| `handle_httpstatus_list` | []int | nil | 请求级允许通过的状态码列表 | HttpError 中间件 |
+
+#### CrawlSpider 内部
+
+| Meta 键 | 类型 | 默认值 | 说明 | 使用组件 |
+|---------|------|--------|------|----------|
+| `rule` | int | - | 匹配的规则索引（框架自动设置） | CrawlSpider |
+| `link_text` | string | - | 链接的锚文本（框架自动设置） | CrawlSpider |
+
+#### 使用示例
+
+```go
+import shttp "github.com/example/scrapy-go/pkg/http"
+
+// 设置请求级超时和代理
+req := shttp.NewRequest("GET", "https://example.com",
+    shttp.WithMeta(map[string]any{
+        "download_timeout": 30 * time.Second,
+        "proxy":           "http://proxy.example.com:8080",
+    }),
+)
+
+// 跳过重试和重定向
+req2 := shttp.NewRequest("GET", "https://api.example.com/data",
+    shttp.WithMeta(map[string]any{
+        "dont_retry":    true,
+        "dont_redirect": true,
+    }),
+)
+
+// 设置下载进度回调
+req3 := shttp.NewRequest("GET", "https://example.com/large-file.zip",
+    shttp.WithMeta(map[string]any{
+        "download_progress_callback": func(bytesRead, totalSize int64) {
+            fmt.Printf("下载进度: %d / %d\n", bytesRead, totalSize)
+        },
+    }),
+)
+
+// 多会话 Cookie 隔离
+req4 := shttp.NewRequest("GET", "https://example.com/login",
+    shttp.WithMeta(map[string]any{
+        "cookiejar": "session-user-1",
+    }),
+)
+```
+
 ### 🔁 去重与调度
 
 - **RFPDupeFilter** — 基于请求指纹（URL + Method + Body SHA1）去重
