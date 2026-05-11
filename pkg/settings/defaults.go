@@ -12,7 +12,7 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("BOT_NAME", "scrapybot", d)
-	s.Set("USER_AGENT", "scrapy-go/0.5.0 (+https://github.com/example/scrapy-go)", d)
+	s.Set("USER_AGENT", "scrapy-go/1.0.3 (+https://github.com/example/scrapy-go)", d)
 
 	// ========================================================================
 	// 并发控制
@@ -227,11 +227,12 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("EXTENSIONS_BASE", map[string]int{
-		"CoreStats":   0,
-		"CloseSpider": 0,
-		"LogStats":    0,
-		"MemoryUsage": 0,
-		"FeedExport":  0,
+		"CoreStats":    0,
+		"CloseSpider":  0,
+		"LogStats":     0,
+		"MemoryUsage":  0,
+		"FeedExport":   0,
+		"AutoThrottle": 0,
 	}, d)
 	s.Set("EXTENSIONS", map[string]int{}, d)
 
@@ -320,4 +321,14 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("CRAWLSPIDER_FOLLOW_LINKS", true, d)
+
+	// ========================================================================
+	// AutoThrottle 自适应限速
+	// ========================================================================
+
+	s.Set("AUTOTHROTTLE_ENABLED", false, d)          // 是否启用自适应限速
+	s.Set("AUTOTHROTTLE_START_DELAY", 5.0, d)        // 初始下载延迟（秒）
+	s.Set("AUTOTHROTTLE_MAX_DELAY", 60.0, d)         // 最大下载延迟（秒）
+	s.Set("AUTOTHROTTLE_TARGET_CONCURRENCY", 1.0, d) // 目标并发数（每个域名）
+	s.Set("AUTOTHROTTLE_DEBUG", false, d)            // 是否输出调试日志
 }

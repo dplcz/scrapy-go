@@ -5,6 +5,73 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.0.3] — 2026-05-11
+
+### 新增
+
+#### P5-002：AutoThrottle 自适应限速扩展（Sprint 12）
+
+> **Post-v1.0 生态完善 — 基于延迟反馈的自适应速率调整**
+
+##### P5-002a：基于延迟反馈的自适应速率调整
+
+- 🎛️ **AutoThrottleExtension** — 基于延迟反馈的自适应速率调整扩展（`pkg/extension/autothrottle.go`）
+  - 对应 Scrapy 的 `scrapy.extensions.throttle.AutoThrottle`
+  - 监听 `ResponseDownloaded` 信号，获取每个响应的下载延迟
+  - 使用 EWMA（指数加权移动平均，alpha=0.5）平滑延迟抖动
+  - 根据目标并发数和实际延迟动态计算理想下载延迟
+  - 算法公式（对齐 Scrapy 原版）：
+    - `latency_ewma = alpha * new_latency + (1 - alpha) * old_latency`
+    - `target_delay = latency_ewma / target_concurrency`
+    - `new_delay = (old_delay + target_delay) / 2.0`
+    - `new_delay = clamp(new_delay, start_delay * 0.2, max_delay)`
+  - 每个域名（Slot）独立跟踪延迟和调整延迟
+  - 通过 `DelayAdjuster` 接口回调调整 Slot 延迟，与 Downloader 解耦
+
+- ⚙️ **配置项** — 5 个 AutoThrottle 配置项
+  - `AUTOTHROTTLE_ENABLED`（默认 false）— 是否启用自适应限速
+  - `AUTOTHROTTLE_START_DELAY`（默认 5.0）— 初始下载延迟（秒）
+  - `AUTOTHROTTLE_MAX_DELAY`（默认 60.0）— 最大下载延迟（秒）
+  - `AUTOTHROTTLE_TARGET_CONCURRENCY`（默认 1.0）— 目标并发数（每个域名）
+  - `AUTOTHROTTLE_DEBUG`（默认 false）— 是否输出调试日志
+
+- 📊 **统计项** — 3 个运行时统计指标
+  - `autothrottle/request_count` — 已处理的请求总数
+  - `autothrottle/latency_avg` — 当前 EWMA 平滑延迟（秒）
+  - `autothrottle/delay_adjusted_count` — 延迟调整次数
+
+- 🔌 **DelayAdjuster 接口** — 延迟调整回调接口
+  - `Downloader` 实现 `DelayAdjuster` 接口，`AdjustDelay` 方法动态调整 Slot 延迟
+  - `DelayAdjusterFunc` 函数适配器，方便测试和自定义实现
+  - `Slot.SetDelay()` 新增方法，支持运行时动态修改下载延迟
+
+- 🔒 **并发安全** — `sync.Mutex` 保护共享状态
+  - `Slot.getDownloadDelay()` 和 `Slot.DownloadDelay()` 加锁读取 delay 字段
+  - `Slot.processTask()` 在读取 delay 时加锁，确保 AutoThrottle 动态修改的可见性
+
+##### P5-002b：单元测试
+
+- ✅ **完整测试套件** — 33 个测试用例（`pkg/extension/autothrottle_test.go`）
+  - 构造函数测试（默认值、参数校验、边界条件）
+  - Open/Close 生命周期测试（信号注册/注销、统计更新）
+  - 延迟调整算法测试（首次请求、收敛行为、上下限钳制、多 Slot 独立调整）
+  - EWMA 平滑测试（验证指数加权移动平均计算正确性）
+  - 信号参数边界测试（nil params、缺少 request/response、零延迟）
+  - Table-Driven 测试（多场景参数化验证）
+  - 并发安全测试（5 域名 × 20 goroutine 并发访问）
+  - `go test -race` 竞态检测通过
+  - 扩展包整体测试覆盖率 90.7%
+
+##### 变更文件
+
+- `pkg/extension/autothrottle.go` — AutoThrottle 扩展实现
+- `pkg/extension/autothrottle_test.go` — 完整测试套件（33 个测试用例）
+- `pkg/extension/doc.go` — 包文档更新（新增 AutoThrottle 说明）
+- `pkg/downloader/downloader.go` — 新增 `AdjustDelay` 方法（实现 `DelayAdjuster` 接口）
+- `pkg/downloader/slot.go` — 新增 `SetDelay` 方法 + `getDownloadDelay`/`DownloadDelay`/`processTask` 加锁保护
+- `pkg/settings/defaults.go` — 新增 5 个 AutoThrottle 配置项默认值 + EXTENSIONS_BASE 注册
+- `pkg/crawler/crawler.go` — `builtinExtensionFactories` 注册 AutoThrottle 工厂
+
 ## [v1.0.2] — 2026-05-11
 
 ### 新增

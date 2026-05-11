@@ -278,6 +278,26 @@ func (d *Downloader) slotGC(maxAge time.Duration) {
 	}
 }
 
+// AdjustDelay 调整指定 Slot 的下载延迟。
+// 由 AutoThrottle 扩展调用，实现 extension.DelayAdjuster 接口。
+// 如果指定的 Slot 不存在，则忽略（Slot 可能已被 GC 回收）。
+func (d *Downloader) AdjustDelay(slotKey string, delay time.Duration) {
+	d.mu.RLock()
+	slot, ok := d.slots[slotKey]
+	d.mu.RUnlock()
+
+	if !ok {
+		return
+	}
+
+	slot.SetDelay(delay)
+
+	d.logger.Debug("autothrottle adjusted slot delay",
+		"slot", slotKey,
+		"delay", delay,
+	)
+}
+
 // getHostname 从 URL 中提取主机名。
 func getHostname(u *url.URL) string {
 	if u == nil {

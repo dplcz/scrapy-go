@@ -19,12 +19,12 @@
 //	┌─────────────────────────────────────────────────────────┐
 //	│              Extension Manager                           │
 //	│  (按优先级排序、管理生命周期、处理 ErrNotConfigured)      │
-//	└───┬──────────────┬──────────────┬──────────────┬────────┘
-//	    │              │              │              │
-//	    ▼              ▼              ▼              ▼
-//	┌────────┐   ┌──────────┐  ┌──────────┐  ┌──────────┐
-//	│CoreStats│  │CloseSpider│  │ LogStats │  │MemUsage  │
-//	└────────┘   └──────────┘  └──────────┘  └──────────┘
+//	└───┬──────────┬──────────┬──────────┬──────────┬─────────┘
+//	    │          │          │          │          │
+//	    ▼          ▼          ▼          ▼          ▼
+//	┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────────┐
+//	│CoreStats│ │CloseSp │ │LogStats│ │MemUsage│ │AutoThrottle│
+//	└────────┘ └────────┘ └────────┘ └────────┘ └────────────┘
 //	    │              │              │              │
 //	    └──────────────┴──────────────┴──────────────┘
 //	                         │
@@ -80,6 +80,15 @@
 //   - 监听 ItemScraped 信号将 Item 分发到配置的导出目标
 //   - 支持多目标并行导出（JSON、CSV、XML、JSONLines）
 //   - 对应 Scrapy 的 scrapy.extensions.feedexport.FeedExporter
+//
+// [AutoThrottleExtension]：基于延迟反馈的自适应速率调整
+//   - 监听 ResponseDownloaded 信号，获取每个响应的下载延迟
+//   - 使用 EWMA（指数加权移动平均）平滑延迟抖动
+//   - 根据目标并发数和实际延迟动态计算理想下载延迟
+//   - 通过 [DelayAdjuster] 接口回调调整 Slot 延迟
+//   - 配置项：AUTOTHROTTLE_ENABLED / AUTOTHROTTLE_START_DELAY /
+//     AUTOTHROTTLE_MAX_DELAY / AUTOTHROTTLE_TARGET_CONCURRENCY / AUTOTHROTTLE_DEBUG
+//   - 对应 Scrapy 的 scrapy.extensions.throttle.AutoThrottle
 //
 // # 自定义扩展
 //
