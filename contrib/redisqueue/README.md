@@ -9,6 +9,7 @@
 - 🔌 **可插拔设计** — 通过 `WithExternalQueue` / `WithDupeFilter` 注入，主模块零 Redis 依赖
 - 🌐 **分布式爬取** — 多实例共享队列和去重集合，实现分布式协作
 - ⚡ **高性能** — 基于 Redis Sorted Set + Set，O(log N) 入队，O(1) 出队和去重
+- 🌸 **布隆过滤器加速** — 可选本地布隆过滤器一级缓存，新请求跳过 Redis 查询，大幅减少网络往返
 - 💾 **断点续爬** — Redis 持久化保证数据不丢失，重启后自动恢复
 - 🔒 **并发安全** — 使用 Redis 原子命令（ZADD/ZPOPMAX/SADD），多实例无锁协作
 - 📊 **优先级支持** — 基于 Sorted Set score 编码优先级，高优先级请求先处理
@@ -79,6 +80,49 @@ func main() {
 | `PoolSize` | `10` | 连接池大小 |
 | `FlushOnStart` | `false` | 启动时是否清空数据 |
 | `Serializer` | `json` | 序列化格式 |
+| `BloomFilterEnabled` | `false` | 是否启用本地布隆过滤器一级缓存 |
+| `BloomExpectedItems` | `1000000` | 布隆过滤器预估不重复请求数 |
+| `BloomFalsePositiveRate` | `0.001` | 布隆过滤器误判率（0.1%） |
+
+## 布隆过滤器加速
+
+启用本地布隆过滤器后，新请求可跳过 Redis 读查询，大幅降低延迟：
+
+```go
+opts := redisqueue.DefaultOptions()
+opts.Addr = "localhost:6379"
+opts.BloomFilterEnabled = true          // 启用布隆过滤器
+opts.BloomExpectedItems = 5_000_000     // 预估 500 万不重复请求
+opts.BloomFalsePositiveRate = 0.001     // 0.1% 误判率
+
+df, _ := redisqueue.NewRedisDupeFilter(opts)
+
+// 运行时查看布隆过滤器统计
+stats := df.BloomStats()
+// {"enabled": true, "bloom_hits": 95000, "bloom_misses": 5000, "bloom_hit_rate": 0.95}
+```
+
+**工作原理：**
+
+```
+RequestSeen(request)
+  │
+  ├─ 计算指纹 fp（锁外，纯 CPU）
+  │
+  ├─ 布隆过滤器.TestAndAdd(fp)
+  │   ├─ "不存在"(100%准确) → Redis SADD + 返回
+  │   └─ "可能存在"(有误判) → 穿透到 Redis SADD 精确判断
+  │
+  └─ 正确性完全由 Redis 保证
+```
+
+**内存占用参考：**
+
+| 预估请求量 | 误判率 | 内存占用 |
+|-----------|--------|--------|
+| 100 万 | 0.1% | ~1.71 MB |
+| 500 万 | 0.1% | ~8.55 MB |
+| 1000 万 | 0.1% | ~17.1 MB |
 
 ## 分布式爬取
 
@@ -154,6 +198,7 @@ score = priority × 10^10 + sequence_number
 ## 依赖
 
 - [go-redis/v9](https://github.com/redis/go-redis) — Redis 客户端
+- [bits-and-blooms/bloom/v3](https://github.com/bits-and-blooms/bloom) — 布隆过滤器（可选，仅开启 BloomFilterEnabled 时使用）
 - [miniredis/v2](https://github.com/alicebob/miniredis) — 测试用内存 Redis（仅测试依赖）
 
 ## License

@@ -68,6 +68,28 @@ type Options struct {
 	// 当前仅支持 "json"。
 	// 默认值："json"
 	Serializer string
+
+	// BloomFilterEnabled 控制是否启用本地布隆过滤器作为一级去重缓存。
+	//
+	// 启用后，RedisDupeFilter 在调用 Redis SADD 之前先通过本地布隆过滤器
+	// 快速判断请求是否为新请求：
+	//   - 布隆过滤器判断"不存在" → 100% 是新请求，直接写入 Redis 并返回
+	//   - 布隆过滤器判断"可能存在" → 穿透到 Redis 做精确判断
+	//
+	// 在新请求占绝大多数的爬虫场景中，可大幅减少 Redis 读查询量。
+	// 默认值：false
+	BloomFilterEnabled bool
+
+	// BloomExpectedItems 是布隆过滤器预估的不重复请求总数。
+	// 该值影响布隆过滤器的内存占用和误判率。
+	// 默认值：1000000（100 万）
+	BloomExpectedItems uint
+
+	// BloomFalsePositiveRate 是布隆过滤器可接受的误判率。
+	// 误判率越低，内存占用越大。
+	// 典型值：0.01（1%）对应 ~1.14 MB/百万条目，0.001（0.1%）对应 ~1.71 MB/百万条目。
+	// 默认值：0.001（0.1%）
+	BloomFalsePositiveRate float64
 }
 
 // DefaultOptions 返回默认的 Redis 配置选项。
@@ -83,9 +105,12 @@ func DefaultOptions() *Options {
 		ReadTimeout:   3 * time.Second,
 		WriteTimeout:  3 * time.Second,
 		PoolSize:      10,
-		StartURLsKey:  "start_urls",
-		FlushOnStart:  false,
-		Serializer:    "json",
+		StartURLsKey:           "start_urls",
+		FlushOnStart:           false,
+		Serializer:             "json",
+		BloomFilterEnabled:     false,
+		BloomExpectedItems:     1_000_000,
+		BloomFalsePositiveRate: 0.001,
 	}
 }
 

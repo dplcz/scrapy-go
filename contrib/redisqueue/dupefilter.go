@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/redis/go-redis/v9"
 )
@@ -21,6 +22,7 @@ import (
 //   - 使用 SADD 原子操作，多实例并发安全
 //   - 指纹计算逻辑与 RFPDupeFilter 一致（URL + Method + Body 的 SHA1）
 //   - 支持 FlushOnStart 配置，控制是否在启动时清空去重集合
+//   - 支持可选的本地布隆过滤器一级缓存，减少 Redis 查询量
 //
 // 多实例共享同一 Redis 时，去重集合自动共享，实现分布式去重。
 //
@@ -44,6 +46,17 @@ type RedisDupeFilter struct {
 
 	// logDupes 是否已输出过重复日志（仅输出一次提示）
 	logDupes atomic.Bool
+
+	// bf 是本地布隆过滤器（可选，由 BloomFilterEnabled 控制）。
+	// 作为一级去重缓存，在查询 Redis 之前先本地判断：
+	//   - 布隆过滤器判断"不存在" → 100% 是新请求，跳过 Redis 读查询
+	//   - 布隆过滤器判断"可能存在" → 穿透到 Redis 做精确判断
+	bf   *bloom.BloomFilter
+	bfMu sync.Mutex // 保护布隆过滤器的并发写入
+
+	// 布隆过滤器统计
+	bloomHits   atomic.Int64 // 布隆过滤器拦截次数（新请求，避免了 Redis 读查询）
+	bloomMisses atomic.Int64 // 穿透到 Redis 的次数（可能存在，需精确判断）
 }
 
 // NewRedisDupeFilter 创建一个新的 Redis 分布式去重过滤器。
@@ -81,6 +94,7 @@ func NewRedisDupeFilter(opts *Options) (*RedisDupeFilter, error) {
 		ownsClient: true,
 	}
 	df.logDupes.Store(true)
+	df.initBloomFilter()
 
 	return df, nil
 }
@@ -104,6 +118,7 @@ func NewRedisDupeFilterFromClient(client *redis.Client, opts *Options) (*RedisDu
 		ownsClient: false,
 	}
 	df.logDupes.Store(true)
+	df.initBloomFilter()
 
 	return df, nil
 }
@@ -143,11 +158,13 @@ func (df *RedisDupeFilter) Close(reason string) error {
 
 // RequestSeen 检查请求是否已见过。
 //
-// 使用 SADD 命令原子性地尝试将请求指纹添加到 Redis Set 中：
-//   - 如果指纹不存在，SADD 返回 1（新请求），记录并返回 false
-//   - 如果指纹已存在，SADD 返回 0（重复请求），返回 true
+// 当启用布隆过滤器时，处理流程：
+//  1. 计算请求指纹（锁外，纯 CPU 操作）
+//  2. 查询本地布隆过滤器：
+//     - "不存在" → 100% 新请求，写入 Redis + 布隆过滤器，返回 false
+//     - "可能存在" → 穿透到 Redis SADD 做精确判断
 //
-// 多实例并发调用时，Redis 保证 SADD 的原子性，不会出现重复爬取。
+// 未启用布隆过滤器时，直接使用 Redis SADD 原子操作。
 //
 // 实现 scheduler.DupeFilter 接口。
 func (df *RedisDupeFilter) RequestSeen(request *shttp.Request) bool {
@@ -155,10 +172,21 @@ func (df *RedisDupeFilter) RequestSeen(request *shttp.Request) bool {
 		return false
 	}
 
+	// 指纹计算是纯 CPU 操作，不需要锁保护，移到锁外以减少锁持有时间
+	fp := df.computeFingerprint(request)
+
+	// 布隆过滤器一级缓存
+	if df.bf != nil {
+		return df.requestSeenWithBloom(fp)
+	}
+
+	return df.requestSeenDirect(fp)
+}
+
+// requestSeenDirect 直接通过 Redis SADD 判断请求是否已见过。
+func (df *RedisDupeFilter) requestSeenDirect(fp string) bool {
 	df.mu.RLock()
 	defer df.mu.RUnlock()
-
-	fp := df.computeFingerprint(request)
 
 	ctx := context.Background()
 	added, err := df.client.SAdd(ctx, df.key, fp).Result()
@@ -169,6 +197,44 @@ func (df *RedisDupeFilter) RequestSeen(request *shttp.Request) bool {
 
 	// SADD 返回 0 表示元素已存在（重复请求）
 	return added == 0
+}
+
+// requestSeenWithBloom 通过本地布隆过滤器 + Redis 二级去重判断请求是否已见过。
+//
+// 布隆过滤器特性：
+//   - 判断"不存在"时 100% 准确，可直接确认为新请求
+//   - 判断"可能存在"时有误判率，需穿透到 Redis 精确判断
+//
+// 正确性完全由 Redis 保证，布隆过滤器仅作为性能优化。
+func (df *RedisDupeFilter) requestSeenWithBloom(fp string) bool {
+	fpBytes := []byte(fp)
+
+	// 查询并更新布隆过滤器（TestAndAdd 是原子操作，但需要锁保护并发写入）
+	df.bfMu.Lock()
+	mightExist := df.bf.TestAndAdd(fpBytes)
+	df.bfMu.Unlock()
+
+	if !mightExist {
+		// 布隆过滤器确认"不存在" → 100% 是新请求
+		// 仍需写入 Redis 保证多机共享去重状态，
+		// 并检查返回值确保并发正确性
+		df.mu.RLock()
+		ctx := context.Background()
+		added, err := df.client.SAdd(ctx, df.key, fp).Result()
+		df.mu.RUnlock()
+
+		df.bloomHits.Add(1)
+
+		if err != nil {
+			return false
+		}
+		// 如果 Redis 返回 0，说明其他实例已写入（多机场景），视为重复
+		return added == 0
+	}
+
+	// 布隆过滤器说"可能存在" → 穿透到 Redis 精确判断
+	df.bloomMisses.Add(1)
+	return df.requestSeenDirect(fp)
 }
 
 // computeFingerprint 计算请求的指纹。
@@ -209,10 +275,11 @@ func (df *RedisDupeFilter) Contains(request *shttp.Request) bool {
 		return false
 	}
 
+	// 指纹计算是纯 CPU 操作，不需要锁保护，移到锁外以减少锁持有时间
+	fp := df.computeFingerprint(request)
+
 	df.mu.RLock()
 	defer df.mu.RUnlock()
-
-	fp := df.computeFingerprint(request)
 
 	ctx := context.Background()
 	exists, err := df.client.SIsMember(ctx, df.key, fp).Result()
@@ -225,4 +292,47 @@ func (df *RedisDupeFilter) Contains(request *shttp.Request) bool {
 // Client 返回底层的 Redis 客户端。
 func (df *RedisDupeFilter) Client() *redis.Client {
 	return df.client
+}
+
+// BloomStats 返回布隆过滤器的统计信息。
+// 如果未启用布隆过滤器，返回 nil。
+func (df *RedisDupeFilter) BloomStats() map[string]any {
+	if df.bf == nil {
+		return nil
+	}
+
+	hits := df.bloomHits.Load()
+	misses := df.bloomMisses.Load()
+	total := hits + misses
+	var hitRate float64
+	if total > 0 {
+		hitRate = float64(hits) / float64(total)
+	}
+
+	return map[string]any{
+		"enabled":             true,
+		"expected_items":      df.opts.BloomExpectedItems,
+		"false_positive_rate": df.opts.BloomFalsePositiveRate,
+		"bloom_hits":          hits,
+		"bloom_misses":        misses,
+		"bloom_hit_rate":      hitRate,
+	}
+}
+
+// initBloomFilter 根据配置初始化本地布隆过滤器。
+func (df *RedisDupeFilter) initBloomFilter() {
+	if !df.opts.BloomFilterEnabled {
+		return
+	}
+
+	expected := df.opts.BloomExpectedItems
+	if expected == 0 {
+		expected = 1_000_000
+	}
+	fpRate := df.opts.BloomFalsePositiveRate
+	if fpRate <= 0 || fpRate >= 1 {
+		fpRate = 0.001
+	}
+
+	df.bf = bloom.NewWithEstimates(expected, fpRate)
 }

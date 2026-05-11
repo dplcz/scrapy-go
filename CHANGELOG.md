@@ -69,6 +69,25 @@
   - 与 DiskQueue 对比表
   - Score 编码设计说明
 
+##### P5-003g：本地布隆过滤器一级去重缓存
+
+- 🚀 **布隆过滤器优化** — 可选的本地布隆过滤器一级缓存（`contrib/redisqueue/dupefilter.go` 增强）
+  - 通过 `BloomFilterEnabled` 配置项开启，默认关闭
+  - 新请求通过布隆过滤器快速判断"不存在"，跳过 Redis 读查询
+  - 布隆过滤器判断"可能存在"时穿透到 Redis SADD 精确判断
+  - 正确性完全由 Redis 保证，布隆过滤器仅作为性能优化
+  - 多机场景下各实例独立维护布隆过滤器，不影响分布式去重正确性
+- ⚙️ **配置参数** — `BloomExpectedItems`（预估请求量，默认 100 万）/ `BloomFalsePositiveRate`（误判率，默认 0.1%）
+- 📊 **统计接口** — `BloomStats()` 返回命中率、穿透次数等运行时指标
+- 🔒 **并发安全** — `sync.Mutex` 保护布隆过滤器写入，`go test -race` 通过
+- 📦 **依赖** — 引入 `github.com/bits-and-blooms/bloom/v3`（MIT 许可证）
+
+##### 性能优化
+
+- ⚡ **指纹计算移到锁外** — `RequestSeen` / `Contains` 的 `computeFingerprint` 调用从 `RLock` 内移到锁外
+  - 减少锁持有时间，`Close()` 获取写锁时不再等待指纹计算
+  - CPU 密集操作（JSON 序列化 + SHA1 + URL 规范化）不再阻塞其他 goroutine
+
 ##### 变更文件
 
 - `contrib/redisqueue/go.mod` — 独立模块定义

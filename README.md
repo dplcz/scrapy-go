@@ -17,7 +17,7 @@
 - 📤 **Feed Export** — JSON / JSON Lines / CSV / XML 多格式数据导出
 - 🕷️ **CrawlSpider** — 基于规则的自动链接提取和跟踪
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重，中断后自动恢复
-- 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取（`contrib/redisqueue`）
+- 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取 + 本地布隆过滤器加速（`contrib/redisqueue`）
 - 🛡️ **生产就绪** — Panic Recovery、优雅关闭、统计收集、pprof 调试
 
 ## 📊 性能数据
