@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.1--alpha.4-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.1.0--alpha.1-blue)](docs/README.md#-更新日志)
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
@@ -10,6 +10,7 @@
 
 - 🔗 **Scrapy 兼容架构** — Engine → Scheduler → Downloader → Scraper 经典数据流，零学习成本迁移
 - ⚡ **Go 原生并发** — 基于 goroutine 和 channel 实现真正的多核并行，无 GIL 限制
+- 🌐 **HTTP/2 优化** — 内置 HTTP/2 专用下载器，支持多路复用、自动协商、透明降级
 - 🔒 **类型安全** — 编译期类型检查，避免运行时错误
 - 🔍 **内置 HTML 解析** — 集成 goquery（CSS）和 htmlquery（XPath），提供链式选择器 API
 - 🧩 **可扩展中间件** — 下载器中间件 + Spider 中间件，灵活定制处理流程
@@ -175,6 +176,7 @@ scrapy-go 支持四种配置方式（按优先级从低到高）：
 | `DOWNLOAD_DELAY` | 0 | 请求间隔 |
 | `RETRY_TIMES` | 2 | 最大重试次数 |
 | `ROBOTSTXT_OBEY` | false | 是否遵守 robots.txt |
+| `HTTP2_ENABLED` | false | 启用 HTTP/2 优化下载器 |
 | `LOG_LEVEL` | "DEBUG" | 日志级别 |
 
 > 完整配置参考请查看 [详细文档](docs/README.md#-配置说明)
@@ -185,6 +187,9 @@ scrapy-go 支持四种配置方式（按优先级从低到高）：
 Engine (调度引擎)
 ├── Scheduler (请求调度 + 去重 + 优先级队列)
 ├── Downloader (HTTP 下载 + Slot 并发控制)
+│   ├── HTTPDownloadHandler (HTTP/1.1 标准处理器)
+│   ├── HTTP2DownloadHandler (HTTP/2 优化处理器)
+│   ├── ProgressHTTPDownloadHandler (进度回调处理器)
 │   └── Middleware Chain (10 个内置中间件)
 └── Scraper (响应处理 + Spider 回调)
     ├── Spider Middleware (5 个内置中间件)

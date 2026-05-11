@@ -422,7 +422,29 @@ func (c *Crawler) assembleComponents() {
 
 	// 2. 下载器
 	timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
-	handler := downloader.NewHTTPDownloadHandler(timeout)
+	var handler downloader.DownloadHandler
+	if c.Settings.GetBool("HTTP2_ENABLED", false) {
+		// 使用 HTTP/2 优化的下载处理器
+		connPoolConfig := downloader.ConnPoolConfigFromSettings(
+			c.Settings.GetInt,
+			c.Settings.GetDuration,
+			c.Settings.GetBool,
+		)
+		handler = downloader.NewHTTP2DownloadHandler(timeout, connPoolConfig)
+		c.Logger.Info("HTTP/2 download handler enabled")
+	} else if c.Settings.GetBool("DOWNLOAD_PROGRESS_ENABLED", false) {
+		// 使用支持进度回调的下载处理器
+		connPoolConfig := downloader.ConnPoolConfigFromSettings(
+			c.Settings.GetInt,
+			c.Settings.GetDuration,
+			c.Settings.GetBool,
+		)
+		minInterval := c.Settings.GetDuration("DOWNLOAD_PROGRESS_MIN_INTERVAL", 100*time.Millisecond)
+		handler = downloader.NewProgressHTTPDownloadHandler(timeout, connPoolConfig, minInterval)
+		c.Logger.Info("progress download handler enabled")
+	} else {
+		handler = downloader.NewHTTPDownloadHandler(timeout)
+	}
 	c.downloader = downloader.NewDownloader(c.Settings, handler, c.Signals, c.Stats, c.Logger)
 
 	// 3. 下载器中间件

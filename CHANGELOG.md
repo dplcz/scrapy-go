@@ -7,6 +7,82 @@
 
 ## [Unreleased]
 
+### 新增
+
+#### P5-001：高级下载器特性（Sprint 12）
+
+> **Post-v1.0 生态完善 — 高级下载器特性**
+
+##### P5-001a：HTTP/2 专用优化
+
+- 🚀 **HTTP2DownloadHandler** — 新增 HTTP/2 优化的下载处理器（`pkg/downloader/handler_h2.go`）
+  - 使用 `golang.org/x/net/http2` 直接建立 HTTP/2 连接
+  - 利用 HTTP/2 多路复用特性，单连接支持多并发流
+  - 自动降级：当目标不支持 HTTP/2 时回退到 HTTP/1.1
+  - 支持 `force_http2` Meta 强制使用 HTTP/2 Transport
+  - 通过 `HTTP2_ENABLED` 配置项全局启用
+- ⚡ **ALPN 自动协商** — HTTPS 请求通过 TLS ALPN 自动协商最优协议版本
+- 🔄 **透明降级** — HTTP/2 连接失败时自动回退到 HTTP/1.1，无需用户干预
+
+##### P5-001b：连接池精细化管理
+
+- 🔧 **ConnPoolConfig** — 新增连接池精细化配置结构体（`pkg/downloader/connpool.go`）
+  - `MaxIdleConns` / `MaxIdleConnsPerHost` / `MaxConnsPerHost` 连接数控制
+  - `IdleConnTimeout` / `TLSHandshakeTimeout` / `DialTimeout` 超时控制
+  - `WriteBufferSize` / `ReadBufferSize` 缓冲区大小配置
+  - `DisableKeepAlives` / `ForceHTTP2` 协议行为控制
+  - `TLSInsecureSkipVerify` TLS 证书验证控制（测试/内网场景）
+- 📊 **ConnPoolStats** — 连接池运行时统计（atomic 无锁）
+  - `TotalConnsCreated` / `TotalConnsReused` / `TotalConnsClosed` 累计计数
+  - `TotalTLSHandshakes` / `ActiveConns` / `IdleConns` 实时状态
+  - `Snapshot()` 方法返回统计快照（用于日志和监控）
+- 🏗️ **ManagedTransport** — 带统计功能的 Transport 包装
+- ⚙️ **Settings 集成** — 通过 `CONNPOOL_*` 前缀配置项控制连接池参数
+
+##### P5-001c：下载进度回调支持
+
+- 📈 **ProgressHTTPDownloadHandler** — 新增支持下载进度回调的处理器（`pkg/downloader/progress.go`）
+  - 通过 `Request.Meta["download_progress_callback"]` 设置进度回调
+  - 支持已知大小（Content-Length）和未知大小（chunked）的进度报告
+  - 可配置最小报告间隔（`DOWNLOAD_PROGRESS_MIN_INTERVAL`），避免高频回调
+  - 无进度回调时零开销（走标准读取路径）
+  - 通过 `DOWNLOAD_PROGRESS_ENABLED` 配置项全局启用
+- 🎯 **DownloadProgressCallback** — 进度回调函数类型定义
+  - 参数：`bytesRead`（已读取字节数）、`totalBytes`（总字节数，-1 表示未知）、`request`（关联请求）
+  - 在下载 goroutine 中同步调用，不引入额外 goroutine
+
+##### 新增配置项
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `HTTP2_ENABLED` | false | 启用 HTTP/2 优化下载处理器 |
+| `DOWNLOAD_PROGRESS_ENABLED` | false | 启用下载进度回调 |
+| `DOWNLOAD_PROGRESS_MIN_INTERVAL` | 100ms | 进度报告最小间隔 |
+| `CONNPOOL_MAX_IDLE_CONNS` | 100 | 最大空闲连接总数 |
+| `CONNPOOL_MAX_IDLE_CONNS_PER_HOST` | 10 | 每 host 最大空闲连接数 |
+| `CONNPOOL_MAX_CONNS_PER_HOST` | 0 | 每 host 最大连接数（0=不限制） |
+| `CONNPOOL_IDLE_CONN_TIMEOUT` | 90s | 空闲连接超时 |
+| `CONNPOOL_TLS_HANDSHAKE_TIMEOUT` | 10s | TLS 握手超时 |
+| `CONNPOOL_DIAL_TIMEOUT` | 30s | TCP 连接超时 |
+| `CONNPOOL_DIAL_KEEPALIVE` | 30s | TCP keep-alive 间隔 |
+| `CONNPOOL_DISABLE_KEEPALIVES` | false | 禁用 HTTP keep-alive |
+| `CONNPOOL_WRITE_BUFFER_SIZE` | 0 | 写缓冲区大小（0=默认 4KB） |
+| `CONNPOOL_READ_BUFFER_SIZE` | 0 | 读缓冲区大小（0=默认 4KB） |
+| `CONNPOOL_TLS_INSECURE_SKIP_VERIFY` | false | 跳过 TLS 证书验证 |
+
+##### 变更文件
+
+- `pkg/downloader/handler_h2.go` — 新增 HTTP/2 优化下载处理器
+- `pkg/downloader/connpool.go` — 新增连接池精细化管理
+- `pkg/downloader/progress.go` — 新增下载进度回调支持
+- `pkg/downloader/handler_h2_test.go` — HTTP/2 处理器测试（12 个测试用例）
+- `pkg/downloader/connpool_test.go` — 连接池管理测试（6 个测试用例）
+- `pkg/downloader/progress_test.go` — 进度回调测试（12 个测试用例）
+- `pkg/crawler/crawler.go` — 集成 HTTP/2 和进度处理器选择逻辑
+- `pkg/settings/defaults.go` — 新增 HTTP/2 和连接池默认配置项
+
+---
+
 ### 改进
 
 #### 框架对比 Benchmark 升级为真实第三方库
