@@ -53,13 +53,13 @@ type DupeFilter interface {
 //
 // 对应 Scrapy 的 RFPDupeFilter 类。
 type RFPDupeFilter struct {
-	fingerprints sync.Map       // map[string]struct{}，无锁并发安全
-	seenCount    atomic.Int64   // 已记录的指纹数量（用于统计和持久化）
-	mu           sync.Mutex     // 仅保护持久化操作（Open/Close）
+	fingerprints sync.Map     // map[string]struct{}，无锁并发安全
+	seenCount    atomic.Int64 // 已记录的指纹数量（用于统计和持久化）
+	mu           sync.Mutex   // 仅保护持久化操作（Open/Close）
 	logger       *slog.Logger
-	debug        bool           // 是否输出调试日志（对应 DUPEFILTER_DEBUG）
-	logDupes     atomic.Bool    // 是否已输出过重复日志（仅输出一次提示）
-	jobDir       string         // 持久化目录（空字符串表示不持久化）
+	debug        bool        // 是否输出调试日志（对应 DUPEFILTER_DEBUG）
+	logDupes     atomic.Bool // 是否已输出过重复日志（仅输出一次提示）
+	jobDir       string      // 持久化目录（空字符串表示不持久化）
 }
 
 // NewRFPDupeFilter 创建一个新的基于请求指纹的去重过滤器。

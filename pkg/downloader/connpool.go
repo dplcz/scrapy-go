@@ -115,12 +115,12 @@ type ConnPoolStats struct {
 // Snapshot 返回连接池统计的快照（用于日志和监控）。
 func (s *ConnPoolStats) Snapshot() map[string]int64 {
 	return map[string]int64{
-		"conns_created":    s.TotalConnsCreated.Load(),
-		"conns_reused":     s.TotalConnsReused.Load(),
-		"conns_closed":     s.TotalConnsClosed.Load(),
-		"tls_handshakes":   s.TotalTLSHandshakes.Load(),
-		"active_conns":     s.ActiveConns.Load(),
-		"idle_conns":       s.IdleConns.Load(),
+		"conns_created":  s.TotalConnsCreated.Load(),
+		"conns_reused":   s.TotalConnsReused.Load(),
+		"conns_closed":   s.TotalConnsClosed.Load(),
+		"tls_handshakes": s.TotalTLSHandshakes.Load(),
+		"active_conns":   s.ActiveConns.Load(),
+		"idle_conns":     s.IdleConns.Load(),
 	}
 }
 
