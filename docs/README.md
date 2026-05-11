@@ -207,37 +207,29 @@ go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAccep
 import shttp "github.com/example/scrapy-go/pkg/http"
 
 // 设置请求级超时和代理
-req := shttp.NewRequest("GET", "https://example.com",
-    shttp.WithMeta(map[string]any{
-        "download_timeout": 30 * time.Second,
-        "proxy":           "http://proxy.example.com:8080",
-    }),
-)
+req := shttp.NewRequest("GET", "https://example.com")
+req.SetMeta("download_timeout", 30*time.Second)
+req.SetMeta("proxy", "http://proxy.example.com:8080")
 
 // 跳过重试和重定向
-req2 := shttp.NewRequest("GET", "https://api.example.com/data",
-    shttp.WithMeta(map[string]any{
-        "dont_retry":    true,
-        "dont_redirect": true,
-    }),
-)
+req2 := shttp.NewRequest("GET", "https://api.example.com/data")
+req2.SetMeta("dont_retry", true)
+req2.SetMeta("dont_redirect", true)
 
 // 设置下载进度回调
-req3 := shttp.NewRequest("GET", "https://example.com/large-file.zip",
-    shttp.WithMeta(map[string]any{
-        "download_progress_callback": func(bytesRead, totalSize int64) {
-            fmt.Printf("下载进度: %d / %d\n", bytesRead, totalSize)
-        },
-    }),
-)
+req3 := shttp.NewRequest("GET", "https://example.com/large-file.zip")
+req3.SetMeta("download_progress_callback", func(bytesRead, totalSize int64) {
+    fmt.Printf("下载进度: %d / %d\n", bytesRead, totalSize)
+})
 
 // 多会话 Cookie 隔离
-req4 := shttp.NewRequest("GET", "https://example.com/login",
-    shttp.WithMeta(map[string]any{
-        "cookiejar": "session-user-1",
-    }),
-)
+req4 := shttp.NewRequest("GET", "https://example.com/login")
+req4.SetMeta("cookiejar", "session-user-1")
 ```
+
+> **⚠️ 注意**：推荐使用 `SetMeta(key, value)` 逐键设置，而非 `WithMeta(map[string]any{...})`。
+> `SetMeta` 内置 nil 保护且不会覆盖已有的 Meta 键；`WithMeta` 会整体替换 Meta map，
+> 丢弃 `NewRequest` 预分配的 map 和其他中间件已写入的值。
 
 ### 🔁 去重与调度
 
