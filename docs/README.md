@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.1.0-alpha.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.0.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -41,7 +41,7 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 完整实现 Scrapy 经典五大组件：
 
 - **Engine** — 核心调度引擎，协调所有组件，支持暂停/恢复，使用 `errgroup` 统一管理多 goroutine 生命周期
-- **Scheduler** — 基于内存优先级队列 + 磁盘队列的请求调度，支持断点续爬（`JOBDIR`），有序优先级切片 O(1) 出队
+- **Scheduler** — 基于内存优先级队列 + 磁盘队列的请求调度，支持断点续爬（`JOBDIR`），有序优先级切片 O(1) 出队，可插拔 Redis 分布式队列（`contrib/redisqueue`）
 - **Downloader** — 基于 Slot 机制的 HTTP 下载，按域名分组控制并发和延迟，支持 HTTP/2 多路复用优化和连接池精细化管理
 - **Scraper** — 调用 Spider 回调并分发结果（Request/Item），`semaphore.Weighted` 控制 CONCURRENT_ITEMS
 - **Crawler** — 顶层编排器，一行代码组装并启动爬虫
@@ -1085,6 +1085,18 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.0.2
+
+> **Post-v1.0 Sprint 12 — P5-003 Redis 队列可插拔扩展（独立模块）**
+
+- 🌐 **Redis 分布式队列** — 新增 `contrib/redisqueue` 独立 Go 子模块，基于 Redis Sorted Set 实现 `PriorityAwareQueue` 接口，支持多实例分布式爬取
+- 🔒 **Redis 分布式去重** — `RedisDupeFilter` 基于 Redis Set 实现 `DupeFilter` 接口，SADD 原子操作保证多实例并发安全
+- 🌸 **布隆过滤器加速** — 可选本地布隆过滤器一级缓存，新请求跳过 Redis 查询，减少 90%+ 网络往返
+- 🔌 **零侵入可插拔** — 独立 `go.mod`，主模块不引入 Redis/Bloom 依赖，通过 `WithExternalQueue` / `WithDupeFilter` 注入
+- ⚙️ **完整配置** — `Options` 结构体支持连接/Key/行为/布隆过滤器参数配置
+- 🧪 **测试覆盖率 89.9%** — 52+ 测试用例，`go test -race` 通过，使用 miniredis 内存 Mock
+- 📚 **完整文档** — `contrib/redisqueue/README.md` + `doc.go` 包含快速开始/分布式爬取/布隆过滤器示例
 
 ### v1.1.0-alpha.1
 
