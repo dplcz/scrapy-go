@@ -1021,7 +1021,6 @@ req, _ := shttp.NewRequest("https://example.com/api",
 |------|------|
 | 🗜️ Zstd | HttpCompression 暂不支持 zstd |
 | 🐚 Scrapy Shell | 不支持交互式调试 |
-| 🌍 分布式爬取 | 不支持分布式调度 |
 
 ### ⚠️ 已知约束
 
