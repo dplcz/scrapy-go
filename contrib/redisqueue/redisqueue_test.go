@@ -1215,7 +1215,7 @@ func TestNewRedisDupeFilter_NilOpts(t *testing.T) {
 func TestNewRedisQueue_ConnectionFailure(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Addr = "localhost:1" // 不可达的端口
-	opts.DialTimeout = 1     // 最短超时
+	opts.DialTimeout = 1      // 最短超时
 
 	_, err := NewRedisQueue(opts)
 	if err == nil {
@@ -1226,7 +1226,7 @@ func TestNewRedisQueue_ConnectionFailure(t *testing.T) {
 func TestNewRedisDupeFilter_ConnectionFailure(t *testing.T) {
 	opts := DefaultOptions()
 	opts.Addr = "localhost:1" // 不可达的端口
-	opts.DialTimeout = 1     // 最短超时
+	opts.DialTimeout = 1      // 最短超时
 
 	_, err := NewRedisDupeFilter(opts)
 	if err == nil {
@@ -1982,8 +1982,8 @@ func TestRedisDupeFilter_BloomFilter_Concurrent(t *testing.T) {
 func TestRedisDupeFilter_BloomFilter_InvalidParams(t *testing.T) {
 	_, opts := setupMiniredis(t)
 	opts.BloomFilterEnabled = true
-	opts.BloomExpectedItems = 0              // 无效值，应回退到默认
-	opts.BloomFalsePositiveRate = 2.0        // 无效值，应回退到默认
+	opts.BloomExpectedItems = 0       // 无效值，应回退到默认
+	opts.BloomFalsePositiveRate = 2.0 // 无效值，应回退到默认
 
 	df, err := NewRedisDupeFilter(opts)
 	if err != nil {
