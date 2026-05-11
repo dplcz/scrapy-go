@@ -1162,3 +1162,586 @@ func TestRedisQueue_StatsAfterClose(t *testing.T) {
 		t.Error("Stats after Close should indicate closed")
 	}
 }
+
+// ============================================================================
+// 构造函数 nil opts 测试
+// ============================================================================
+
+func TestNewRedisQueue_NilOpts(t *testing.T) {
+	mr := miniredis.RunT(t)
+
+	// 使用 nil opts 应该使用默认配置，但连接到 miniredis
+	// 由于默认 Addr 是 localhost:6379，不一定能连上，所以这里测试 nil 分支
+	// 先用正常 opts 创建，然后测试 nil opts 的 FromClient 路径
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer client.Close()
+
+	// NewRedisQueueFromClient with nil opts
+	queue, err := NewRedisQueueFromClient(client, nil)
+	if err != nil {
+		t.Fatalf("NewRedisQueueFromClient with nil opts failed: %v", err)
+	}
+	defer queue.Close()
+
+	// 验证使用了默认配置
+	if queue.key != "scrapy-go:queue" {
+		t.Errorf("expected default key 'scrapy-go:queue', got %s", queue.key)
+	}
+}
+
+func TestNewRedisDupeFilter_NilOpts(t *testing.T) {
+	mr := miniredis.RunT(t)
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer client.Close()
+
+	// NewRedisDupeFilterFromClient with nil opts
+	df, err := NewRedisDupeFilterFromClient(client, nil)
+	if err != nil {
+		t.Fatalf("NewRedisDupeFilterFromClient with nil opts failed: %v", err)
+	}
+	defer df.Close("test")
+
+	// 验证使用了默认配置
+	if df.key != "scrapy-go:dupefilter" {
+		t.Errorf("expected default key 'scrapy-go:dupefilter', got %s", df.key)
+	}
+}
+
+// ============================================================================
+// 连接失败测试
+// ============================================================================
+
+func TestNewRedisQueue_ConnectionFailure(t *testing.T) {
+	opts := DefaultOptions()
+	opts.Addr = "localhost:1" // 不可达的端口
+	opts.DialTimeout = 1     // 最短超时
+
+	_, err := NewRedisQueue(opts)
+	if err == nil {
+		t.Error("expected error when connecting to unreachable Redis")
+	}
+}
+
+func TestNewRedisDupeFilter_ConnectionFailure(t *testing.T) {
+	opts := DefaultOptions()
+	opts.Addr = "localhost:1" // 不可达的端口
+	opts.DialTimeout = 1     // 最短超时
+
+	_, err := NewRedisDupeFilter(opts)
+	if err == nil {
+		t.Error("expected error when connecting to unreachable Redis")
+	}
+}
+
+// ============================================================================
+// FromClient FlushOnStart 测试
+// ============================================================================
+
+func TestNewRedisQueueFromClient_FlushOnStart(t *testing.T) {
+	mr := miniredis.RunT(t)
+
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer client.Close()
+
+	// 先推入一些数据
+	ctx := context.Background()
+	opts := DefaultOptions()
+	opts.Addr = mr.Addr()
+	opts.KeyPrefix = "test"
+	client.ZAdd(ctx, opts.queueFullKey(), redis.Z{Score: 1, Member: "old_data"})
+
+	// 使用 FlushOnStart 创建
+	opts.FlushOnStart = true
+	queue, err := NewRedisQueueFromClient(client, opts)
+	if err != nil {
+		t.Fatalf("NewRedisQueueFromClient with FlushOnStart failed: %v", err)
+	}
+	defer queue.Close()
+
+	if queue.Len() != 0 {
+		t.Errorf("expected empty queue after FlushOnStart, got Len() = %d", queue.Len())
+	}
+}
+
+// ============================================================================
+// DupeFilter Open 不带 FlushOnStart 测试
+// ============================================================================
+
+func TestRedisDupeFilter_OpenWithoutFlush(t *testing.T) {
+	mr, opts := setupMiniredis(t)
+
+	// 先添加一些指纹
+	client := setupRedisClient(t, mr)
+	defer client.Close()
+
+	ctx := context.Background()
+	client.SAdd(ctx, opts.dupeFilterFullKey(), "fp1", "fp2")
+
+	// 不使用 FlushOnStart
+	opts.FlushOnStart = false
+	df, err := NewRedisDupeFilter(opts)
+	if err != nil {
+		t.Fatalf("NewRedisDupeFilter failed: %v", err)
+	}
+	defer df.Close("test")
+
+	if err := df.Open(context.Background()); err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	// 旧数据应该保留
+	if df.SeenCount() != 2 {
+		t.Errorf("expected SeenCount() = 2 (preserved), got %d", df.SeenCount())
+	}
+}
+
+// ============================================================================
+// canonicalizeURL 测试
+// ============================================================================
+
+func TestCanonicalizeURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		rawURL        string
+		keepFragments bool
+		expected      string
+	}{
+		{
+			name:     "基本 URL 规范化",
+			rawURL:   "HTTP://EXAMPLE.COM/path",
+			expected: "http://example.com/path",
+		},
+		{
+			name:     "移除 http 默认端口 80",
+			rawURL:   "http://example.com:80/path",
+			expected: "http://example.com/path",
+		},
+		{
+			name:     "移除 https 默认端口 443",
+			rawURL:   "https://example.com:443/path",
+			expected: "https://example.com/path",
+		},
+		{
+			name:     "保留非默认端口",
+			rawURL:   "http://example.com:8080/path",
+			expected: "http://example.com:8080/path",
+		},
+		{
+			name:     "查询参数排序",
+			rawURL:   "http://example.com/path?z=3&a=1&m=2",
+			expected: "http://example.com/path?a=1&m=2&z=3",
+		},
+		{
+			name:     "移除 fragment",
+			rawURL:   "http://example.com/path#section",
+			expected: "http://example.com/path",
+		},
+		{
+			name:          "保留 fragment",
+			rawURL:        "http://example.com/path#section",
+			keepFragments: true,
+			expected:      "http://example.com/path#section",
+		},
+		{
+			name:     "空路径补全为 /",
+			rawURL:   "http://example.com",
+			expected: "http://example.com/",
+		},
+		{
+			name:     "无效 URL 返回原始值",
+			rawURL:   "://invalid",
+			expected: "://invalid",
+		},
+		{
+			name:     "带查询参数和 fragment",
+			rawURL:   "http://example.com/path?b=2&a=1#frag",
+			expected: "http://example.com/path?a=1&b=2",
+		},
+		{
+			name:     "多值查询参数排序",
+			rawURL:   "http://example.com/?tag=b&tag=a",
+			expected: "http://example.com/?tag=a&tag=b",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := canonicalizeURL(tt.rawURL, tt.keepFragments)
+			if result != tt.expected {
+				t.Errorf("canonicalizeURL(%q, %v) = %q, expected %q",
+					tt.rawURL, tt.keepFragments, result, tt.expected)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// requestFingerprint 测试
+// ============================================================================
+
+func TestRequestFingerprint(t *testing.T) {
+	// 相同请求应产生相同指纹
+	req1, _ := shttp.NewRequest("http://example.com/page")
+	req2, _ := shttp.NewRequest("http://example.com/page")
+
+	fp1 := requestFingerprint(req1)
+	fp2 := requestFingerprint(req2)
+
+	if fp1 != fp2 {
+		t.Errorf("same URL should produce same fingerprint: %s != %s", fp1, fp2)
+	}
+
+	// 不同 URL 应产生不同指纹
+	req3, _ := shttp.NewRequest("http://example.com/other")
+	fp3 := requestFingerprint(req3)
+
+	if fp1 == fp3 {
+		t.Errorf("different URLs should produce different fingerprints: %s == %s", fp1, fp3)
+	}
+
+	// 指纹应该是 40 字符的十六进制字符串（SHA1）
+	if len(fp1) != 40 {
+		t.Errorf("fingerprint should be 40 chars (SHA1 hex), got %d: %s", len(fp1), fp1)
+	}
+}
+
+func TestRequestFingerprint_MethodMatters(t *testing.T) {
+	req1, _ := shttp.NewRequest("http://example.com/page", shttp.WithMethod("GET"))
+	req2, _ := shttp.NewRequest("http://example.com/page", shttp.WithMethod("POST"))
+
+	fp1 := requestFingerprint(req1)
+	fp2 := requestFingerprint(req2)
+
+	if fp1 == fp2 {
+		t.Error("different methods should produce different fingerprints")
+	}
+}
+
+func TestRequestFingerprint_URLNormalization(t *testing.T) {
+	// URL 规范化后应产生相同指纹
+	req1, _ := shttp.NewRequest("HTTP://EXAMPLE.COM/page")
+	req2, _ := shttp.NewRequest("http://example.com/page")
+
+	fp1 := requestFingerprint(req1)
+	fp2 := requestFingerprint(req2)
+
+	if fp1 != fp2 {
+		t.Errorf("normalized URLs should produce same fingerprint: %s != %s", fp1, fp2)
+	}
+}
+
+// ============================================================================
+// Peek 多数据测试
+// ============================================================================
+
+func TestRedisQueue_PeekWithMultiplePriorities(t *testing.T) {
+	_, opts := setupMiniredis(t)
+
+	queue, err := NewRedisQueue(opts)
+	if err != nil {
+		t.Fatalf("NewRedisQueue failed: %v", err)
+	}
+	defer queue.Close()
+
+	// 推入多个优先级
+	queue.PushWithPriority([]byte("low"), 1)
+	queue.PushWithPriority([]byte("high"), 10)
+	queue.PushWithPriority([]byte("mid"), 5)
+
+	// Peek 应返回最高优先级的数据
+	data, err := queue.Peek()
+	if err != nil {
+		t.Fatalf("Peek failed: %v", err)
+	}
+	if string(data) != "high" {
+		t.Errorf("expected 'high' (highest priority), got %s", data)
+	}
+
+	// Peek 不应移除数据
+	if queue.Len() != 3 {
+		t.Errorf("Peek should not remove data, Len() = %d", queue.Len())
+	}
+
+	// 多次 Peek 应返回相同结果
+	data2, _ := queue.Peek()
+	if string(data) != string(data2) {
+		t.Errorf("multiple Peeks should return same data: %s != %s", data, data2)
+	}
+}
+
+// ============================================================================
+// DupeFilter 不同 HTTP 方法测试
+// ============================================================================
+
+func TestRedisDupeFilter_DifferentMethods(t *testing.T) {
+	_, opts := setupMiniredis(t)
+
+	df, err := NewRedisDupeFilter(opts)
+	if err != nil {
+		t.Fatalf("NewRedisDupeFilter failed: %v", err)
+	}
+	defer df.Close("test")
+
+	df.Open(context.Background())
+
+	// GET 和 POST 到同一 URL 应该是不同的请求
+	getReq, _ := shttp.NewRequest("http://example.com/api", shttp.WithMethod("GET"))
+	postReq, _ := shttp.NewRequest("http://example.com/api", shttp.WithMethod("POST"))
+
+	if df.RequestSeen(getReq) {
+		t.Error("GET request should be new")
+	}
+	if df.RequestSeen(postReq) {
+		t.Error("POST request should be new (different method)")
+	}
+
+	// 重复的 GET 应该被检测到
+	if !df.RequestSeen(getReq) {
+		t.Error("duplicate GET should be detected")
+	}
+
+	if df.SeenCount() != 2 {
+		t.Errorf("expected SeenCount() = 2, got %d", df.SeenCount())
+	}
+}
+
+// ============================================================================
+// 大量数据测试
+// ============================================================================
+
+func TestRedisQueue_LargeDataset(t *testing.T) {
+	_, opts := setupMiniredis(t)
+
+	queue, err := NewRedisQueue(opts)
+	if err != nil {
+		t.Fatalf("NewRedisQueue failed: %v", err)
+	}
+	defer queue.Close()
+
+	const count = 500
+
+	// 推入大量数据
+	for i := 0; i < count; i++ {
+		priority := i % 10
+		data := []byte(fmt.Sprintf(`{"url":"http://example.com/%d"}`, i))
+		if err := queue.PushWithPriority(data, priority); err != nil {
+			t.Fatalf("Push %d failed: %v", i, err)
+		}
+	}
+
+	if queue.Len() != count {
+		t.Errorf("expected Len() = %d, got %d", count, queue.Len())
+	}
+
+	// 验证出队顺序（高优先级先出）
+	lastPriority := 100
+	for i := 0; i < count; i++ {
+		_, priority, err := queue.PopWithPriority()
+		if err != nil {
+			t.Fatalf("Pop %d failed: %v", i, err)
+		}
+		if priority > lastPriority {
+			t.Errorf("priority ordering violated at pop %d: %d > %d", i, priority, lastPriority)
+		}
+		lastPriority = priority
+	}
+
+	if queue.Len() != 0 {
+		t.Errorf("expected empty queue, got Len() = %d", queue.Len())
+	}
+}
+
+// ============================================================================
+// Options 额外字段测试
+// ============================================================================
+
+func TestOptions_AllDefaults(t *testing.T) {
+	opts := DefaultOptions()
+
+	if opts.Password != "" {
+		t.Errorf("expected empty Password, got %s", opts.Password)
+	}
+	if opts.DB != 0 {
+		t.Errorf("expected DB 0, got %d", opts.DB)
+	}
+	if opts.FlushOnStart != false {
+		t.Error("expected FlushOnStart false")
+	}
+	if opts.Serializer != "json" {
+		t.Errorf("expected Serializer 'json', got %s", opts.Serializer)
+	}
+	if opts.StartURLsKey != "start_urls" {
+		t.Errorf("expected StartURLsKey 'start_urls', got %s", opts.StartURLsKey)
+	}
+	if opts.DialTimeout != 5*1e9 { // 5s in nanoseconds
+		t.Errorf("expected DialTimeout 5s, got %v", opts.DialTimeout)
+	}
+	if opts.ReadTimeout != 3*1e9 {
+		t.Errorf("expected ReadTimeout 3s, got %v", opts.ReadTimeout)
+	}
+	if opts.WriteTimeout != 3*1e9 {
+		t.Errorf("expected WriteTimeout 3s, got %v", opts.WriteTimeout)
+	}
+}
+
+// ============================================================================
+// decodeScore 边界测试
+// ============================================================================
+
+func TestDecodeScore_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		score    float64
+		expected int
+	}{
+		{"zero", 0, 0},
+		{"positive exact", 50000000000, 5},
+		{"positive with seq", 50000000123, 5},
+		{"negative exact", -50000000000, -5},
+		{"negative with seq", -49999999950, -5},
+		{"large positive", 1000000000000, 100},
+		{"large negative", -1000000000000, -100},
+		{"small positive seq", 1, 0},
+		{"negative one", -10000000000, -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := decodeScore(tt.score)
+			if result != tt.expected {
+				t.Errorf("decodeScore(%f) = %d, expected %d", tt.score, result, tt.expected)
+			}
+		})
+	}
+}
+
+// ============================================================================
+// 集成测试：多优先级出入队完整流程
+// ============================================================================
+
+func TestIntegration_MultiplePriorityFullCycle(t *testing.T) {
+	mr, opts := setupMiniredis(t)
+
+	client := setupRedisClient(t, mr)
+	defer client.Close()
+
+	queue, err := NewRedisQueueFromClient(client, opts)
+	if err != nil {
+		t.Fatalf("NewRedisQueueFromClient failed: %v", err)
+	}
+	defer queue.Close()
+
+	df, err := NewRedisDupeFilterFromClient(client, opts)
+	if err != nil {
+		t.Fatalf("NewRedisDupeFilterFromClient failed: %v", err)
+	}
+	defer df.Close("test")
+
+	df.Open(context.Background())
+
+	// 模拟多优先级请求
+	type reqInfo struct {
+		url      string
+		priority int
+	}
+	requests := []reqInfo{
+		{"http://example.com/high1", 10},
+		{"http://example.com/high2", 10},
+		{"http://example.com/mid1", 5},
+		{"http://example.com/low1", 0},
+		{"http://example.com/low2", 0},
+		{"http://example.com/high1", 10}, // 重复
+		{"http://example.com/mid1", 5},   // 重复
+	}
+
+	enqueued := 0
+	for _, ri := range requests {
+		req, _ := shttp.NewRequest(ri.url)
+		if !df.RequestSeen(req) {
+			data := []byte(fmt.Sprintf(`{"url":"%s"}`, ri.url))
+			queue.PushWithPriority(data, ri.priority)
+			enqueued++
+		}
+	}
+
+	if enqueued != 5 {
+		t.Errorf("expected 5 enqueued (2 dupes), got %d", enqueued)
+	}
+
+	// 验证 PriorityStats
+	stats, err := queue.PriorityStats()
+	if err != nil {
+		t.Fatalf("PriorityStats failed: %v", err)
+	}
+	if stats[10] != 2 {
+		t.Errorf("expected 2 high priority, got %d", stats[10])
+	}
+	if stats[5] != 1 {
+		t.Errorf("expected 1 mid priority, got %d", stats[5])
+	}
+	if stats[0] != 2 {
+		t.Errorf("expected 2 low priority, got %d", stats[0])
+	}
+
+	// 验证 LenByPriority
+	highCount, _ := queue.LenByPriority(10)
+	if highCount != 2 {
+		t.Errorf("expected LenByPriority(10) = 2, got %d", highCount)
+	}
+
+	// 出队验证优先级顺序
+	prevPriority := 100
+	for i := 0; i < 5; i++ {
+		_, p, err := queue.PopWithPriority()
+		if err != nil {
+			t.Fatalf("Pop %d failed: %v", i, err)
+		}
+		if p > prevPriority {
+			t.Errorf("priority order violated: %d > %d", p, prevPriority)
+		}
+		prevPriority = p
+	}
+}
+
+// ============================================================================
+// DupeFilter 与 Contains 一致性测试
+// ============================================================================
+
+func TestRedisDupeFilter_ContainsConsistency(t *testing.T) {
+	_, opts := setupMiniredis(t)
+
+	df, err := NewRedisDupeFilter(opts)
+	if err != nil {
+		t.Fatalf("NewRedisDupeFilter failed: %v", err)
+	}
+	defer df.Close("test")
+
+	df.Open(context.Background())
+
+	urls := []string{
+		"http://example.com/a",
+		"http://example.com/b",
+		"http://example.com/c",
+	}
+
+	// 添加请求
+	for _, u := range urls {
+		req, _ := shttp.NewRequest(u)
+		df.RequestSeen(req)
+	}
+
+	// Contains 应该对所有已添加的 URL 返回 true
+	for _, u := range urls {
+		req, _ := shttp.NewRequest(u)
+		if !df.Contains(req) {
+			t.Errorf("Contains should return true for %s", u)
+		}
+	}
+
+	// Contains 对未添加的 URL 返回 false
+	req, _ := shttp.NewRequest("http://example.com/not-added")
+	if df.Contains(req) {
+		t.Error("Contains should return false for unseen URL")
+	}
+}
