@@ -1085,6 +1085,19 @@ scrapy-go/
 
 ## 📝 更新日志
 
+### v1.0.3
+
+> **Post-v1.0 Sprint 12 — P5-002 AutoThrottle 自适应限速扩展**
+
+- 🎛️ **AutoThrottle 扩展** — 基于延迟反馈的自适应速率调整（对应 Scrapy `scrapy.extensions.throttle.AutoThrottle`）
+  - 监听 `ResponseDownloaded` 信号，使用 EWMA 平滑延迟抖动
+  - 根据目标并发数动态计算理想下载延迟，每域名独立调整
+  - 通过 `DelayAdjuster` 接口回调调整 Slot 延迟，与 Downloader 解耦
+- ⚙️ **5 个配置项** — `AUTOTHROTTLE_ENABLED` / `AUTOTHROTTLE_START_DELAY` / `AUTOTHROTTLE_MAX_DELAY` / `AUTOTHROTTLE_TARGET_CONCURRENCY` / `AUTOTHROTTLE_DEBUG`
+- 📊 **运行时统计** — `autothrottle/request_count` / `autothrottle/latency_avg` / `autothrottle/delay_adjusted_count`
+- 🔌 **Downloader 增强** — 新增 `AdjustDelay()` 方法 + `Slot.SetDelay()` 动态延迟调整
+- 🧪 **33 个测试用例** — 覆盖率 90.7%，`go test -race` 通过
+
 ### v1.0.2
 
 > **Post-v1.0 Sprint 12 — P5-003 Redis 队列可插拔扩展（独立模块）**
@@ -1384,7 +1397,7 @@ scrapy-go/
 
 > **Phase 2 正式发布** — 扩展体系与数据导出
 
-- 🏛️ **Extension 系统** — 完整的扩展接口 + 4 个内置扩展（CoreStats / CloseSpider / LogStats / MemoryUsage）
+- 🏛️ **Extension 系统** — 完整的扩展接口 + 5 个内置扩展（CoreStats / CloseSpider / LogStats / MemoryUsage / AutoThrottle）
 - 📤 **Feed Export 数据导出** — JSON / JSON Lines / CSV / XML 四种格式 + 本地文件/标准输出存储 + URI 模板
 - 📦 **Item 体系与 ItemAdapter** — 统一的 Item 访问抽象（map / struct / 自定义类型）+ FieldMeta 驱动序列化
 - ⚡ **CONCURRENT_ITEMS** — 并发 Pipeline 处理（默认 100，对齐 Scrapy）

@@ -330,5 +330,5 @@ func (s *Settings) loadDefaults() {
 	s.Set("AUTOTHROTTLE_START_DELAY", 5.0, d)        // 初始下载延迟（秒）
 	s.Set("AUTOTHROTTLE_MAX_DELAY", 60.0, d)         // 最大下载延迟（秒）
 	s.Set("AUTOTHROTTLE_TARGET_CONCURRENCY", 1.0, d) // 目标并发数（每个域名）
-	s.Set("AUTOTHROTTLE_DEBUG", false, d)             // 是否输出调试日志
+	s.Set("AUTOTHROTTLE_DEBUG", false, d)            // 是否输出调试日志
 }
