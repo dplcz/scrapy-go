@@ -5,6 +5,134 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.0.4] — 2026-05-11
+
+### 新增
+
+#### P5-007：可观测性具体实现（独立模块）（Sprint 12）
+
+> **Post-v1.0 生态完善 — OpenTelemetry 追踪 + Prometheus 指标 + 信号驱动扩展**
+
+##### P5-007a：独立 Go 子模块
+
+- 📦 **独立模块** — 创建 `contrib/telemetry/` 独立 Go 子模块
+  - 独立 `go.mod`，依赖 `go.opentelemetry.io/otel` v1.43.0 + `github.com/prometheus/client_golang` v1.22.0
+  - 主模块 `go.mod` 不引入 OTel/Prometheus 相关依赖，实现零侵入可插拔设计
+  - 通过 `go get github.com/dplcz/scrapy-go/contrib/telemetry` 独立安装
+
+##### P5-007b：OpenTelemetry Tracer 适配器
+
+- 🔍 **otel.Tracer** — OpenTelemetry Tracer 适配器（`contrib/telemetry/otel/tracer.go`）
+  - 实现 `pkg/telemetry.Tracer` 接口，包装 OTel SDK TracerProvider
+  - SpanKind 映射：`telemetry.SpanKindClient` → `oteltrace.SpanKindClient` 等 5 种映射
+  - SpanStatus 映射：`telemetry.SpanStatusOK` → `codes.Ok`、`SpanStatusError` → `codes.Error`
+  - SpanContext 转换：OTel TraceID/SpanID/TraceFlags/IsRemote → telemetry.SpanContext
+  - Attributes 映射：`map[string]string` → `[]otelattr.KeyValue`
+  - Shutdown 支持：自动检测 TracerProvider 是否实现 Shutdown 接口
+  - 编译期接口实现检查
+
+- 🔍 **otel.Span** — OpenTelemetry Span 适配器
+  - 实现 `pkg/telemetry.Span` 接口，包装 OTel trace.Span
+  - 支持 End/SetAttributes/SetStatus/RecordError/SpanContext/AddEvent 全部方法
+  - nil 安全：nil error 和 nil/空 map 不会 panic
+
+##### P5-007c：Prometheus MetricsRegistry 适配器
+
+- 📊 **prometheus.Registry** — Prometheus MetricsRegistry 适配器（`contrib/telemetry/prometheus/registry.go`）
+  - 实现 `pkg/telemetry.MetricsRegistry` 接口，包装 `prometheus.Registry`
+  - 使用独立 `prometheus.Registry`（非全局默认），避免与用户代码冲突
+  - 双重检查锁定（DCL）保证指标注册的线程安全和幂等性
+  - 同名指标多次获取返回同一实例，共享状态
+  - nil buckets 自动使用 `telemetry.DefaultHistogramBuckets`
+  - `PrometheusRegistry()` 暴露底层 Registry，用于 `promhttp.HandlerFor`
+  - `NewRegistryFrom()` 支持复用已有 Prometheus Registry
+  - 编译期接口实现检查
+
+- 📊 **prometheus.Counter/Gauge/Histogram** — Prometheus 指标适配器
+  - Counter：Inc() + Add(delta)
+  - Gauge：Set(value) + Inc() + Dec() + Add(delta)
+  - Histogram：Observe(value) + ObserveDuration(d)
+
+##### P5-007d：TraceExtension + MetricsExtension
+
+- 🔌 **TraceExtension** — 信号驱动的分布式追踪扩展（`contrib/telemetry/extension.go`）
+  - 实现 `extension.Extension` 接口
+  - 监听 7 个信号：SpiderOpened/Closed、RequestReachedDownloader/LeftDownloader、ResponseReceived、SpiderError、ItemScraped
+  - SpiderOpened → 创建根 Span "spider.crawl"（SpanKindInternal）
+  - RequestReachedDownloader → 创建子 Span "http.request"（SpanKindClient）
+  - ResponseReceived → 记录响应事件（status_code + url）
+  - SpiderError → RecordError + 错误事件
+  - ItemScraped → 记录 Item 事件
+  - SpiderClosed → 结束根 Span + 记录关闭原因
+  - Close 时自动 Shutdown Tracer，刷新待发送数据
+
+- 📊 **MetricsExtension** — 信号驱动的指标收集扩展（`contrib/telemetry/extension.go`）
+  - 实现 `extension.Extension` 接口
+  - 监听 8 个信号：SpiderOpened/Closed、RequestReachedDownloader/LeftDownloader、ResponseReceived、ItemScraped/Dropped、SpiderError
+  - 预注册 9 个指标：scrapy_requests_total、scrapy_responses_total、scrapy_items_scraped_total、scrapy_items_dropped_total、scrapy_errors_total、scrapy_active_requests、scrapy_spider_state、scrapy_request_duration_seconds、scrapy_spider_elapsed_seconds
+  - 支持 `time.Duration` 和 `float64` 两种延迟格式
+  - 内置 HTTP `/metrics` 端点（Prometheus 格式）+ `/health` 健康检查
+  - 可选 HTTP 端点：addr 为空字符串时不启动 HTTP 服务器
+
+- 🌐 **HTTP 服务器** — 内置 Prometheus HTTP 端点（`contrib/telemetry/server.go`）
+  - 自动检测 MetricsRegistry 底层类型，Prometheus 后端使用 `promhttp.HandlerFor`
+  - 非 Prometheus 后端提供简单文本端点
+  - 支持随机端口（`:0`）和固定端口
+  - 优雅关闭：Close 时自动 Shutdown HTTP 服务器
+
+##### P5-007e：集成测试 + 使用文档
+
+- ✅ **OTel Tracer 测试套件** — 16 个测试用例（`contrib/telemetry/otel/tracer_test.go`）
+  - 使用 `tracetest.InMemoryExporter` 验证 Span 导出
+  - 覆盖 Start/Shutdown/SetAttributes/SetStatus/RecordError/SpanContext/AddEvent
+  - 父子 Span 关系验证（共享 TraceID）
+  - SpanKind 映射测试（5 种 Kind）
+  - 并发安全测试（100 goroutine）
+  - 接口可赋值性测试
+  - 覆盖率 100%
+
+- ✅ **Prometheus Registry 测试套件** — 12 个测试用例（`contrib/telemetry/prometheus/registry_test.go`）
+  - 使用 `prometheus.Registry.Gather()` 验证指标值
+  - 覆盖 Counter/Gauge/Histogram 操作 + 幂等性
+  - nil buckets 测试
+  - 并发安全测试（100 goroutine）
+  - 接口可赋值性测试
+  - 覆盖率 94.6%
+
+- ✅ **Extension 测试套件** — 17 个测试用例（`contrib/telemetry/extension_test.go`）
+  - TraceExtension 生命周期测试（Open/Close + 信号注册/注销）
+  - MetricsExtension 生命周期测试
+  - Spider 完整生命周期模拟
+  - HTTP 端点测试（/metrics + /health）
+  - Prometheus 集成测试（验证指标值）
+  - nil tracer/registry 安全测试
+  - nil params 安全测试
+  - 并发信号测试（50/100 goroutine）
+  - 无效地址测试
+  - `go test -race` 竞态检测通过
+  - 总体覆盖率 92.2%
+
+- 📖 **使用文档** — `contrib/telemetry/README.md`
+  - 安装说明 + 快速开始（Prometheus 指标 / OTel 追踪 / 同时启用）
+  - 采集的指标列表（9 个 Prometheus 指标）
+  - 追踪 Span 列表
+  - HTTP 端点说明
+  - 设计决策说明
+
+##### 变更文件
+
+- `contrib/telemetry/go.mod` — 独立 Go 子模块定义
+- `contrib/telemetry/go.sum` — 依赖锁定
+- `contrib/telemetry/doc.go` — 包文档
+- `contrib/telemetry/extension.go` — TraceExtension + MetricsExtension 实现
+- `contrib/telemetry/server.go` — HTTP /metrics 端点实现
+- `contrib/telemetry/otel/tracer.go` — OpenTelemetry Tracer 适配器
+- `contrib/telemetry/prometheus/registry.go` — Prometheus MetricsRegistry 适配器
+- `contrib/telemetry/extension_test.go` — Extension 测试套件（17 个测试用例）
+- `contrib/telemetry/otel/tracer_test.go` — OTel Tracer 测试套件（16 个测试用例）
+- `contrib/telemetry/prometheus/registry_test.go` — Prometheus Registry 测试套件（12 个测试用例）
+- `contrib/telemetry/README.md` — 使用文档
+
 ## [v1.0.3] — 2026-05-11
 
 ### 新增
