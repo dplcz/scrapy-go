@@ -942,6 +942,14 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 		}
 		return extension.NewFeedExportExtension(configs, c.Signals, c.Stats, c.Logger)
 	},
+	"AutoThrottle": func(c *Crawler) extension.Extension {
+		enabled := c.Settings.GetBool("AUTOTHROTTLE_ENABLED", false)
+		startDelay := c.Settings.GetFloat("AUTOTHROTTLE_START_DELAY", 5.0)
+		maxDelay := c.Settings.GetFloat("AUTOTHROTTLE_MAX_DELAY", 60.0)
+		targetConcurrency := c.Settings.GetFloat("AUTOTHROTTLE_TARGET_CONCURRENCY", 1.0)
+		debug := c.Settings.GetBool("AUTOTHROTTLE_DEBUG", false)
+		return extension.NewAutoThrottleExtension(enabled, startDelay, maxDelay, targetConcurrency, debug, c.downloader, c.Signals, c.Stats, c.Logger)
+	},
 }
 
 // buildExtensions 构建扩展管理器。

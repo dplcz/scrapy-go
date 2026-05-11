@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.2-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.0.3-blue)](docs/README.md#-更新日志)
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
@@ -18,6 +18,7 @@
 - 🕷️ **CrawlSpider** — 基于规则的自动链接提取和跟踪
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重，中断后自动恢复
 - 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取 + 本地布隆过滤器加速（`contrib/redisqueue`）
+- 🎛️ **AutoThrottle** — 基于延迟反馈的自适应速率调整，自动优化下载延迟
 - 🛡️ **生产就绪** — Panic Recovery、优雅关闭、统计收集、pprof 调试
 
 ## 📊 性能数据
@@ -179,6 +180,8 @@ scrapy-go 支持四种配置方式（按优先级从低到高）：
 | `ROBOTSTXT_OBEY` | false | 是否遵守 robots.txt |
 | `HTTP2_ENABLED` | false | 启用 HTTP/2 优化下载器 |
 | `LOG_LEVEL` | "DEBUG" | 日志级别 |
+| `AUTOTHROTTLE_ENABLED` | false | 启用自适应限速 |
+| `AUTOTHROTTLE_TARGET_CONCURRENCY` | 1.0 | 目标并发数 |
 
 > 完整配置参考请查看 [详细文档](docs/README.md#-配置说明)
 

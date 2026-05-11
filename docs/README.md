@@ -948,7 +948,7 @@ scrapy-go 的架构完全对齐 Scrapy 的经典数据流模型：
 | **Scraper** | `pkg/scraper` | 响应处理（调用 Spider 回调 + 分发结果） |
 | **Spider** | `pkg/spider` | 用户爬虫接口（定义爬取逻辑） |
 | **Pipeline** | `pkg/pipeline` | Item 数据处理管道 |
-| **Extension** | `pkg/extension` | 扩展系统（4 个内置扩展 + 信号驱动生命周期管理） |
+| **Extension** | `pkg/extension` | 扩展系统（5 个内置扩展 + 信号驱动生命周期管理 + AutoThrottle 自适应限速） |
 | **DL Middleware** | `pkg/downloader/middleware` | 下载器中间件接口与实现（10 个内置中间件） |
 | **DL MW Manager** | `pkg/downloader` | 下载器中间件管理器（编排中间件链 + 调用下载函数） |
 | **Spider Middleware** | `pkg/spider/middleware` | Spider 中间件（5 个内置 + 输入/输出拦截） |

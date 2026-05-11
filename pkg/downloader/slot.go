@@ -208,8 +208,13 @@ func (s *Slot) worker() {
 //   - 当 delay == 0 时，跳过 gate 走快速路径，多 worker 完全并行
 //   - 下载链中的 panic 在本函数内被捕获并转换为 error，不会影响 worker 后续循环
 func (s *Slot) processTask(task *downloadTask) {
-	// 1. 计算并等待延迟（仅当 delay > 0）
-	if s.delay > 0 {
+	// 1. 读取当前延迟（受 mu 保护，因为 AutoThrottle 可能动态修改 delay）
+	s.mu.Lock()
+	currentDelay := s.delay
+	s.mu.Unlock()
+
+	// 2. 计算并等待延迟（仅当 delay > 0）
+	if currentDelay > 0 {
 		s.gateMu.Lock()
 		delay := s.getDownloadDelay()
 		s.mu.Lock()
@@ -295,17 +300,34 @@ func (s *Slot) processTask(task *downloadTask) {
 
 // getDownloadDelay 返回当前的下载延迟。
 // 如果启用了随机化延迟，返回 [0.5*delay, 1.5*delay) 范围内的随机值。
+// 线程安全：通过 mu 保护 delay 字段的读取（AutoThrottle 可能动态修改）。
 func (s *Slot) getDownloadDelay() time.Duration {
-	if s.randomizeDelay && s.delay > 0 {
+	s.mu.Lock()
+	delay := s.delay
+	randomize := s.randomizeDelay
+	s.mu.Unlock()
+
+	if randomize && delay > 0 {
 		factor := 0.5 + rand.Float64() // [0.5, 1.5)
-		return time.Duration(float64(s.delay) * factor)
+		return time.Duration(float64(delay) * factor)
 	}
-	return s.delay
+	return delay
 }
 
 // DownloadDelay 返回配置的下载延迟（公开方法，用于外部查询）。
 func (s *Slot) DownloadDelay() time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.delay
+}
+
+// SetDelay 动态调整下载延迟。
+// 由 AutoThrottle 扩展通过 Downloader.AdjustDelay 间接调用。
+// 线程安全：通过 mu 保护 delay 字段的写入。
+func (s *Slot) SetDelay(delay time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.delay = delay
 }
 
 // FreeTransferSlots 返回可用的传输槽位数。
