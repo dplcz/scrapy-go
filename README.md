@@ -17,6 +17,7 @@
 - 📤 **Feed Export** — JSON / JSON Lines / CSV / XML 多格式数据导出
 - 🕷️ **CrawlSpider** — 基于规则的自动链接提取和跟踪
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重，中断后自动恢复
+- 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取（`contrib/redisqueue`）
 - 🛡️ **生产就绪** — Panic Recovery、优雅关闭、统计收集、pprof 调试
 
 ## 📊 性能数据
@@ -186,6 +187,7 @@ scrapy-go 支持四种配置方式（按优先级从低到高）：
 ```
 Engine (调度引擎)
 ├── Scheduler (请求调度 + 去重 + 优先级队列)
+│   └── [可选] contrib/redisqueue (Redis 分布式队列 + 去重)
 ├── Downloader (HTTP 下载 + Slot 并发控制)
 │   ├── HTTPDownloadHandler (HTTP/1.1 标准处理器)
 │   ├── HTTP2DownloadHandler (HTTP/2 优化处理器)
@@ -212,6 +214,7 @@ Engine (调度引擎)
 | [🚀 快速入门指南](docs/guide/getting-started.md) | 从零开始的详细教程 |
 | [🏗️ 架构设计](docs/architecture/architecture.md) | 核心组件内部结构与数据流 |
 | [🔄 从 Python Scrapy 迁移](docs/migration/migration-from-python.md) | 概念映射 + 代码对比 + 迁移检查清单 |
+| [🌐 Redis 分布式队列](contrib/redisqueue/README.md) | Redis 队列扩展安装、配置与分布式爬取 |
 
 ## 📄 License
 

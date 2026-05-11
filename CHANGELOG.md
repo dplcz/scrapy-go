@@ -9,6 +9,77 @@
 
 ### 新增
 
+#### P5-003：Redis 队列可插拔扩展（Sprint 12）
+
+> **Post-v1.0 生态完善 — Redis 分布式队列与去重过滤器**
+
+##### P5-003a：独立 Go 子模块
+
+- 📦 **独立模块** — 创建 `contrib/redisqueue/` 独立 Go 子模块
+  - 独立 `go.mod`，依赖 `github.com/redis/go-redis/v9`
+  - 主模块 `go.mod` 不引入 Redis 相关依赖，实现零侵入可插拔设计
+  - 通过 `go get github.com/dplcz/scrapy-go/contrib/redisqueue` 独立安装
+
+##### P5-003b：RedisQueue 分布式优先级队列
+
+- 🌐 **RedisQueue** — 基于 Redis Sorted Set 的分布式优先级队列（`contrib/redisqueue/redisqueue.go`）
+  - 实现 `scheduler.PriorityAwareQueue` 接口，通过 `WithExternalQueue` 注入
+  - 使用 Sorted Set score 编码优先级 + 序号（`score = priority × 1e10 + seq`）
+  - ZADD 入队，ZPOPMAX 出队，保证多实例并发安全
+  - 相同优先级内 LIFO 出队（后入队的 seq 更大，score 更大）
+  - 支持负优先级、断点续爬（Redis 持久化保证数据不丢失）
+- 🔌 **共享客户端** — `NewRedisQueueFromClient` 支持复用已有 Redis 连接
+- 📊 **统计接口** — `Stats()` / `PriorityStats()` / `LenByPriority()` 运行时监控
+
+##### P5-003c：RedisDupeFilter 分布式去重过滤器
+
+- 🔒 **RedisDupeFilter** — 基于 Redis Set 的分布式去重过滤器（`contrib/redisqueue/dupefilter.go`）
+  - 实现 `scheduler.DupeFilter` 接口，通过 `WithDupeFilter` 注入
+  - 使用 SADD 原子操作，多实例并发安全
+  - 指纹算法与 `RFPDupeFilter` 完全一致（URL + Method + Body 的 SHA1）
+  - 多实例共享同一 Redis 时自动实现分布式去重
+- 🔌 **共享客户端** — `NewRedisDupeFilterFromClient` 支持复用已有 Redis 连接
+- 🔍 **查询接口** — `Contains()` 只读查询不修改集合，`SeenCount()` 统计
+
+##### P5-003d：Options 配置结构体
+
+- ⚙️ **Options** — 完整的配置选项（`contrib/redisqueue/options.go`）
+  - 连接配置：`Addr` / `Password` / `DB` / `DialTimeout` / `ReadTimeout` / `WriteTimeout` / `PoolSize`
+  - Key 配置：`KeyPrefix` / `QueueKey` / `DupeFilterKey` / `StartURLsKey`
+  - 行为配置：`FlushOnStart` / `Serializer`
+  - `DefaultOptions()` 提供合理默认值
+
+##### P5-003e：集成测试
+
+- ✅ **miniredis 内存 Mock** — 使用 `alicebob/miniredis/v2` 进行完整流程验证
+  - 27+ 个测试用例覆盖 RedisQueue / RedisDupeFilter / 集成场景
+  - 并发安全测试（10 goroutine × 100 ops）
+  - 断点续爬测试（关闭后重新连接恢复数据）
+  - 分布式去重测试（多实例共享去重集合）
+  - `go test -race` 竞态检测通过
+  - 测试覆盖率 ~80%
+
+##### P5-003f：使用文档
+
+- 📖 **README.md** — 完整使用文档（`contrib/redisqueue/README.md`）
+  - 快速开始示例
+  - 配置选项说明
+  - 分布式爬取示例
+  - Redis Key 结构说明
+  - 与 DiskQueue 对比表
+  - Score 编码设计说明
+
+##### 变更文件
+
+- `contrib/redisqueue/go.mod` — 独立模块定义
+- `contrib/redisqueue/doc.go` — 包文档
+- `contrib/redisqueue/options.go` — 配置选项
+- `contrib/redisqueue/redisqueue.go` — Redis 分布式优先级队列
+- `contrib/redisqueue/dupefilter.go` — Redis 分布式去重过滤器
+- `contrib/redisqueue/fingerprint.go` — 请求指纹计算（与主模块算法一致）
+- `contrib/redisqueue/redisqueue_test.go` — 完整测试套件（27+ 测试用例）
+- `contrib/redisqueue/README.md` — 使用文档
+
 #### P5-001：高级下载器特性（Sprint 12）
 
 > **Post-v1.0 生态完善 — 高级下载器特性**
