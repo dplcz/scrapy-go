@@ -11,8 +11,105 @@
 >
 > v1.2.0 是 scrapy-go 的生产增强版本，包含以下核心交付物：
 > - P5-009 通用持久化存储适配器（`contrib/storage`）✅
+> - P5-010 高级重试策略（内置中间件增强）✅
 
 ### 新增
+
+#### P5-010：高级重试策略（内置中间件增强）（Sprint 13）
+
+> **Post-v1.0 生产增强 — 指数退避 + 抖动 + 熔断器 + 差异化重试策略**
+
+##### P5-010a：RetryMiddleware 指数退避 + 抖动增强
+
+- ⚡ **指数退避策略** — RetryMiddleware 新增退避延迟计算（`pkg/downloader/middleware/retry.go` 增强）
+  - 公式：`delay = base * 2^(attempt-1) + jitter`
+  - 支持三种退避策略：`RetryBackoffNone`（默认，向后兼容）/ `RetryBackoffExponential` / `RetryBackoffFixed`
+  - 延迟通过 `download_delay` Meta 传递给下一次请求
+  - `WithRetryBackoff(baseDelay, maxDelay, jitter)` — 启用指数退避
+  - `WithRetryFixedDelay(delay)` — 启用固定延迟退避
+  - 最大延迟上限保护，避免无限增长
+
+- 🎲 **随机抖动** — 可选的随机抖动避免重试风暴
+  - 抖动范围：`[0, delay * 0.5)`
+  - 通过 `RETRY_BACKOFF_JITTER` 配置项控制（默认 true）
+  - 使用 `math/rand/v2` 无需手动 seed
+
+##### P5-010b：熔断器中间件
+
+- 🔌 **CircuitBreakerMiddleware** — 域名级别熔断器中间件（`pkg/downloader/middleware/circuitbreaker.go`）
+  - 状态机：Closed → Open → Half-Open，三态转换
+  - 域名级别独立跟踪：每个域名维护独立的熔断器实例
+  - 连续失败达到阈值时自动熔断，暂停对该域名的请求
+  - 恢复超时后进入半开状态，允许探测请求通过
+  - 探测成功达到阈值后恢复为关闭状态
+  - `sync.Map` + 细粒度 `sync.Mutex` 保证并发安全
+  - 优先使用 `download_slot` Meta 作为域名标识（与 Downloader Slot 一致）
+
+- ⚙️ **配置项** — 6 个熔断器配置项
+  - `CIRCUIT_BREAKER_ENABLED`（默认 false）— 是否启用熔断器
+  - `CIRCUIT_BREAKER_FAIL_THRESHOLD`（默认 5）— 连续失败阈值
+  - `CIRCUIT_BREAKER_RECOVERY_TIMEOUT`（默认 30s）— 恢复超时时间
+  - `CIRCUIT_BREAKER_HALF_OPEN_MAX_REQUESTS`（默认 1）— 半开状态最大探测请求数
+  - `CIRCUIT_BREAKER_SUCCESS_THRESHOLD`（默认 2）— 半开状态恢复所需连续成功次数
+  - `CIRCUIT_BREAKER_HTTP_CODES`（默认 [500, 502, 503, 504]）— 触发熔断的 HTTP 状态码
+
+- 📊 **统计项** — 5 个运行时统计指标
+  - `circuitbreaker/opened` — 熔断器打开次数
+  - `circuitbreaker/closed` — 熔断器恢复关闭次数
+  - `circuitbreaker/reopened` — 半开状态重新打开次数
+  - `circuitbreaker/rejected` — 被熔断器拒绝的请求数
+  - `circuitbreaker/half_open` — 转入半开状态次数
+
+- 🔍 **监控接口** — 运行时状态查询
+  - `GetBreakerState(domain)` — 获取域名熔断器状态
+  - `GetBreakerConsecutiveFails(domain)` — 获取连续失败次数
+  - `ResetBreaker(domain)` — 手动重置熔断器
+
+##### P5-010c：差异化重试策略配置
+
+- 🎯 **按状态码差异化重试** — 不同 HTTP 状态码可配置不同的最大重试次数
+  - `WithPerStatusMaxRetries(map[int]int{429: 5, 503: 1})` — 429 最多重试 5 次，503 只重试 1 次
+  - 优先级：请求级 Meta > 按状态码配置 > 全局配置
+  - 通过 `RETRY_PER_STATUS_MAX_TIMES` 配置项设置
+
+- 🔧 **自定义重试条件** — 支持完全自定义的重试判断逻辑
+  - `WithRetryCondition(func(statusCode int, err error) bool)` — 替代默认的状态码/错误判断
+  - 适用于需要复杂业务逻辑判断是否重试的场景
+
+- ✅ **测试覆盖** — 30 个测试全部通过
+  - 中间件包整体覆盖率 89.1%（目标 85%）✅
+  - 指数退避测试（首次/二次/最大延迟/抖动/固定延迟/无退避）
+  - 差异化重试测试（按状态码/Meta 覆盖/自定义条件）
+  - 熔断器状态机测试（关闭/打开/半开/恢复/重新打开）
+  - 多域名独立性测试
+  - 并发安全测试（50 goroutine）
+  - 集成测试（Retry + CircuitBreaker 协同）
+  - `go test -race` 竞态检测通过
+  - `go vet` 无告警，`gofmt` 格式化通过
+
+##### 新增配置项
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `RETRY_BACKOFF_ENABLED` | false | 启用指数退避 |
+| `RETRY_BACKOFF_BASE_DELAY` | 1.0 | 退避基础延迟（秒） |
+| `RETRY_BACKOFF_MAX_DELAY` | 60.0 | 退避最大延迟（秒） |
+| `RETRY_BACKOFF_JITTER` | true | 启用随机抖动 |
+| `RETRY_PER_STATUS_MAX_TIMES` | {} | 按状态码差异化最大重试次数 |
+| `CIRCUIT_BREAKER_ENABLED` | false | 启用熔断器 |
+| `CIRCUIT_BREAKER_FAIL_THRESHOLD` | 5 | 连续失败阈值 |
+| `CIRCUIT_BREAKER_RECOVERY_TIMEOUT` | 30 | 恢复超时（秒） |
+| `CIRCUIT_BREAKER_HALF_OPEN_MAX_REQUESTS` | 1 | 半开最大探测数 |
+| `CIRCUIT_BREAKER_SUCCESS_THRESHOLD` | 2 | 半开恢复成功次数 |
+| `CIRCUIT_BREAKER_HTTP_CODES` | [500,502,503,504] | 触发熔断的状态码 |
+
+##### 变更文件
+
+- `pkg/downloader/middleware/retry.go` — RetryMiddleware 增强（指数退避 + 差异化策略）
+- `pkg/downloader/middleware/circuitbreaker.go` — 新增熔断器中间件
+- `pkg/downloader/middleware/retry_advanced_test.go` — 新增高级重试策略测试套件（30 个测试用例）
+- `pkg/settings/defaults.go` — 新增退避和熔断器配置项 + DOWNLOADER_MIDDLEWARES_BASE 注册 CircuitBreaker(545)
+- `pkg/crawler/crawler.go` — Retry 工厂增强 + CircuitBreaker 工厂注册
 
 #### P5-009：通用持久化存储适配器（独立模块）（Sprint 13）
 

@@ -49,7 +49,23 @@ func (s *Settings) loadDefaults() {
 	s.Set("RETRY_ENABLED", true, d)
 	s.Set("RETRY_TIMES", 2, d) // 初始请求 + 2 次重试 = 3 次请求
 	s.Set("RETRY_HTTP_CODES", []int{500, 502, 503, 504, 522, 524, 408, 429}, d)
-	s.Set("RETRY_PRIORITY_ADJUST", -1, d) // 重试请求优先级调整
+	s.Set("RETRY_PRIORITY_ADJUST", -1, d)                 // 重试请求优先级调整
+	s.Set("RETRY_BACKOFF_ENABLED", false, d)              // 是否启用指数退避
+	s.Set("RETRY_BACKOFF_BASE_DELAY", 1.0, d)             // 退避基础延迟（秒）
+	s.Set("RETRY_BACKOFF_MAX_DELAY", 60.0, d)             // 退避最大延迟（秒）
+	s.Set("RETRY_BACKOFF_JITTER", true, d)                // 是否启用抖动
+	s.Set("RETRY_PER_STATUS_MAX_TIMES", map[int]int{}, d) // 按状态码差异化最大重试次数
+
+	// ========================================================================
+	// 熔断器配置
+	// ========================================================================
+
+	s.Set("CIRCUIT_BREAKER_ENABLED", false, d)                        // 是否启用熔断器
+	s.Set("CIRCUIT_BREAKER_FAIL_THRESHOLD", 5, d)                     // 连续失败阈值
+	s.Set("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", 30, d)                  // 恢复超时时间（秒）
+	s.Set("CIRCUIT_BREAKER_HALF_OPEN_MAX_REQUESTS", 1, d)             // 半开状态最大探测请求数
+	s.Set("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", 2, d)                  // 半开状态恢复所需连续成功次数
+	s.Set("CIRCUIT_BREAKER_HTTP_CODES", []int{500, 502, 503, 504}, d) // 触发熔断的 HTTP 状态码
 
 	// ========================================================================
 	// 重定向配置
@@ -192,6 +208,7 @@ func (s *Settings) loadDefaults() {
 		"DefaultHeaders":  400,
 		"HttpAuth":        410,
 		"UserAgent":       500,
+		"CircuitBreaker":  545,
 		"Retry":           550,
 		"HttpCompression": 590,
 		"Redirect":        600,

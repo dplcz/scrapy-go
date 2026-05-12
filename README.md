@@ -22,6 +22,7 @@
 - 📊 **可观测性** — OpenTelemetry 分布式追踪 + Prometheus 指标收集，信号驱动自动采集（`contrib/telemetry`）
 - 💾 **持久化存储** — MongoDB / PostgreSQL / Elasticsearch 批量写入 + Upsert，可插拔存储适配器（`contrib/storage`）
 - 🛡️ **生产就绪** — Panic Recovery、优雅关闭、统计收集、pprof 调试
+- 🔄 **高级重试** — 指数退避 + 随机抖动 + 域名级熔断器 + 按状态码差异化重试策略
 
 ## 📊 性能数据
 
@@ -179,6 +180,8 @@ scrapy-go 支持四种配置方式（按优先级从低到高）：
 | `CONCURRENT_REQUESTS_PER_DOMAIN` | 8 | 每域名最大并发数 |
 | `DOWNLOAD_DELAY` | 0 | 请求间隔 |
 | `RETRY_TIMES` | 2 | 最大重试次数 |
+| `RETRY_BACKOFF_ENABLED` | false | 启用指数退避重试 |
+| `CIRCUIT_BREAKER_ENABLED` | false | 启用域名级熔断器 |
 | `ROBOTSTXT_OBEY` | false | 是否遵守 robots.txt |
 | `HTTP2_ENABLED` | false | 启用 HTTP/2 优化下载器 |
 | `LOG_LEVEL` | "DEBUG" | 日志级别 |
