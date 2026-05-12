@@ -5,6 +5,86 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.2.0] — 2026-05-12 (进行中)
+
+> **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 进行中**
+>
+> v1.2.0 是 scrapy-go 的生产增强版本，包含以下核心交付物：
+> - P5-009 通用持久化存储适配器（`contrib/storage`）✅
+
+### 新增
+
+#### P5-009：通用持久化存储适配器（独立模块）（Sprint 13）
+
+> **Post-v1.0 生产增强 — MongoDB + PostgreSQL + Elasticsearch 持久化 Pipeline**
+
+##### P5-009a：独立 Go 子模块 + 通用接口定义
+
+- 📦 **独立模块** — 创建 `contrib/storage/` 独立 Go 子模块
+  - 独立 `go.mod`，依赖 `go.mongodb.org/mongo-driver/v2` + `github.com/jackc/pgx/v5` + `github.com/elastic/go-elasticsearch/v8`
+  - 主模块 `go.mod` 不引入数据库驱动依赖，实现零侵入可插拔设计
+  - 通过 `go get github.com/dplcz/scrapy-go/contrib/storage` 独立安装
+
+- 🔌 **StorageWriter 接口** — 通用存储写入接口（`contrib/storage/interface.go`）
+  - `Connect(ctx) error` — 建立连接
+  - `Close(ctx) error` — 关闭连接
+  - `WriteBatch(ctx, items) (int, error)` — 批量写入
+
+- 🔄 **UpsertWriter 接口** — 扩展接口，支持 Upsert 操作
+  - `UpsertBatch(ctx, uniqueKey, items) (int, error)` — 基于唯一键的批量 Upsert
+
+- 🧩 **BasePipeline** — 通用批量缓冲 Pipeline 基础实现（`contrib/storage/base.go`）
+  - 可配置批量大小（默认 100）
+  - 缓冲区满时自动触发批量写入
+  - Close 时自动刷新剩余缓冲数据
+  - `sync.Mutex` 保护缓冲区，支持 CONCURRENT_ITEMS 并发
+  - 支持自定义 ItemConverter 或默认使用 `item.Adapt().AsMap()`
+
+##### P5-009b：MongoDB Pipeline 适配器
+
+- 🍃 **mongo.Pipeline** — MongoDB 持久化 Pipeline（`contrib/storage/mongo/pipeline.go`）
+  - 实现 `pipeline.ItemPipeline` 接口，可直接注册到 crawler
+  - 批量 `InsertMany` 写入，支持有序/无序模式
+  - `BulkWrite` + `UpdateOne` with `upsert: true` 实现 Upsert
+  - Functional Options 模式配置：`WithURI` / `WithDatabase` / `WithCollection` / `WithBatchSize` / `WithUpsertKey`
+  - 编译期 `StorageWriter` + `UpsertWriter` 接口满足性检查
+
+##### P5-009c：PostgreSQL Pipeline 适配器
+
+- 🐘 **postgres.Pipeline** — PostgreSQL 持久化 Pipeline（`contrib/storage/postgres/pipeline.go`）
+  - 实现 `pipeline.ItemPipeline` 接口，可直接注册到 crawler
+  - `pgx.CopyFrom` 高效批量插入
+  - `INSERT ... ON CONFLICT (uniqueKey) DO UPDATE SET ...` 实现 Upsert
+  - 自动从 map key 推断列名，或通过 `WithColumns` 显式指定
+  - `pgxpool` 连接池管理，可配置最大连接数
+  - Functional Options 模式配置：`WithDSN` / `WithTable` / `WithColumns` / `WithBatchSize` / `WithUpsertKey`
+
+##### P5-009d：Elasticsearch Pipeline 适配器
+
+- 🔍 **elasticsearch.Pipeline** — Elasticsearch 持久化 Pipeline（`contrib/storage/elasticsearch/pipeline.go`）
+  - 实现 `pipeline.ItemPipeline` 接口，可直接注册到 crawler
+  - Bulk API 批量 `index` 写入
+  - Bulk API `update` action + `doc_as_upsert: true` 实现 Upsert
+  - 支持自定义文档 `_id` 字段（`WithDocumentIDField`）
+  - 支持认证（`WithUsername` / `WithPassword`）和刷新策略（`WithRefresh`）
+  - Bulk 响应解析：统计成功/失败数量，部分失败时返回详细错误信息
+
+##### P5-009e：测试 + 使用文档
+
+- ✅ **测试覆盖** — 40 个测试全部通过
+  - `storage` 核心包覆盖率 89.6%
+  - Mock Writer 验证批量缓冲、刷新、并发安全、Upsert 模式
+  - 各适配器配置验证、选项设置、SQL/NDJSON 构建逻辑测试
+  - `go test -race` 竞态检测通过
+  - `go vet` 无告警，`gofmt` 格式化通过
+
+- 📖 **使用文档** — `contrib/storage/README.md`
+  - 三种存储后端的快速开始示例
+  - Upsert 模式使用说明
+  - 自定义 Item 转换函数示例
+  - 完整配置参考表
+  - 架构设计说明
+
 ## [v1.1.0] — 2026-05-12
 
 > **🎉 Post-v1.0 生态完善里程碑 M6 — Sprint 12 全部完成**
