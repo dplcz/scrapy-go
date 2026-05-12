@@ -46,6 +46,8 @@
 | `Extension` | `extension.Extension` | 扩展接口 |
 | `scrapy startproject` | `scrapy-go startproject` | 项目脚手架 |
 | `scrapy genspider` | `scrapy-go genspider` | Spider 生成 |
+| `AutoThrottle` | `extension.AutoThrottleExtension` | 自适应限速扩展 |
+| `scrapy-redis` | `contrib/redisqueue` | Redis 分布式队列 |
 | `yield` | `return []spider.Output{...}` | 回调返回值 |
 | `Deferred` / `async` | goroutine + channel | 异步模型 |
 | `Twisted reactor` | `context.Context` | 生命周期管理 |
@@ -483,6 +485,9 @@ c.AddDownloaderMiddleware(&MyMiddleware{}, "MyMiddleware", 543)
 | `ROBOTSTXT_OBEY = True` | Extra: `"ROBOTSTXT_OBEY": true` | — |
 | `COOKIES_ENABLED = True` | — (默认启用) | — |
 | `REDIRECT_MAX_TIMES = 20` | `RedirectMaxTimes: spider.IntPtr(20)` | — |
+| `AUTOTHROTTLE_ENABLED = True` | Extra: `"AUTOTHROTTLE_ENABLED": true` | — |
+| `AUTOTHROTTLE_TARGET_CONCURRENCY = 2.0` | Extra: `"AUTOTHROTTLE_TARGET_CONCURRENCY": 2.0` | — |
+| `RETRY_BACKOFF_ENABLED = True` *(scrapy-go 独有)* | Extra: `"RETRY_BACKOFF_ENABLED": true` | — |
 
 ### 配置优先级对照
 
@@ -700,11 +705,9 @@ func (s *MySpider) parseArticle(ctx context.Context, resp *shttp.Response) ([]sp
 | `scrapy shell` | Go 编译型语言，无 REPL | 编写测试代码 + `go test` |
 | `Telnet Console` | 安全风险 | pprof HTTP 端点 |
 | `Media Pipeline` | 复杂度高，使用场景有限 | 自定义 Pipeline 实现 |
-| `AutoThrottle` | 计划在 Post-v1.0 实现 | 手动配置 `DOWNLOAD_DELAY` |
 | `scrapy.contracts` | Go 有标准测试框架 | `go test` + 表驱动测试 |
 | `Item Loader` | Go 类型系统已提供足够约束 | struct + `item` tag |
 | `Splash/Playwright` | 外部依赖 | 自定义 Downloader Handler |
-| `scrapy-redis` | 计划在 Post-v1.0 实现 | — |
 | `from_crawler()` | Go 无类方法 | 构造函数 + `Open(ctx)` |
 | `pickle` 序列化 | 跨语言兼容 | JSON 序列化 |
 

@@ -367,14 +367,14 @@ scrapy-go 的信号系统是一个同步事件总线，用于组件间解耦通�
 
 ```
 Request 方向 (ProcessRequest):
-  优先级 100 → 300 → 400 → 500 → 600 → 700 → 800 → 900
-  RobotsTxt → Auth → UA → Retry → Redirect → Cookies → Proxy → Cache
+  优先级 100 → 300 → 400 → 500 → 545 → 550 → 600 → 700 → 800 → 900
+  RobotsTxt → Auth → UA → Retry → CircuitBreaker → DefaultHeaders → Redirect → Cookies → Proxy → Cache
                                                                     ↓
                                                               Downloader
                                                                     ↓
 Response 方向 (ProcessResponse):
-  优先级 900 → 800 → 700 → 600 → 500 → 400 → 300 → 100
-  Cache → Proxy → Cookies → Redirect → Retry → UA → Auth → RobotsTxt
+  优先级 900 → 800 → 700 → 600 → 550 → 545 → 500 → 400 → 300 → 100
+  Cache → Proxy → Cookies → Redirect → DefaultHeaders → CircuitBreaker → Retry → UA → Auth → RobotsTxt
 ```
 
 ### 中间件接口（接口隔离设计）
@@ -431,10 +431,10 @@ Output 方向 (ProcessSpiderOutput):
 │  │  定期日志    │  │  内存监控   │              │
 │  └─────────────┘  └─────────────┘              │
 │                                                  │
-│  ┌─────────────┐                                │
-│  │  FeedExport  │                                │
-│  │  数据导出    │                                │
-│  └─────────────┘                                │
+│  ┌─────────────┐  ┌───────────────┐            │
+│  │  FeedExport  │  │ AutoThrottle  │            │
+│  │  数据导出    │  │  自适应限速    │            │
+│  └─────────────┘  └───────────────┘            │
 │                                                  │
 │  生命周期: Open(ctx) → [信号交互] → Close(ctx)   │
 │  关闭顺序: 逆优先级（后注册先关闭）              │
@@ -444,12 +444,13 @@ Output 方向 (ProcessSpiderOutput):
 ### 内置扩展
 
 | 扩展 | 功能 | 监听信号 |
-|------|------|---------|
+|------|------|--------|
 | CoreStats | 核心统计（请求数、响应数、Item 数等） | SpiderOpened, SpiderClosed, ResponseReceived, ItemScraped |
 | CloseSpider | 条件关闭（超时、Item 数量、错误数量） | SpiderOpened, SpiderIdle |
 | LogStats | 定期输出统计日志 | SpiderOpened, SpiderClosed |
 | MemoryUsage | 内存使用监控和告警 | SpiderOpened |
 | FeedExport | 数据导出到文件 | SpiderOpened, SpiderClosed, ItemScraped |
+| AutoThrottle | 基于延迟反馈的自适应限速 | SpiderOpened, SpiderClosed, ResponseDownloaded |
 
 ---
 
@@ -584,7 +585,7 @@ defer func() {
 4. **errgroup 生命周期** — 统一多 goroutine 错误传播
 5. **context 取消传播** — 优雅的级联取消
 6. **semaphore.Weighted** — 可取消的并发控制
-7. **Telemetry 接口** — OpenTelemetry 兼容的可观测性预留
+7. **Telemetry 接口** — OpenTelemetry 兼容的可观测性（`contrib/telemetry` 提供 OTel + Prometheus 适配器）
 
 ---
 

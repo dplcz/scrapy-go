@@ -533,7 +533,47 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		retryTimes := c.Settings.GetInt("RETRY_TIMES", 2)
 		retryPriorityAdjust := c.Settings.GetInt("RETRY_PRIORITY_ADJUST", -1)
 		retryHTTPCodes := c.getIntSlice("RETRY_HTTP_CODES", []int{500, 502, 503, 504, 522, 524, 408, 429})
-		return dmiddle.NewRetryMiddleware(retryTimes, retryHTTPCodes, retryPriorityAdjust, c.Stats, c.Logger)
+
+		var opts []dmiddle.RetryOption
+
+		// 指数退避配置
+		if c.Settings.GetBool("RETRY_BACKOFF_ENABLED", false) {
+			baseDelay := time.Duration(c.Settings.GetFloat("RETRY_BACKOFF_BASE_DELAY", 1.0) * float64(time.Second))
+			maxDelay := time.Duration(c.Settings.GetFloat("RETRY_BACKOFF_MAX_DELAY", 60.0) * float64(time.Second))
+			jitter := c.Settings.GetBool("RETRY_BACKOFF_JITTER", true)
+			opts = append(opts, dmiddle.WithRetryBackoff(baseDelay, maxDelay, jitter))
+		}
+
+		// 按状态码差异化重试次数
+		if perStatus := c.getIntIntMap("RETRY_PER_STATUS_MAX_TIMES"); len(perStatus) > 0 {
+			opts = append(opts, dmiddle.WithPerStatusMaxRetries(perStatus))
+		}
+
+		return dmiddle.NewRetryMiddleware(retryTimes, retryHTTPCodes, retryPriorityAdjust, c.Stats, c.Logger, opts...)
+	},
+	"CircuitBreaker": func(c *Crawler) dmiddle.DownloaderMiddleware {
+		if !c.Settings.GetBool("CIRCUIT_BREAKER_ENABLED", false) {
+			return nil
+		}
+
+		var opts []dmiddle.CircuitBreakerOption
+
+		failThreshold := c.Settings.GetInt("CIRCUIT_BREAKER_FAIL_THRESHOLD", 5)
+		opts = append(opts, dmiddle.WithCircuitBreakerFailThreshold(failThreshold))
+
+		recoveryTimeout := time.Duration(c.Settings.GetInt("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", 30)) * time.Second
+		opts = append(opts, dmiddle.WithCircuitBreakerRecoveryTimeout(recoveryTimeout))
+
+		halfOpenMax := c.Settings.GetInt("CIRCUIT_BREAKER_HALF_OPEN_MAX_REQUESTS", 1)
+		opts = append(opts, dmiddle.WithCircuitBreakerHalfOpenMaxRequests(halfOpenMax))
+
+		successThreshold := c.Settings.GetInt("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", 2)
+		opts = append(opts, dmiddle.WithCircuitBreakerSuccessThreshold(successThreshold))
+
+		cbHTTPCodes := c.getIntSlice("CIRCUIT_BREAKER_HTTP_CODES", []int{500, 502, 503, 504})
+		opts = append(opts, dmiddle.WithCircuitBreakerHTTPCodes(cbHTTPCodes))
+
+		return dmiddle.NewCircuitBreakerMiddleware(c.Stats, c.Logger, opts...)
 	},
 	"Redirect": func(c *Crawler) dmiddle.DownloaderMiddleware {
 		if !c.Settings.GetBool("REDIRECT_ENABLED", true) {
@@ -1045,6 +1085,18 @@ func (c *Crawler) getIntSlice(key string, defaultVal []int) []int {
 		return codes
 	}
 	return defaultVal
+}
+
+// getIntIntMap 从配置中获取 map[int]int。
+func (c *Crawler) getIntIntMap(key string) map[int]int {
+	v := c.Settings.Get(key, nil)
+	if v == nil {
+		return nil
+	}
+	if m, ok := v.(map[int]int); ok {
+		return m
+	}
+	return nil
 }
 
 // getStringSlice 从配置中获取 string 切片。

@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.1.0** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.2.0-dev** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -147,6 +147,7 @@ go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAccep
 | `dont_retry` | bool | false | 设为 true 跳过自动重试 | Retry 中间件 |
 | `retry_times` | int | 0 | 当前已重试次数（框架自动设置） | Retry 中间件 |
 | `max_retry_times` | int | Settings 值 | 请求级最大重试次数覆盖 | Retry 中间件 |
+| `download_delay` | time.Duration | — | 退避延迟（启用指数退避时由 Retry 中间件自动设置） | Retry 中间件 |
 
 #### 重定向控制
 
@@ -251,7 +252,7 @@ req4.SetMeta("cookiejar", "session-user-1")
 
 ### 🔌 下载器中间件
 
-支持优先级排序的中间件执行链（ProcessRequest 正序、ProcessResponse 逆序），内置 10 个中间件：
+支持优先级排序的中间件执行链（ProcessRequest 正序、ProcessResponse 逆序），内置 11 个中间件：
 
 | 中间件 | 优先级 | 功能 |
 |--------|--------|------|
@@ -260,7 +261,8 @@ req4.SetMeta("cookiejar", "session-user-1")
 | DefaultHeaders | 400 | 自动注入默认请求头 |
 | HttpAuth | 410 | Basic Auth 认证 |
 | UserAgent | 500 | User-Agent 设置 |
-| Retry | 550 | 失败请求自动重试 |
+| CircuitBreaker | 545 | 域名级熔断器（连续失败自动熔断，需启用 `CIRCUIT_BREAKER_ENABLED`） |
+| Retry | 550 | 失败请求自动重试（支持指数退避 + 抖动 + 差异化策略） |
 | HttpCompression | 590 | gzip/deflate/brotli 解压 |
 | Redirect | 600 | HTTP 重定向处理 |
 | Cookies | 700 | 多会话 Cookie 管理 |
@@ -653,6 +655,25 @@ func (s *MySpider) CustomSettings() *spider.Settings {
 | `RETRY_TIMES` | int | 2 | 最大重试次数（不含首次请求） |
 | `RETRY_HTTP_CODES` | []int | [500,502,503,504,522,524,408,429] | 触发重试的 HTTP 状态码 |
 | `RETRY_PRIORITY_ADJUST` | int | -1 | 重试请求的优先级调整值 |
+| `RETRY_BACKOFF_ENABLED` | bool | false | 是否启用指数退避重试 |
+| `RETRY_BACKOFF_BASE_DELAY` | float64 | 1.0 | 退避基础延迟（秒） |
+| `RETRY_BACKOFF_MAX_DELAY` | float64 | 60.0 | 退避最大延迟（秒） |
+| `RETRY_BACKOFF_JITTER` | bool | true | 是否启用随机抖动 |
+| `RETRY_PER_STATUS_MAX_TIMES` | map[int]int | {} | 按状态码差异化最大重试次数 |
+
+</details>
+
+<details>
+<summary>🔌 <b>熔断器配置</b></summary>
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `CIRCUIT_BREAKER_ENABLED` | bool | false | 是否启用域名级熔断器 |
+| `CIRCUIT_BREAKER_FAIL_THRESHOLD` | int | 5 | 连续失败阈值（达到后熔断） |
+| `CIRCUIT_BREAKER_RECOVERY_TIMEOUT` | int | 30 | 恢复超时时间（秒） |
+| `CIRCUIT_BREAKER_HALF_OPEN_MAX_REQUESTS` | int | 1 | 半开状态最大探测请求数 |
+| `CIRCUIT_BREAKER_SUCCESS_THRESHOLD` | int | 2 | 半开状态恢复所需连续成功次数 |
+| `CIRCUIT_BREAKER_HTTP_CODES` | []int | [500,502,503,504] | 触发熔断的 HTTP 状态码 |
 
 </details>
 
@@ -664,6 +685,31 @@ func (s *MySpider) CustomSettings() *spider.Settings {
 | `REDIRECT_ENABLED` | bool | true | 是否启用自动重定向 |
 | `REDIRECT_MAX_TIMES` | int | 20 | 最大重定向次数 |
 | `REDIRECT_PRIORITY_ADJUST` | int | 2 | 重定向请求的优先级调整值 |
+
+</details>
+
+<details>
+<summary>🎛️ <b>AutoThrottle 自适应限速配置</b></summary>
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `AUTOTHROTTLE_ENABLED` | bool | false | 是否启用自适应限速 |
+| `AUTOTHROTTLE_START_DELAY` | float64 | 5.0 | 初始下载延迟（秒） |
+| `AUTOTHROTTLE_MAX_DELAY` | float64 | 60.0 | 最大下载延迟（秒） |
+| `AUTOTHROTTLE_TARGET_CONCURRENCY` | float64 | 1.0 | 目标并发数（每个域名） |
+| `AUTOTHROTTLE_DEBUG` | bool | false | 是否输出调试日志 |
+
+启用后，框架会根据实际下载延迟动态调整每个域名的下载延迟：
+- 使用 EWMA（指数加权移动平均）平滑延迟抖动
+- 根据目标并发数计算理想延迟：`target_delay = latency / target_concurrency`
+- 新延迟 = `(old_delay + target_delay) / 2`，并钳制在 `[start_delay * 0.2, max_delay]` 范围内
+
+```go
+// 启用 AutoThrottle
+s.Set("AUTOTHROTTLE_ENABLED", true, settings.PriorityProject)
+s.Set("AUTOTHROTTLE_TARGET_CONCURRENCY", 2.0, settings.PriorityProject)
+s.Set("AUTOTHROTTLE_MAX_DELAY", 30.0, settings.PriorityProject)
+```
 
 </details>
 
@@ -685,6 +731,7 @@ DownloadTimeout:  300
 DefaultHeaders:   400
 HttpAuth:         410
 UserAgent:        500
+CircuitBreaker:   545
 Retry:            550
 HttpCompression:  590
 Redirect:         600
@@ -953,7 +1000,7 @@ scrapy-go 的架构完全对齐 Scrapy 的经典数据流模型：
 | **Spider** | `pkg/spider` | 用户爬虫接口（定义爬取逻辑） |
 | **Pipeline** | `pkg/pipeline` | Item 数据处理管道 |
 | **Extension** | `pkg/extension` | 扩展系统（5 个内置扩展 + 信号驱动生命周期管理 + AutoThrottle 自适应限速） |
-| **DL Middleware** | `pkg/downloader/middleware` | 下载器中间件接口与实现（10 个内置中间件） |
+| **DL Middleware** | `pkg/downloader/middleware` | 下载器中间件接口与实现（11 个内置中间件） |
 | **DL MW Manager** | `pkg/downloader` | 下载器中间件管理器（编排中间件链 + 调用下载函数） |
 | **Spider Middleware** | `pkg/spider/middleware` | Spider 中间件（5 个内置 + 输入/输出拦截） |
 | **Settings** | `pkg/settings` | 多优先级配置系统 |
@@ -1065,7 +1112,7 @@ scrapy-go/
 │   │   ├── handler_h2.go          # HTTP/2 优化下载处理器
 │   │   ├── connpool.go            # 连接池精细化管理
 │   │   ├── progress.go            # 下载进度回调支持
-│   │   └── middleware/             # 下载器中间件接口与实现（10 个内置）
+│   │   └── middleware/             # 下载器中间件接口与实现（11 个内置）
 │   ├── scraper/                    # Scraper 响应处理器
 │   ├── spider/                     # Spider 接口 + 配置
 │   │   └── middleware/             # Spider 中间件
@@ -1088,6 +1135,16 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.2.0 (进行中)
+
+> **Post-v1.0 Sprint 13 — 生产增强里程碑 M7**
+
+- 💾 **P5-009 通用持久化存储适配器** — `contrib/storage` 独立模块，MongoDB + PostgreSQL + Elasticsearch 批量写入 + Upsert
+- 🔄 **P5-010 高级重试策略** — RetryMiddleware 指数退避 + 随机抖动 + 按状态码差异化重试 + 自定义重试条件
+- 🔌 **P5-010 熔断器中间件** — `CircuitBreakerMiddleware` 域名级别状态机（Closed → Open → Half-Open），连续失败自动熔断
+- ⚙️ **11 个新增配置项** — 退避策略（`RETRY_BACKOFF_*`）+ 熔断器（`CIRCUIT_BREAKER_*`）
+- 🧪 **测试覆盖率 89.1%** — 中间件包 153 个测试全部通过，`go test -race` 竞态检测通过
 
 ### v1.1.0 🎉
 
