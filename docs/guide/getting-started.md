@@ -514,6 +514,8 @@ max_times = 20
 | `LOG_LEVEL` | DEBUG | 日志级别 |
 | `USER_AGENT` | scrapy-go | User-Agent 字符串 |
 | `ROBOTSTXT_OBEY` | false | 是否遵守 robots.txt |
+| `AUTOTHROTTLE_ENABLED` | false | 是否启用自适应限速 |
+| `CIRCUIT_BREAKER_ENABLED` | false | 是否启用域名级熔断器 |
 
 ---
 
@@ -529,7 +531,8 @@ scrapy-go 提供以下内置下载器中间件（按默认优先级排序）：
 | HttpAuth | 300 | HTTP Basic 认证 |
 | DownloadTimeout | 350 | 下载超时控制 |
 | UserAgent | 400 | 设置 User-Agent |
-| Retry | 500 | 失败重试 |
+| Retry | 500 | 失败重试（支持指数退避 + 抖动 + 差异化策略） |
+| CircuitBreaker | 545 | 域名级熔断器（连续失败自动熔断） |
 | DefaultHeaders | 550 | 设置默认请求头 |
 | Redirect | 600 | HTTP 重定向处理 |
 | Cookies | 700 | Cookie 管理 |

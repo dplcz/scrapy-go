@@ -689,6 +689,31 @@ func (s *MySpider) CustomSettings() *spider.Settings {
 </details>
 
 <details>
+<summary>🎛️ <b>AutoThrottle 自适应限速配置</b></summary>
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `AUTOTHROTTLE_ENABLED` | bool | false | 是否启用自适应限速 |
+| `AUTOTHROTTLE_START_DELAY` | float64 | 5.0 | 初始下载延迟（秒） |
+| `AUTOTHROTTLE_MAX_DELAY` | float64 | 60.0 | 最大下载延迟（秒） |
+| `AUTOTHROTTLE_TARGET_CONCURRENCY` | float64 | 1.0 | 目标并发数（每个域名） |
+| `AUTOTHROTTLE_DEBUG` | bool | false | 是否输出调试日志 |
+
+启用后，框架会根据实际下载延迟动态调整每个域名的下载延迟：
+- 使用 EWMA（指数加权移动平均）平滑延迟抖动
+- 根据目标并发数计算理想延迟：`target_delay = latency / target_concurrency`
+- 新延迟 = `(old_delay + target_delay) / 2`，并钳制在 `[start_delay * 0.2, max_delay]` 范围内
+
+```go
+// 启用 AutoThrottle
+s.Set("AUTOTHROTTLE_ENABLED", true, settings.PriorityProject)
+s.Set("AUTOTHROTTLE_TARGET_CONCURRENCY", 2.0, settings.PriorityProject)
+s.Set("AUTOTHROTTLE_MAX_DELAY", 30.0, settings.PriorityProject)
+```
+
+</details>
+
+<details>
 <summary>🔌 <b>中间件配置</b></summary>
 
 | 参数 | 类型 | 默认值 | 说明 |
