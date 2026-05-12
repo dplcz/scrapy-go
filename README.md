@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.0.3-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.0.4-blue)](docs/README.md#-更新日志)
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
@@ -19,6 +19,7 @@
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重，中断后自动恢复
 - 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取 + 本地布隆过滤器加速（`contrib/redisqueue`）
 - 🎛️ **AutoThrottle** — 基于延迟反馈的自适应速率调整，自动优化下载延迟
+- 📊 **可观测性** — OpenTelemetry 分布式追踪 + Prometheus 指标收集，信号驱动自动采集（`contrib/telemetry`）
 - 🛡️ **生产就绪** — Panic Recovery、优雅关闭、统计收集、pprof 调试
 
 ## 📊 性能数据
@@ -218,6 +219,7 @@ Engine (调度引擎)
 | [🏗️ 架构设计](docs/architecture/architecture.md) | 核心组件内部结构与数据流 |
 | [🔄 从 Python Scrapy 迁移](docs/migration/migration-from-python.md) | 概念映射 + 代码对比 + 迁移检查清单 |
 | [🌐 Redis 分布式队列](contrib/redisqueue/README.md) | Redis 队列扩展安装、配置与分布式爬取 |
+| [📊 可观测性扩展](contrib/telemetry/README.md) | OpenTelemetry 追踪 + Prometheus 指标 |
 
 ## 📄 License
 
