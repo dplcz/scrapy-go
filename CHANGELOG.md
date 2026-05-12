@@ -5,11 +5,11 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [v1.2.0] — 2026-05-12 (进行中)
+## [v1.1.1] — 2026-05-12
 
-> **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 进行中**
+> **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 完成**
 >
-> v1.2.0 是 scrapy-go 的生产增强版本，包含以下核心交付物：
+> v1.1.1 是 scrapy-go 的生产增强版本，包含以下核心交付物：
 > - P5-009 通用持久化存储适配器（`contrib/storage`）✅
 > - P5-010 高级重试策略（内置中间件增强）✅
 

@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.2.0--dev-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.1.1-blue)](docs/README.md#-更新日志)
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
@@ -19,6 +19,7 @@
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重，中断后自动恢复
 - 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取 + 本地布隆过滤器加速（`contrib/redisqueue`）
 - 🎛️ **AutoThrottle** — 基于延迟反馈的自适应速率调整，自动优化下载延迟
+- 🛡️ **高级重试策略** — 指数退避 + 随机抖动 + 域名级熔断器 + 按状态码差异化重试
 - 📊 **可观测性** — OpenTelemetry 分布式追踪 + Prometheus 指标收集，信号驱动自动采集（`contrib/telemetry`）
 - 💾 **持久化存储** — MongoDB / PostgreSQL / Elasticsearch 批量写入 + Upsert，可插拔存储适配器（`contrib/storage`）
 - 🛡️ **生产就绪** — Panic Recovery、优雅关闭、统计收集、pprof 调试
@@ -200,7 +201,7 @@ Engine (调度引擎)
 │   ├── HTTPDownloadHandler (HTTP/1.1 标准处理器)
 │   ├── HTTP2DownloadHandler (HTTP/2 优化处理器)
 │   ├── ProgressHTTPDownloadHandler (进度回调处理器)
-│   └── Middleware Chain (10 个内置中间件)
+│   └── Middleware Chain (11 个内置中间件)
 └── Scraper (响应处理 + Spider 回调)
     ├── Spider Middleware (5 个内置中间件)
     └── Item Pipeline (数据清洗/验证/持久化)

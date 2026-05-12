@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.2.0-dev** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.1.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1136,9 +1136,9 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### v1.2.0 (进行中)
+### v1.1.1 🎉
 
-> **Post-v1.0 Sprint 13 — 生产增强里程碑 M7**
+> **Post-v1.0 Sprint 13 完成 — 生产增强里程碑 M7**
 
 - 💾 **P5-009 通用持久化存储适配器** — `contrib/storage` 独立模块，MongoDB + PostgreSQL + Elasticsearch 批量写入 + Upsert
 - 🔄 **P5-010 高级重试策略** — RetryMiddleware 指数退避 + 随机抖动 + 按状态码差异化重试 + 自定义重试条件
