@@ -5,7 +5,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [v1.0.4] — 2026-05-11
+## [v1.1.0] — 2026-05-12
+
+> **🎉 Post-v1.0 生态完善里程碑 M6 — Sprint 12 全部完成**
+>
+> v1.1.0 是 scrapy-go 首个 Post-v1.0 生态完善版本，包含以下核心交付物：
+> - P5-001 高级下载器特性（HTTP/2 + 连接池 + 进度回调）
+> - P5-002 AutoThrottle 自适应限速扩展
+> - P5-003 Redis 队列可插拔扩展（`contrib/redisqueue`）
+> - P5-007 可观测性具体实现（`contrib/telemetry`）
+> - P4-007a~m 性能优化（13 项）
+>
+> 所有测试通过，`go test -race` 竞态检测通过，`go vet` 无告警，`gofmt` 格式化通过。
 
 ### 新增
 
