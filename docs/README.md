@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.2.0-dev** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.1.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1136,17 +1136,24 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+### v1.1.3 🎉
 
-### v1.2.0 (开发中) 🎉
+> **Post-v1.0 Sprint 13 生产增强 — P5-012 分布式限速器 + P5-017 Scheduler 内存队列溢出优化**
 
-> **Post-v1.0 Sprint 13 生产增强 — P5-017 Scheduler 内存队列溢出优化**
-
+- ⏱️ **P5-012 分布式限速器** — `contrib/ratelimit` 独立模块，基于 Redis 滑动窗口算法实现多实例全局速率控制
+- 🎯 **RateLimiter 接口** — `Allow(domain) bool` 非阻塞检查 + `Wait(ctx, domain) error` 阻塞等待
+- 🔧 **Redis Lua 脚本原子操作** — 滑动窗口移除过期记录 → 计数 → 添加新记录，无竞态条件
+- 🌐 **按域名差异化限速** — `DomainRates` 配置允许为特定域名设置独立速率
+- 🔌 **RateLimitExtension** — 监听 `RequestReachedDownloader` 信号自动限速，可注册到 Crawler 扩展系统
+- 🛡️ **优雅降级** — Redis 不可用时自动允许所有请求通过，不阻塞爬虫运行
+- 🔗 **共享连接** — `NewRedisSlidingWindowLimiterFromClient` 支持与 `contrib/redisqueue` 复用 Redis 连接
+- 🧪 **P5-012 测试覆盖率 88.0%** — 27 个测试全部通过，`go test -race` 竞态检测通过
 - 🛡️ **P5-017 内存队列溢出保护** — `DefaultScheduler` 新增 `WithMemoryQueueThreshold(n int)` Option
   - 内存队列请求数超过阈值时，可序列化请求自动溢出到磁盘队列
   - 未配置 `jobDir` 时自动创建临时磁盘队列目录，爬虫结束后自动清理
   - 新增 `MemoryQueueLen()` / `MemoryQueueThreshold()` 监控方法
   - 新增 `scheduler/overflow_to_disk` 统计指标
-- 🧪 **测试覆盖率 82.2%** — 10 个单元测试 + 4 个基准测试，`go test -race` 竞态检测通过
+- 🧪 **P5-017 测试覆盖率 82.2%** — 10 个单元测试 + 4 个基准测试，`go test -race` 竞态检测通过
 
 ### v1.1.2 🎉
 

@@ -5,14 +5,66 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [v1.2.0] — 2026-05-13 (开发中)
+## [v1.1.3] — 2026-05-13
 
 > **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 生产增强**
 >
-> v1.2.0 是 scrapy-go 的生产增强版本，包含以下核心交付物：
+> v1.1.3 是 scrapy-go 的生产增强版本，包含以下核心交付物：
+> - P5-012 分布式限速器（`contrib/ratelimit` 独立模块）✅
 > - P5-017 Scheduler 内存队列溢出优化（`pkg/scheduler` 内置增强）✅
 
 ### 新增
+
+#### P5-012 分布式限速器（独立模块）
+
+> **基于 Redis 滑动窗口算法的分布式限速器，支持按域名差异化配置**
+
+##### P5-012a：RateLimiter 接口定义
+
+- 🎯 **RateLimiter 接口** — 新增 `contrib/ratelimit/interface.go`
+  - `Allow(domain string) bool` — 非阻塞检查请求是否被允许
+  - `Wait(ctx context.Context, domain string) error` — 阻塞等待直到有可用配额
+  - `Close() error` — 关闭限速器释放资源
+
+##### P5-012b：Redis 滑动窗口限速器
+
+- ⏱️ **RedisSlidingWindowLimiter** — 新增 `contrib/ratelimit/redis_limiter.go`
+  - 基于 Redis Sorted Set + Lua 脚本实现滑动窗口算法
+  - Lua 脚本原子操作：移除过期记录 → 计数 → 添加新记录，无竞态条件
+  - 支持按域名独立限速，不同域名拥有独立的速率窗口
+  - `DomainRates` 配置允许为特定域名设置独立速率
+  - 优雅降级：Redis 不可用时自动允许所有请求通过
+  - `NewRedisSlidingWindowLimiterFromClient` 支持共享 Redis 连接（与 `contrib/redisqueue` 复用）
+  - `Stats()` / `Reset()` 辅助方法用于监控和管理
+
+- ⚙️ **Options 配置** — 新增 `contrib/ratelimit/options.go`
+  - `DefaultRate` / `DefaultBurst` — 默认速率和突发容量
+  - `Window` — 滑动窗口时间长度（默认 1s）
+  - `DomainRates` — 按域名差异化速率配置
+  - `WaitTimeout` — Wait 方法默认超时（默认 30s）
+  - `KeyExpiration` — 限速 Key 自动过期清理（默认 1h）
+  - Redis 连接配置（Addr/Password/DB/PoolSize/Timeout）
+
+##### P5-012c：RateLimitExtension
+
+- 🔌 **RateLimitExtension** — 新增 `contrib/ratelimit/extension.go`
+  - 实现 `extension.Extension` 接口，可注册到 Crawler 扩展系统
+  - 监听 `RequestReachedDownloader` 信号，在请求到达下载器时自动限速
+  - 从请求 URL 中提取域名，调用 `RateLimiter.Wait` 阻塞等待配额
+  - 信号处理器错误不阻止请求（降级策略）
+
+##### P5-012d：测试与文档
+
+- ✅ **测试覆盖** — 27 个测试全部通过，覆盖率 88.0%，`go test -race` 通过
+  - 限速器创建/关闭/幂等关闭
+  - Allow 未超限/超限/不同域名/域名独立配置/关闭后降级
+  - Wait 未超限/context 取消/关闭后降级
+  - 共享 Redis 客户端（Close 不关闭共享连接）
+  - Stats/Reset 辅助方法
+  - 并发访问安全性（200 goroutine 并发）
+  - Extension 生命周期（Open/Close/信号注册注销）
+  - 集成测试（Extension + 信号系统端到端）
+- 📖 **使用文档** — `contrib/ratelimit/README.md`
 
 #### P5-017：Scheduler 内存队列溢出优化
 
