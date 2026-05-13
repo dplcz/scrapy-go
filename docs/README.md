@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.1.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.2.0-dev** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -41,7 +41,7 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 完整实现 Scrapy 经典五大组件：
 
 - **Engine** — 核心调度引擎，协调所有组件，支持暂停/恢复，使用 `errgroup` 统一管理多 goroutine 生命周期
-- **Scheduler** — 基于内存优先级队列 + 磁盘队列的请求调度，支持断点续爬（`JOBDIR`），有序优先级切片 O(1) 出队，可插拔 Redis 分布式队列（`contrib/redisqueue`），支持 Pipeline 批量去重优化
+- **Scheduler** — 基于内存优先级队列 + 磁盘队列的请求调度，支持断点续爬（`JOBDIR`），有序优先级切片 O(1) 出队，可插拔 Redis 分布式队列（`contrib/redisqueue`），支持 Pipeline 批量去重优化，内存队列溢出保护（`WithMemoryQueueThreshold`）
 - **Downloader** — 基于 Slot 机制的 HTTP 下载，按域名分组控制并发和延迟，支持 HTTP/2 多路复用优化和连接池精细化管理
 - **Scraper** — 调用 Spider 回调并分发结果（Request/Item），`semaphore.Weighted` 控制 CONCURRENT_ITEMS
 - **Crawler** — 顶层编排器，一行代码组装并启动爬虫
@@ -813,6 +813,7 @@ req, _ := shttp.NewRequest("https://example.com",
 | `LOG_LEVEL` | string | "DEBUG" | 日志级别：DEBUG/INFO/WARN/ERROR |
 | `STATS_DUMP` | bool | true | Spider 关闭时是否输出统计信息 |
 | `SCHEDULER_DEBUG` | bool | false | 是否输出调度器调试日志 |
+| `MEMORY_QUEUE_THRESHOLD` | int | 0 | 内存队列最大容量阈值（0=不限制），超阈值自动溢出到磁盘队列 |
 | `DOWNLOADER_STATS` | bool | true | 是否启用下载器统计中间件 |
 > 🎨 **日志颜色**：终端自动启用彩色输出，非终端时自动禁用
 > - 🔵 **DEBUG** (`DBG`): 青色
@@ -1135,6 +1136,17 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.2.0 (开发中) 🎉
+
+> **Post-v1.0 Sprint 13 生产增强 — P5-017 Scheduler 内存队列溢出优化**
+
+- 🛡️ **P5-017 内存队列溢出保护** — `DefaultScheduler` 新增 `WithMemoryQueueThreshold(n int)` Option
+  - 内存队列请求数超过阈值时，可序列化请求自动溢出到磁盘队列
+  - 未配置 `jobDir` 时自动创建临时磁盘队列目录，爬虫结束后自动清理
+  - 新增 `MemoryQueueLen()` / `MemoryQueueThreshold()` 监控方法
+  - 新增 `scheduler/overflow_to_disk` 统计指标
+- 🧪 **测试覆盖率 82.2%** — 10 个单元测试 + 4 个基准测试，`go test -race` 竞态检测通过
 
 ### v1.1.2 🎉
 

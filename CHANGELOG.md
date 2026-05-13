@@ -5,6 +5,52 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.2.0] — 2026-05-13 (开发中)
+
+> **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 生产增强**
+>
+> v1.2.0 是 scrapy-go 的生产增强版本，包含以下核心交付物：
+> - P5-017 Scheduler 内存队列溢出优化（`pkg/scheduler` 内置增强）✅
+
+### 新增
+
+#### P5-017：Scheduler 内存队列溢出优化
+
+> **防止大规模爬取场景下内存队列无限增长导致 OOM，自动溢出到磁盘队列**
+
+- 🎯 **内存队列阈值** — `DefaultScheduler` 新增 `memoryQueueThreshold` 字段（`pkg/scheduler/scheduler.go`）
+  - 新增 `WithMemoryQueueThreshold(n int)` Option，设置内存队列最大容量阈值
+  - 入队时当内存队列请求数超过阈值，可序列化请求自动溢出到磁盘队列
+  - 阈值为 0 或负数时不限制（保持原有行为）
+  - 新增 `MemoryQueueLen()` 和 `MemoryQueueThreshold()` 方法用于监控
+
+- 💾 **自动临时磁盘队列** — 未配置 `jobDir` 时自动创建临时目录（`pkg/scheduler/scheduler.go`）
+  - 使用 `os.MkdirTemp` 创建临时磁盘队列目录（前缀 `scrapy-go-overflow-*`）
+  - 爬虫结束时（`Close`）自动清理临时目录，不留残留文件
+  - 已配置 `jobDir` 或外部队列时，复用已有磁盘队列，不创建临时目录
+
+- 📊 **溢出统计** — 新增 `scheduler/overflow_to_disk` 统计指标
+  - 记录因内存队列超阈值而溢出到磁盘的请求数量
+  - 可通过 Stats Collector 监控溢出频率，辅助调优阈值参数
+
+- ✅ **测试覆盖** — 新增 10 个单元测试 + 4 个基准测试，覆盖率 82.2%，`go test -race` 通过
+  - `TestMemoryQueueThresholdBasic` — 验证基本阈值触发溢出行为
+  - `TestMemoryQueueThresholdZero` — 验证阈值为 0 时不限制
+  - `TestMemoryQueueThresholdNegative` — 验证负数阈值被忽略
+  - `TestMemoryQueueThresholdWithJobDir` — 验证与 jobDir 配合使用
+  - `TestMemoryQueueThresholdDequeueOrder` — 验证出队优先级正确性（内存优先）
+  - `TestMemoryQueueThresholdTempDirCleanup` — 验证临时目录清理
+  - `TestMemoryQueueThresholdConcurrency` — 验证并发安全性
+  - `TestMemoryQueueThresholdAllDequeued` — 验证所有请求可正确出队
+  - `TestMemoryQueueThresholdWithExternalQueue` — 验证与外部队列配合
+  - `TestMemoryQueueThresholdAccessors` — 验证监控方法正确性
+  - `BenchmarkSchedulerWithOverflow` — 不同阈值下的入队/出队性能
+  - `BenchmarkSchedulerOverflowBurst` — 突发大量请求时的溢出性能
+  - `BenchmarkSchedulerMemoryComparison` — 有无溢出保护的内存占用对比
+  - `BenchmarkSchedulerOverflowConcurrent` — 并发场景下溢出保护性能
+
+---
+
 ## [v1.1.2] — 2026-05-13
 
 > **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 生态完善**

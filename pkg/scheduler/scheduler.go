@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -70,6 +71,13 @@ type Scheduler interface {
 // 持久化队列通过 PriorityAwareQueue 接口抽象，支持磁盘队列、Redis 队列等
 // 不同后端的无缝替换。
 //
+// 内存队列溢出保护：
+//   - 通过 WithMemoryQueueThreshold 设置内存队列最大容量阈值
+//   - 当内存队列（inBuffer + outQueue）中的请求数超过阈值时，
+//     新入队的请求自动溢出到磁盘队列
+//   - 未配置 jobDir 时自动创建临时磁盘队列目录，爬虫结束后清理
+//   - 出队时内存队列仍然优先于磁盘队列，确保低延迟
+//
 // 对应 Scrapy 的 Scheduler 类。
 type DefaultScheduler struct {
 	// 双锁分离：入队锁和出队锁独立，消除入队/出队的锁竞争
@@ -78,6 +86,9 @@ type DefaultScheduler struct {
 
 	// pendingCount 使用 atomic 提供无锁的 HasPendingRequests/Len
 	pendingCount atomic.Int64
+
+	// memoryCount 追踪内存队列中的请求数（inBuffer + outQueue），由 enqueueMu 保护写入
+	memoryCount atomic.Int64
 
 	dupeFilter DupeFilter
 	inBuffer   *PriorityQueue     // 入队缓冲区，由 enqueueMu 保护
@@ -88,6 +99,11 @@ type DefaultScheduler struct {
 	logger     *slog.Logger
 	debug      bool   // 是否输出调试日志
 	jobDir     string // 断点续爬目录（空字符串表示不启用磁盘队列）
+
+	// 内存队列溢出保护
+	memoryQueueThreshold int    // 内存队列最大容量阈值（0 表示不限制）
+	tempDir              string // 自动创建的临时磁盘队列目录（需在 Close 时清理）
+	ownsTempDir          bool   // 标记临时目录是否由本调度器创建（用于 Close 时判断是否清理）
 }
 
 // DefaultSchedulerOption 是 DefaultScheduler 的可选配置函数。
@@ -127,6 +143,31 @@ func WithDebug(debug bool) DefaultSchedulerOption {
 func WithJobDir(jobDir string) DefaultSchedulerOption {
 	return func(s *DefaultScheduler) {
 		s.jobDir = jobDir
+	}
+}
+
+// WithMemoryQueueThreshold 设置内存队列最大容量阈值。
+//
+// 当内存队列中的请求数超过此阈值时，新入队的可序列化请求将自动溢出到磁盘队列。
+// 如果未配置 jobDir 且未注入外部队列，将自动创建临时磁盘队列目录，
+// 爬虫结束时自动清理。
+//
+// 参数 n 必须为正整数，设置为 0 或负数将被忽略（等同于不限制）。
+//
+// 典型使用场景：
+//   - 大规模爬取时防止内存队列无限增长导致 OOM
+//   - 配合 AutoThrottle 使用，在下载速度受限时缓冲过多的待处理请求
+//
+// 示例：
+//
+//	sched := scheduler.NewDefaultScheduler(
+//	    scheduler.WithMemoryQueueThreshold(10000),
+//	)
+func WithMemoryQueueThreshold(n int) DefaultSchedulerOption {
+	return func(s *DefaultScheduler) {
+		if n > 0 {
+			s.memoryQueueThreshold = n
+		}
 	}
 }
 
@@ -188,7 +229,8 @@ func NewDefaultScheduler(opts ...DefaultSchedulerOption) *DefaultScheduler {
 // 队列初始化优先级：
 //  1. 如果通过 WithExternalQueue 设置了外部队列，直接使用
 //  2. 如果配置了 JOBDIR，创建磁盘队列
-//  3. 否则仅使用内存队列
+//  3. 如果设置了 memoryQueueThreshold 但无磁盘队列，自动创建临时磁盘队列
+//  4. 否则仅使用内存队列
 func (s *DefaultScheduler) Open(ctx context.Context) error {
 	// Open 在启动阶段调用，无并发，获取两把锁确保安全
 	s.enqueueMu.Lock()
@@ -222,6 +264,29 @@ func (s *DefaultScheduler) Open(ctx context.Context) error {
 				"jobdir", s.jobDir,
 			)
 		}
+	} else if s.memoryQueueThreshold > 0 {
+		// 设置了内存队列阈值但未配置磁盘队列，自动创建临时目录
+		tmpDir, err := os.MkdirTemp("", "scrapy-go-overflow-*")
+		if err != nil {
+			return fmt.Errorf("failed to create temp dir for overflow queue: %w", err)
+		}
+		s.tempDir = tmpDir
+		s.ownsTempDir = true
+
+		queueDir := filepath.Join(tmpDir, "requests.queue")
+		dq, err := NewDiskQueue(queueDir)
+		if err != nil {
+			os.RemoveAll(tmpDir)
+			s.tempDir = ""
+			s.ownsTempDir = false
+			return fmt.Errorf("failed to open overflow disk queue: %w", err)
+		}
+		s.dq = dq
+
+		s.logger.Info("memory queue overflow protection enabled",
+			"threshold", s.memoryQueueThreshold,
+			"overflow_dir", tmpDir,
+		)
 	}
 
 	return s.dupeFilter.Open(ctx)
@@ -229,6 +294,7 @@ func (s *DefaultScheduler) Open(ctx context.Context) error {
 
 // Close 关闭调度器。
 // 如果启用了磁盘队列，会持久化队列状态和 DupeFilter 状态。
+// 如果使用了自动创建的临时磁盘队列目录，会在关闭后清理。
 func (s *DefaultScheduler) Close(ctx context.Context, reason string) error {
 	// Close 在关闭阶段调用，获取两把锁确保安全
 	s.enqueueMu.Lock()
@@ -248,6 +314,23 @@ func (s *DefaultScheduler) Close(ctx context.Context, reason string) error {
 		}
 	}
 
+	// 清理自动创建的临时目录
+	if s.ownsTempDir && s.tempDir != "" {
+		if err := os.RemoveAll(s.tempDir); err != nil {
+			s.logger.Error("failed to cleanup temp overflow dir",
+				"dir", s.tempDir,
+				"error", err,
+			)
+			if firstErr == nil {
+				firstErr = err
+			}
+		} else {
+			s.logger.Debug("cleaned up temp overflow dir", "dir", s.tempDir)
+		}
+		s.tempDir = ""
+		s.ownsTempDir = false
+	}
+
 	// 关闭去重过滤器
 	if err := s.dupeFilter.Close(reason); err != nil {
 		if firstErr == nil {
@@ -263,7 +346,10 @@ func (s *DefaultScheduler) Close(ctx context.Context, reason string) error {
 // 处理流程：
 //  1. 如果请求未设置 DontFilter，通过 DupeFilter 检查是否重复
 //  2. 如果是重复请求，记录统计并返回 false
-//  3. 如果启用了磁盘队列，尝试序列化并存入磁盘队列
+//  3. 如果启用了磁盘队列：
+//     a. 未设置内存阈值：所有可序列化请求优先存入磁盘队列（原有行为）
+//     b. 设置了内存阈值且未超阈值：存入内存队列
+//     c. 设置了内存阈值且已超阈值：溢出到磁盘队列
 //  4. 如果序列化失败或未启用磁盘队列，存入入队缓冲区（inBuffer）
 //  5. 记录统计并返回 true
 //
@@ -284,20 +370,25 @@ func (s *DefaultScheduler) EnqueueRequest(request *shttp.Request) bool {
 		return false
 	}
 
-	// 尝试存入磁盘队列
+	// 判断是否需要溢出到磁盘队列
 	if s.dq != nil {
-		if s.enqueueToDisk(request) {
-			s.pendingCount.Add(1)
-			s.stats.IncValue("scheduler/enqueued", 1, 0)
-			s.stats.IncValue("scheduler/enqueued/disk", 1, 0)
-			return true
+		if s.shouldOverflowToDisk() {
+			// 内存队列已超阈值（或未设置阈值时的原有行为），溢出到磁盘
+			if s.enqueueToDisk(request) {
+				s.pendingCount.Add(1)
+				s.stats.IncValue("scheduler/enqueued", 1, 0)
+				s.stats.IncValue("scheduler/enqueued/disk", 1, 0)
+				s.stats.IncValue("scheduler/overflow_to_disk", 1, 0)
+				return true
+			}
+			// 序列化失败，回退到内存队列
 		}
-		// 序列化失败，回退到内存队列
 	}
 
 	// 存入入队缓冲区
 	s.inBuffer.Push(request)
 	s.pendingCount.Add(1)
+	s.memoryCount.Add(1)
 	s.stats.IncValue("scheduler/enqueued", 1, 0)
 	s.stats.IncValue("scheduler/enqueued/memory", 1, 0)
 
@@ -320,6 +411,7 @@ func (s *DefaultScheduler) NextRequest() *shttp.Request {
 	request := s.outQueue.Pop()
 	if request != nil {
 		s.pendingCount.Add(-1)
+		s.memoryCount.Add(-1)
 		s.stats.IncValue("scheduler/dequeued", 1, 0)
 		s.stats.IncValue("scheduler/dequeued/memory", 1, 0)
 		return request
@@ -337,6 +429,7 @@ func (s *DefaultScheduler) NextRequest() *shttp.Request {
 	request = s.outQueue.Pop()
 	if request != nil {
 		s.pendingCount.Add(-1)
+		s.memoryCount.Add(-1)
 		s.stats.IncValue("scheduler/dequeued", 1, 0)
 		s.stats.IncValue("scheduler/dequeued/memory", 1, 0)
 		return request
@@ -382,9 +475,37 @@ func (s *DefaultScheduler) HasExternalQueue() bool {
 	return s.dq != nil
 }
 
+// MemoryQueueLen 返回当前内存队列中的请求数量。
+// 用于监控和调试内存队列溢出保护的工作状态。
+func (s *DefaultScheduler) MemoryQueueLen() int {
+	return int(s.memoryCount.Load())
+}
+
+// MemoryQueueThreshold 返回配置的内存队列阈值。
+// 返回 0 表示未设置阈值（不限制）。
+func (s *DefaultScheduler) MemoryQueueThreshold() int {
+	return s.memoryQueueThreshold
+}
+
 // ============================================================================
 // 内部方法
 // ============================================================================
+
+// shouldOverflowToDisk 判断是否应该将请求溢出到磁盘队列。
+//
+// 决策逻辑：
+//   - 如果未设置内存队列阈值（memoryQueueThreshold == 0），始终溢出（保持原有行为）
+//   - 如果设置了阈值，仅当内存队列请求数超过阈值时才溢出
+//
+// 调用方必须持有 enqueueMu。
+func (s *DefaultScheduler) shouldOverflowToDisk() bool {
+	if s.memoryQueueThreshold == 0 {
+		// 未设置阈值，保持原有行为：所有可序列化请求优先存入磁盘队列
+		return true
+	}
+	// 设置了阈值，仅当内存队列超过阈值时溢出
+	return int(s.memoryCount.Load()) >= s.memoryQueueThreshold
+}
 
 // enqueueToDisk 尝试将请求序列化并存入磁盘队列。
 // 返回 true 表示成功，false 表示序列化失败。
