@@ -1135,6 +1135,19 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+### v1.2.0 🎉
+
+> **Post-v1.0 Sprint 13 生产增强 — P5-012 分布式限速器**
+
+- ⏱️ **P5-012 分布式限速器** — `contrib/ratelimit` 独立模块，基于 Redis 滑动窗口算法实现多实例全局速率控制
+- 🎯 **RateLimiter 接口** — `Allow(domain) bool` 非阻塞检查 + `Wait(ctx, domain) error` 阻塞等待
+- 🔧 **Redis Lua 脚本原子操作** — 滑动窗口移除过期记录 → 计数 → 添加新记录，无竞态条件
+- 🌐 **按域名差异化限速** — `DomainRates` 配置允许为特定域名设置独立速率
+- 🔌 **RateLimitExtension** — 监听 `RequestReachedDownloader` 信号自动限速，可注册到 Crawler 扩展系统
+- 🛡️ **优雅降级** — Redis 不可用时自动允许所有请求通过，不阻塞爬虫运行
+- 🔗 **共享连接** — `NewRedisSlidingWindowLimiterFromClient` 支持与 `contrib/redisqueue` 复用 Redis 连接
+- 🧪 **测试覆盖率 88.0%** — 27 个测试全部通过，`go test -race` 竞态检测通过
+
 
 ### v1.1.2 🎉
 
