@@ -50,15 +50,23 @@ func (s *Server) handleListSpiders(w http.ResponseWriter, r *http.Request) {
 
 // startSpiderRequest 是启动 Spider 的请求体。
 type startSpiderRequest struct {
-	// Settings 是可选的 Spider 级别配置覆盖（预留，Phase 1 暂不实现）
-	Settings map[string]any `json:"settings,omitempty"`
+	// Args 是用户自定义的启动项参数。
+	// 这些参数会以 PriorityCmdline（最高优先级）注入到 Crawler 的 Settings 中，
+	// 覆盖所有其他级别的同名配置（包括 Spider.CustomSettings）。
+	//
+	// 常见用途：
+	//   - 覆盖并发数：{"CONCURRENT_REQUESTS": 4}
+	//   - 设置下载延迟：{"DOWNLOAD_DELAY": "1s"}
+	//   - 传递自定义业务参数：{"target_category": "electronics", "max_pages": 10}
+	Args map[string]any `json:"args,omitempty"`
 }
 
 // startSpiderResponse 是启动 Spider 的响应数据。
 type startSpiderResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	StartTime time.Time `json:"start_time"`
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	StartTime time.Time      `json:"start_time"`
+	Args      map[string]any `json:"args,omitempty"`
 }
 
 // handleStartSpider 处理 POST /api/spiders/{name}/start — 按名称启动一个 Spider。
@@ -66,12 +74,30 @@ type startSpiderResponse struct {
 // 路径参数：
 //   - name: Spider 注册名称
 //
+// 请求体（可选，JSON）：
+//
+//	{
+//	  "args": {
+//	    "CONCURRENT_REQUESTS": 4,
+//	    "DOWNLOAD_DELAY": "1s",
+//	    "target_category": "electronics"
+//	  }
+//	}
+//
+// args 中的参数会以最高优先级（PriorityCmdline）注入到 Crawler 的 Settings 中，
+// 覆盖所有其他级别的同名配置。可用于传递框架配置覆盖或自定义业务参数。
+//
 // 响应示例：
 //
 //	{
 //	  "code": 200,
 //	  "message": "spider started",
-//	  "data": {"id": "quotes-1", "name": "quotes", "start_time": "2026-05-13T12:00:00Z"}
+//	  "data": {
+//	    "id": "quotes-1",
+//	    "name": "quotes",
+//	    "start_time": "2026-05-13T12:00:00Z",
+//	    "args": {"CONCURRENT_REQUESTS": 4, "target_category": "electronics"}
+//	  }
 //	}
 func (s *Server) handleStartSpider(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -92,7 +118,21 @@ func (s *Server) handleStartSpider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := s.startSpider(r.Context(), name)
+	// 解析可选的请求体，提取启动项参数
+	var args map[string]any
+	if r.Body != nil && r.ContentLength != 0 {
+		var req startSpiderRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, apiResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid request body: " + err.Error(),
+			})
+			return
+		}
+		args = req.Args
+	}
+
+	id, err := s.startSpider(r.Context(), name, args)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse{
 			Code:    http.StatusInternalServerError,
@@ -108,6 +148,7 @@ func (s *Server) handleStartSpider(w http.ResponseWriter, r *http.Request) {
 			ID:        id,
 			Name:      name,
 			StartTime: time.Now(),
+			Args:      args,
 		},
 	})
 }
@@ -184,6 +225,7 @@ func (s *Server) handleStopSpider(w http.ResponseWriter, r *http.Request) {
 //	      "name": "quotes",
 //	      "start_time": "2026-05-13T12:00:00Z",
 //	      "running": true,
+//	      "args": {"CONCURRENT_REQUESTS": 4, "target_category": "electronics"},
 //	      "stats": {"item_scraped_count": 42, "request_count": 100}
 //	    }
 //	  ]

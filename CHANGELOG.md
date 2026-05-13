@@ -5,6 +5,42 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.2.0-alpha.3] — 2026-05-13
+
+> **🎯 Post-v1.0 生态完善 — P5-005 Phase 1 REST API 启动项参数注入增强**
+>
+> v1.2.0-alpha.3 在 alpha.2 基础上新增：
+> - `POST /api/spiders/:name/start` 支持 JSON 请求体传入启动项参数（`args`）✅
+> - 启动项参数以 `PriorityCmdline`（最高优先级）注入 Crawler Settings ✅
+> - `GET /api/spiders/:name/stats` 响应中同步返回对应任务的启动项参数 ✅
+
+### 新增
+
+#### P5-005 Phase 1 增强：启动项参数注入
+
+> **REST API 启动端点支持用户自定义参数，覆盖爬虫配置并在状态查询中回显**
+
+- 🎯 **启动项参数** — `POST /api/spiders/:name/start` 支持可选 JSON 请求体（`contrib/web/handler.go`）
+  - 新增 `args` 字段（`map[string]any`），支持传入框架配置覆盖和自定义业务参数
+  - 参数以 `PriorityCmdline`（最高优先级 40）注入 Crawler 的 `Settings`，覆盖所有其他级别配置
+  - 向后兼容：无请求体或空请求体时行为不变
+  - 启动响应中回显传入的 `args`
+
+- 📊 **状态查询回显** — `GET /api/spiders/:name/stats` 响应中包含启动项参数（`contrib/web/server.go`）
+  - `SpiderStats` 新增 `Args` 字段（`json:"args,omitempty"`）
+  - `runningSpider` 内部保存启动时传入的 `args`，在统计查询和全局统计中返回
+  - 无启动项时 `args` 字段省略（`omitempty`）
+
+- ✅ **测试覆盖** — 新增 6 个测试用例，总计 42 个测试全部通过，覆盖率 86.0%，`go test -race` 通过
+  - `TestHandleStartSpider_WithArgs` — 验证带参数启动及响应回显
+  - `TestHandleStartSpider_WithEmptyArgs` — 验证空参数处理
+  - `TestHandleStartSpider_WithInvalidBody` — 验证无效 JSON 请求体返回 400
+  - `TestHandleGetStats_WithArgs` — 验证统计查询中包含启动项参数
+  - `TestHandleGetStats_WithoutArgs` — 验证无参数时 args 字段省略
+  - `TestIntegration_StartWithArgsAndCheckStats` — 端到端集成测试
+
+---
+
 ## [v1.2.0-alpha.2] — 2026-05-13
 
 > **🌐 Post-v1.0 生态完善 — Sprint 12 P5-005 Phase 1 Web 可视化管理平台 REST API**

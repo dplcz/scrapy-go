@@ -12,6 +12,7 @@
 - 🕷️ **Spider 注册表** — 按名称注册工厂函数，支持动态创建 Spider 实例
 - 🚀 **多实例并发** — 同名 Spider 可启动多个实例，每个实例独立运行
 - 📊 **统计查询** — 实时获取运行中 Spider 的统计数据
+- 🎯 **启动项参数** — 启动 Spider 时可传入自定义 JSON 参数，以最高优先级注入 Crawler Settings
 - 🔄 **自动清理** — Spider 完成后自动从运行列表中移除
 - 🛡️ **独立子模块** — 不引入 `contrib/web` 时，主模块编译产物不包含 Web 相关代码
 
@@ -92,6 +93,21 @@ func main() {
 
 按名称启动一个 Spider。每次调用创建新的 Crawler + Spider 实例。
 
+**请求体（可选，JSON）：**
+
+```json
+{
+  "args": {
+    "CONCURRENT_REQUESTS": 4,
+    "DOWNLOAD_DELAY": "1s",
+    "target_category": "electronics",
+    "max_pages": 10
+  }
+}
+```
+
+`args` 中的参数会以最高优先级（`PriorityCmdline`）注入到 Crawler 的 Settings 中，覆盖所有其他级别的同名配置（包括 Spider.CustomSettings）。可用于传递框架配置覆盖或自定义业务参数。
+
 **响应示例：**
 
 ```json
@@ -101,7 +117,8 @@ func main() {
   "data": {
     "id": "quotes-1",
     "name": "quotes",
-    "start_time": "2026-05-13T12:00:00Z"
+    "start_time": "2026-05-13T12:00:00Z",
+    "args": {"CONCURRENT_REQUESTS": 4, "target_category": "electronics"}
   }
 }
 ```
@@ -138,6 +155,7 @@ func main() {
       "name": "quotes",
       "start_time": "2026-05-13T12:00:00Z",
       "running": true,
+      "args": {"CONCURRENT_REQUESTS": 4, "target_category": "electronics"},
       "stats": {
         "item_scraped_count": 42,
         "request_count": 100,
@@ -147,6 +165,8 @@ func main() {
   ]
 }
 ```
+
+> `args` 字段仅在启动时传入了参数时才会出现。
 
 ### GET /api/health
 

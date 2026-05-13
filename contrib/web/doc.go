@@ -15,9 +15,9 @@
 //   - GET    /api/spiders              — 获取已注册的 Spider 列表及运行状态
 //   - POST   /api/spiders/register     — 通过声明式配置动态注册 Spider（预留，P5-005h 实现）
 //   - DELETE /api/spiders/:name        — 注销已注册的 Spider
-//   - POST   /api/spiders/:name/start  — 按名称启动一个 Spider
+//   - POST   /api/spiders/:name/start  — 按名称启动一个 Spider（支持 JSON 请求体传入启动项参数）
 //   - POST   /api/spiders/:name/stop   — 按名称停止一个正在运行的 Spider
-//   - GET    /api/spiders/:name/stats  — 获取指定 Spider 的统计数据
+//   - GET    /api/spiders/:name/stats  — 获取指定 Spider 的统计数据（含启动项参数）
 //   - GET    /api/health               — 健康检查
 //
 // # 使用方式

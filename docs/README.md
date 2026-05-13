@@ -1146,6 +1146,14 @@ scrapy-go/
 - ⚙️ **11 个新增配置项** — 退避策略（`RETRY_BACKOFF_*`）+ 熔断器（`CIRCUIT_BREAKER_*`）
 - 🧪 **测试覆盖率 89.1%** — 中间件包 153 个测试全部通过，`go test -race` 竞态检测通过
 
+### v1.2.0-alpha.3
+
+> **Post-v1.0 P5-005 Phase 1 增强 — REST API 启动项参数注入**
+
+- 🎯 **启动项参数注入** — `POST /api/spiders/:name/start` 支持 JSON 请求体传入 `args` 参数，以 `PriorityCmdline` 最高优先级注入 Crawler Settings
+- 📊 **状态查询回显** — `GET /api/spiders/:name/stats` 响应中同步返回对应任务的启动项参数
+- 🧪 **测试覆盖率 86.0%** — 42 个测试全部通过（新增 6 个 args 相关测试），`go test -race` 竞态检测通过
+
 ### v1.2.0-alpha.2
 
 > **Post-v1.0 Sprint 12 P5-005 Phase 1 — Web 可视化管理平台 REST API**

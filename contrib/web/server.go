@@ -11,6 +11,7 @@ import (
 
 	"github.com/dplcz/scrapy-go/pkg/crawler"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
+	"github.com/dplcz/scrapy-go/pkg/settings"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
@@ -31,6 +32,11 @@ type runningSpider struct {
 
 	// startTime 是启动时间
 	startTime time.Time
+
+	// args 是用户通过 REST API 传入的启动项参数。
+	// 这些参数会以 PriorityCmdline 优先级注入到 Crawler 的 Settings 中，
+	// 覆盖所有其他级别的同名配置。
+	args map[string]any
 
 	// done 在爬虫完成时关闭
 	done <-chan error
@@ -187,7 +193,11 @@ func (s *Server) Close() error {
 // ============================================================================
 
 // startSpider 启动指定名称的 Spider，返回运行 ID。
-func (s *Server) startSpider(ctx context.Context, name string) (string, error) {
+//
+// args 是用户通过 REST API 传入的可选启动项参数。
+// 非 nil 的 args 会以 PriorityCmdline（最高优先级）注入到 Crawler 的 Settings 中，
+// 覆盖所有其他级别的同名配置（包括 Spider.CustomSettings）。
+func (s *Server) startSpider(ctx context.Context, name string, args map[string]any) (string, error) {
 	factory, configurator, ok := s.registry.Get(name)
 	if !ok {
 		return "", fmt.Errorf("spider %q not registered", name)
@@ -206,6 +216,13 @@ func (s *Server) startSpider(ctx context.Context, name string) (string, error) {
 		configurator(&crawlerConfigAdapter{c: c})
 	}
 
+	// 注入用户通过 REST API 传入的启动项参数
+	if len(args) > 0 {
+		if err := c.Settings.Update(args, settings.PriorityCmdline); err != nil {
+			return "", fmt.Errorf("failed to apply args to settings: %w", err)
+		}
+	}
+
 	// 生成唯一运行 ID
 	s.mu.Lock()
 	s.idCounter++
@@ -221,6 +238,7 @@ func (s *Server) startSpider(ctx context.Context, name string) (string, error) {
 		crawler:   c,
 		spider:    sp,
 		startTime: time.Now(),
+		args:      args,
 		done:      done,
 	}
 
@@ -288,6 +306,7 @@ func (s *Server) getSpiderStats(name string) ([]SpiderStats, error) {
 				Name:      rs.name,
 				StartTime: rs.startTime,
 				Running:   rs.crawler.IsCrawling(),
+				Args:      rs.args,
 			}
 			if rs.crawler.Stats != nil {
 				st.Stats = rs.crawler.Stats.GetStats()
@@ -345,6 +364,7 @@ type SpiderStats struct {
 	Name      string         `json:"name"`
 	StartTime time.Time      `json:"start_time"`
 	Running   bool           `json:"running"`
+	Args      map[string]any `json:"args,omitempty"`
 	Stats     map[string]any `json:"stats,omitempty"`
 }
 
@@ -399,6 +419,7 @@ func (s *Server) getAllStats() []SpiderStats {
 			Name:      rs.name,
 			StartTime: rs.startTime,
 			Running:   rs.crawler.IsCrawling(),
+			Args:      rs.args,
 		}
 		if rs.crawler.Stats != nil {
 			st.Stats = rs.crawler.Stats.GetStats()

@@ -207,6 +207,11 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 
 // injectRunningSpider 向 Server 注入一个模拟的运行中 Spider（用于测试 API 行为）。
 func injectRunningSpider(s *Server, id, name string) {
+	injectRunningSpiderWithArgs(s, id, name, nil)
+}
+
+// injectRunningSpiderWithArgs 向 Server 注入一个带启动项的模拟运行中 Spider。
+func injectRunningSpiderWithArgs(s *Server, id, name string, args map[string]any) {
 	c := crawler.NewDefault()
 	sp := newTestSpider()
 	sc := stats.NewMemoryCollector(false, nil)
@@ -223,6 +228,7 @@ func injectRunningSpider(s *Server, id, name string) {
 		crawler:   c,
 		spider:    sp,
 		startTime: time.Now(),
+		args:      args,
 		done:      done,
 	}
 	s.mu.Unlock()
@@ -367,6 +373,10 @@ func TestHandleStartSpider_Success(t *testing.T) {
 	}
 	if data["id"] == nil || data["id"] == "" {
 		t.Fatal("expected non-empty id")
+	}
+	// 无请求体时，响应不应包含 args
+	if data["args"] != nil {
+		t.Fatalf("expected no args in response, got %v", data["args"])
 	}
 }
 
@@ -828,6 +838,183 @@ func TestIntegration_StartAndAutoCleanup(t *testing.T) {
 	id := data["id"].(string)
 	if id == "" {
 		t.Fatal("expected non-empty id")
+	}
+
+	// 等待 Spider 完成并被自动清理
+	time.Sleep(500 * time.Millisecond)
+
+	// 验证 Spider 已从 running 列表中移除
+	srv.mu.RLock()
+	_, exists := srv.running[id]
+	srv.mu.RUnlock()
+	if exists {
+		t.Fatal("expected spider to be removed from running list after completion")
+	}
+}
+
+// ============================================================================
+// 启动项参数 (args) 测试
+// ============================================================================
+
+func TestHandleStartSpider_WithArgs(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("test", newTestSpider)
+
+	body := `{"args": {"CONCURRENT_REQUESTS": 4, "target_category": "electronics", "max_pages": 10}}`
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/test/start", body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if result.Message != "spider started" {
+		t.Fatalf("expected message 'spider started', got %q", result.Message)
+	}
+
+	data, ok := result.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected data to be object, got %T", result.Data)
+	}
+
+	// 验证响应中包含 args
+	argsData, ok := data["args"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected args to be object, got %T", data["args"])
+	}
+	if argsData["CONCURRENT_REQUESTS"].(float64) != 4 {
+		t.Fatalf("expected CONCURRENT_REQUESTS 4, got %v", argsData["CONCURRENT_REQUESTS"])
+	}
+	if argsData["target_category"] != "electronics" {
+		t.Fatalf("expected target_category 'electronics', got %v", argsData["target_category"])
+	}
+	if argsData["max_pages"].(float64) != 10 {
+		t.Fatalf("expected max_pages 10, got %v", argsData["max_pages"])
+	}
+}
+
+func TestHandleStartSpider_WithEmptyArgs(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("test", newTestSpider)
+
+	body := `{"args": {}}`
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/test/start", body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	data, _ := result.Data.(map[string]any)
+	// 空 args 应被省略（omitempty）
+	if data["args"] != nil {
+		// JSON 反序列化后空 map 可能是 nil 或空 map，两者都可接受
+		if argsMap, ok := data["args"].(map[string]any); ok && len(argsMap) > 0 {
+			t.Fatalf("expected empty or nil args, got %v", data["args"])
+		}
+	}
+}
+
+func TestHandleStartSpider_WithInvalidBody(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("test", newTestSpider)
+
+	body := `{invalid json}`
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/test/start", body)
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "invalid request body") {
+		t.Fatalf("expected 'invalid request body' in message, got %q", result.Message)
+	}
+}
+
+func TestHandleGetStats_WithArgs(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("quotes", newTestSpider)
+
+	args := map[string]any{
+		"CONCURRENT_REQUESTS": 4,
+		"target_category":     "electronics",
+	}
+	injectRunningSpiderWithArgs(srv, "quotes-1", "quotes", args)
+	defer removeInjectedSpider(srv, "quotes-1")
+
+	resp, result := doRequest(t, "GET", ts.URL+"/api/spiders/quotes/stats", "")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	data, ok := result.Data.([]any)
+	if !ok {
+		t.Fatalf("expected data to be array, got %T", result.Data)
+	}
+	if len(data) != 1 {
+		t.Fatalf("expected 1 stats entry, got %d", len(data))
+	}
+
+	entry, ok := data[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected entry to be object, got %T", data[0])
+	}
+
+	// 验证 args 存在于统计响应中
+	argsData, ok := entry["args"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected args to be object, got %T", entry["args"])
+	}
+	if argsData["CONCURRENT_REQUESTS"].(float64) != 4 {
+		t.Fatalf("expected CONCURRENT_REQUESTS 4, got %v", argsData["CONCURRENT_REQUESTS"])
+	}
+	if argsData["target_category"] != "electronics" {
+		t.Fatalf("expected target_category 'electronics', got %v", argsData["target_category"])
+	}
+}
+
+func TestHandleGetStats_WithoutArgs(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("quotes", newTestSpider)
+	injectRunningSpider(srv, "quotes-1", "quotes")
+	defer removeInjectedSpider(srv, "quotes-1")
+
+	resp, result := doRequest(t, "GET", ts.URL+"/api/spiders/quotes/stats", "")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	data, _ := result.Data.([]any)
+	entry, _ := data[0].(map[string]any)
+
+	// 无 args 时，响应中不应包含 args 字段
+	if entry["args"] != nil {
+		t.Fatalf("expected no args in stats response, got %v", entry["args"])
+	}
+}
+
+func TestIntegration_StartWithArgsAndCheckStats(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("quick", newTestSpider)
+
+	// 带 args 启动 Spider
+	body := `{"args": {"DOWNLOAD_DELAY": "1s", "custom_param": "hello"}}`
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/quick/start", body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	startData, _ := result.Data.(map[string]any)
+	id := startData["id"].(string)
+
+	// 验证启动响应包含 args
+	startArgs, ok := startData["args"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected args in start response, got %T", startData["args"])
+	}
+	if startArgs["DOWNLOAD_DELAY"] != "1s" {
+		t.Fatalf("expected DOWNLOAD_DELAY '1s', got %v", startArgs["DOWNLOAD_DELAY"])
+	}
+	if startArgs["custom_param"] != "hello" {
+		t.Fatalf("expected custom_param 'hello', got %v", startArgs["custom_param"])
 	}
 
 	// 等待 Spider 完成并被自动清理
