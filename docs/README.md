@@ -1146,6 +1146,16 @@ scrapy-go/
 - ⚙️ **11 个新增配置项** — 退避策略（`RETRY_BACKOFF_*`）+ 熔断器（`CIRCUIT_BREAKER_*`）
 - 🧪 **测试覆盖率 89.1%** — 中间件包 153 个测试全部通过，`go test -race` 竞态检测通过
 
+### v1.2.0-alpha.2
+
+> **Post-v1.0 Sprint 12 P5-005 Phase 1 — Web 可视化管理平台 REST API**
+
+- 🌐 **P5-005 Web 管理服务器** — `contrib/web` 独立模块，基于标准库 `net/http` 实现零外部依赖 REST API
+- 🕷️ **Spider 注册表** — 按名称注册工厂函数，支持动态创建 Spider 实例，可选 Crawler 配置回调
+- 📡 **REST API 端点** — `GET /api/spiders` / `POST /api/spiders/:name/start` / `POST /api/spiders/:name/stop` / `GET /api/spiders/:name/stats` / `GET /api/health`
+- 🔄 **多实例支持** — 同名 Spider 可启动多个独立实例，支持按名称批量停止或按 ID 精确停止
+- 🧪 **测试覆盖率 85.3%** — 32 个测试全部通过，`go test -race` 竞态检测通过
+
 ### v1.2.0-alpha.1
 
 > **Post-v1.0 Sprint 12 P5-008 — Redis 去重 Pipeline 批量优化**

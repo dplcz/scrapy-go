@@ -5,6 +5,48 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.2.0-alpha.2] — 2026-05-13
+
+> **🌐 Post-v1.0 生态完善 — Sprint 12 P5-005 Phase 1 Web 可视化管理平台 REST API**
+>
+> v1.2.0-alpha.2 在 alpha.1 基础上新增：
+> - P5-005 Phase 1 轻量级 REST API（`contrib/web` 独立模块）✅
+
+### 新增
+
+#### P5-005 Phase 1：轻量级 REST API（Sprint 12）
+
+> **Post-v1.0 生态完善 — 基于标准库 net/http 的零外部依赖 Web 管理 API**
+
+##### P5-005a：HTTP Server + Spider 注册表
+
+- 🌐 **Web 管理服务器** — 新增 `contrib/web/` 独立 Go 子模块（`contrib/web/server.go`）
+  - 基于 Go 标准库 `net/http.ServeMux` 实现路由，零外部 Web 框架依赖
+  - 内部使用 `crawler.Runner` 管理多爬虫并发执行，复用框架已有的生命周期管理
+  - 支持 `context.Context` 驱动的优雅关闭（HTTP 服务器 + 所有运行中 Spider）
+  - Functional Options 模式：`WithLogger` / `WithRunner` / `WithRegistry`
+
+- 🕷️ **Spider 注册表** — 新增 `Registry`（`contrib/web/registry.go`）
+  - 按名称注册 `SpiderFactory` 工厂函数，每次启动创建全新 Spider + Crawler 实例
+  - 可选 `CrawlerConfigurator` 回调，在启动前为 Crawler 注册 Pipeline、扩展等
+  - 线程安全：所有操作通过 `sync.RWMutex` 保护
+
+##### P5-005b：REST API Handlers
+
+- 📡 **REST API 端点** — 4 个核心端点 + 1 个健康检查（`contrib/web/handler.go`）
+  - `GET /api/spiders` — 获取已注册 Spider 列表及运行实例数
+  - `POST /api/spiders/:name/start` — 按名称启动 Spider，返回唯一运行 ID
+  - `POST /api/spiders/:name/stop` — 按名称或 ID 停止 Spider
+  - `GET /api/spiders/:name/stats` — 获取指定 Spider 的运行统计数据
+  - `GET /api/health` — 健康检查
+
+##### P5-005c：集成测试 + 使用文档
+
+- ✅ **测试覆盖** — 32 个测试全部通过，覆盖率 85.3%，`go test -race` 通过
+- 📖 **使用文档** — `contrib/web/README.md`
+
+---
+
 ## [v1.2.0-alpha.1] — 2026-05-13
 
 > **🚀 Post-v1.0 生产增强 — Sprint 12 P5-008 Redis 去重 Pipeline 批量优化**
