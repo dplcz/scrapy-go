@@ -133,3 +133,120 @@ func (r *Registry) MustGet(name string) SpiderFactory {
 	}
 	return factory
 }
+
+// ============================================================================
+// 声明式 Spider 配置（预留 — P5-005h 实现）
+// ============================================================================
+
+// SpiderSpec 是声明式 Spider 配置，通过 JSON 描述爬取规则。
+//
+// 用户通过 POST /api/spiders/register 提交 SpiderSpec，
+// 框架将其转换为 CrawlSpider + Rule 实例并注册到 Registry。
+// 无需编写 Go 代码，覆盖 80% 的常见爬取场景（列表页 → 详情页模式）。
+//
+// 预留结构体，完整实现将在 P5-005h（声明式 Spider 配置引擎）中交付。
+type SpiderSpec struct {
+	// Name 是 Spider 的唯一标识名称（必填）。
+	Name string `json:"name"`
+
+	// StartURLs 是初始爬取 URL 列表（必填，至少一个）。
+	StartURLs []string `json:"start_urls"`
+
+	// AllowedDomains 是允许爬取的域名列表（可选）。
+	// 为空时允许所有域名。
+	AllowedDomains []string `json:"allowed_domains,omitempty"`
+
+	// Rules 是爬取规则列表（可选）。
+	// 每条规则定义一个链接提取器和对应的处理方式。
+	// 映射到 CrawlSpider.Rules。
+	Rules []RuleSpec `json:"rules,omitempty"`
+
+	// ItemSchemas 定义每个回调名称对应的 Item 提取规则（可选）。
+	// key 是回调名称（对应 RuleSpec.Callback），value 是字段提取规则。
+	// 框架根据 schema 自动从响应中提取数据并生成 Item。
+	ItemSchemas map[string]ItemSchema `json:"item_schemas,omitempty"`
+
+	// Settings 是可选的 Spider 级别配置覆盖。
+	// key 是配置项名称（如 "CONCURRENT_REQUESTS"），value 是配置值。
+	Settings map[string]any `json:"settings,omitempty"`
+}
+
+// RuleSpec 是声明式爬取规则，映射到 spider.Rule。
+type RuleSpec struct {
+	// LinkExtractor 定义链接提取器的配置。
+	// 映射到 linkextractor.HTMLLinkExtractor 的选项。
+	LinkExtractor LinkExtractorSpec `json:"link_extractor"`
+
+	// Callback 是匹配链接的回调名称（可选）。
+	// 对应 ItemSchemas 中的 key，框架根据 schema 自动提取 Item。
+	// 为空时仅跟踪链接，不提取数据。
+	Callback string `json:"callback,omitempty"`
+
+	// Follow 控制是否从匹配此规则的响应中继续提取链接（可选）。
+	// 为 nil 时：有 Callback 默认 false，无 Callback 默认 true。
+	Follow *bool `json:"follow,omitempty"`
+}
+
+// LinkExtractorSpec 是声明式链接提取器配置，映射到 HTMLLinkExtractor 选项。
+type LinkExtractorSpec struct {
+	// Allow 是允许的 URL 正则表达式列表。
+	// 映射到 linkextractor.WithAllow()。
+	Allow []string `json:"allow,omitempty"`
+
+	// Deny 是拒绝的 URL 正则表达式列表。
+	// 映射到 linkextractor.WithDeny()。
+	Deny []string `json:"deny,omitempty"`
+
+	// AllowDomains 是允许的域名列表。
+	// 映射到 linkextractor.WithAllowDomains()。
+	AllowDomains []string `json:"allow_domains,omitempty"`
+
+	// DenyDomains 是拒绝的域名列表。
+	// 映射到 linkextractor.WithDenyDomains()。
+	DenyDomains []string `json:"deny_domains,omitempty"`
+
+	// RestrictCSS 是限制链接提取范围的 CSS 选择器列表。
+	// 映射到 linkextractor.WithRestrictCSS()。
+	RestrictCSS []string `json:"restrict_css,omitempty"`
+
+	// RestrictXPath 是限制链接提取范围的 XPath 表达式列表。
+	// 映射到 linkextractor.WithRestrictXPath()。
+	RestrictXPath []string `json:"restrict_xpath,omitempty"`
+
+	// Tags 是要提取链接的 HTML 标签列表（默认 ["a", "area"]）。
+	// 映射到 linkextractor.WithTags()。
+	Tags []string `json:"tags,omitempty"`
+
+	// Attrs 是要提取链接的 HTML 属性列表（默认 ["href"]）。
+	// 映射到 linkextractor.WithAttrs()。
+	Attrs []string `json:"attrs,omitempty"`
+}
+
+// ItemSchema 定义一个 Item 的字段提取规则。
+// key 是字段名称，value 是提取规则。
+type ItemSchema map[string]FieldExtractor
+
+// FieldExtractor 定义单个字段的提取方式。
+// CSS 和 XPath 二选一；Value 用于特殊值（如 "_response_url"）。
+type FieldExtractor struct {
+	// CSS 是 CSS 选择器表达式（与 XPath 二选一）。
+	// 支持 ::text 和 ::attr(name) 伪元素。
+	CSS string `json:"css,omitempty"`
+
+	// XPath 是 XPath 表达式（与 CSS 二选一）。
+	XPath string `json:"xpath,omitempty"`
+
+	// Value 是特殊值标识（可选）。
+	// 支持的特殊值：
+	//   - "_response_url": 当前响应的 URL
+	//   - "_timestamp": 当前时间戳
+	//   - 其他字符串: 作为字面量值
+	Value string `json:"value,omitempty"`
+
+	// Regex 是对提取结果进行正则匹配的表达式（可选）。
+	// 应用于 CSS/XPath 提取的结果之上。
+	Regex string `json:"regex,omitempty"`
+
+	// Default 是提取失败时的默认值（可选）。
+	Default string `json:"default,omitempty"`
+}

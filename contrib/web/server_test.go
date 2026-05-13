@@ -556,6 +556,136 @@ func TestHandleHealth_WithRunning(t *testing.T) {
 }
 
 // ============================================================================
+// 声明式注册端点测试（预留接口）
+// ============================================================================
+
+func TestHandleRegisterSpider_NotImplemented(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	body := `{
+		"name": "quotes",
+		"start_urls": ["https://quotes.toscrape.com"],
+		"allowed_domains": ["quotes.toscrape.com"],
+		"rules": [
+			{
+				"link_extractor": {
+					"allow": ["/page/\\d+"],
+					"restrict_css": ["li.next a"]
+				},
+				"follow": true
+			}
+		],
+		"item_schemas": {
+			"parse_detail": {
+				"title": {"css": "h1::text"},
+				"url": {"value": "_response_url"}
+			}
+		}
+	}`
+
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/register", body)
+
+	if resp.StatusCode != http.StatusNotImplemented {
+		t.Fatalf("expected status 501, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "not yet implemented") {
+		t.Fatalf("expected 'not yet implemented' in message, got %q", result.Message)
+	}
+
+	// 验证返回了解析后的摘要信息
+	data, ok := result.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected data to be object, got %T", result.Data)
+	}
+	if data["name"] != "quotes" {
+		t.Fatalf("expected name 'quotes', got %v", data["name"])
+	}
+	if data["rules_count"].(float64) != 1 {
+		t.Fatalf("expected 1 rule, got %v", data["rules_count"])
+	}
+	if data["schemas_count"].(float64) != 1 {
+		t.Fatalf("expected 1 schema, got %v", data["schemas_count"])
+	}
+}
+
+func TestHandleRegisterSpider_MissingName(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	body := `{"start_urls": ["https://example.com"]}`
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/register", body)
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "name is required") {
+		t.Fatalf("expected 'name is required' in message, got %q", result.Message)
+	}
+}
+
+func TestHandleRegisterSpider_MissingStartURLs(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	body := `{"name": "test"}`
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/register", body)
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "start_url is required") {
+		t.Fatalf("expected 'start_url is required' in message, got %q", result.Message)
+	}
+}
+
+func TestHandleRegisterSpider_InvalidJSON(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/register", "{invalid}")
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "invalid request body") {
+		t.Fatalf("expected 'invalid request body' in message, got %q", result.Message)
+	}
+}
+
+// ============================================================================
+// 注销端点测试
+// ============================================================================
+
+func TestHandleUnregisterSpider_Success(t *testing.T) {
+	srv, ts := newTestServer(t)
+	srv.Register("quotes", newTestSpider)
+
+	resp, result := doRequest(t, "DELETE", ts.URL+"/api/spiders/quotes", "")
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "unregistered") {
+		t.Fatalf("expected 'unregistered' in message, got %q", result.Message)
+	}
+
+	// 验证已从注册表中移除
+	if srv.Registry().Has("quotes") {
+		t.Fatal("expected spider 'quotes' to be unregistered")
+	}
+}
+
+func TestHandleUnregisterSpider_NotFound(t *testing.T) {
+	_, ts := newTestServer(t)
+
+	resp, result := doRequest(t, "DELETE", ts.URL+"/api/spiders/nonexistent", "")
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(result.Message, "not registered") {
+		t.Fatalf("expected 'not registered' in message, got %q", result.Message)
+	}
+}
+
+// ============================================================================
 // Server 生命周期测试
 // ============================================================================
 

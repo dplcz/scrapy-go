@@ -17,6 +17,8 @@ type apiResponse struct {
 // registerRoutes 注册所有 REST API 路由。
 func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/spiders", s.handleListSpiders)
+	mux.HandleFunc("POST /api/spiders/register", s.handleRegisterSpider)
+	mux.HandleFunc("DELETE /api/spiders/{name}", s.handleUnregisterSpider)
 	mux.HandleFunc("POST /api/spiders/{name}/start", s.handleStartSpider)
 	mux.HandleFunc("POST /api/spiders/{name}/stop", s.handleStopSpider)
 	mux.HandleFunc("GET /api/spiders/{name}/stats", s.handleGetStats)
@@ -214,6 +216,145 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 		Code:    http.StatusOK,
 		Message: "ok",
 		Data:    stats,
+	})
+}
+
+// ============================================================================
+// 声明式 Spider 注册（预留接口 — Phase 1.5 实现）
+// ============================================================================
+
+// handleRegisterSpider 处理 POST /api/spiders/register — 通过声明式配置动态注册 Spider。
+//
+// 接收 JSON 格式的 SpiderSpec 配置，将其转换为 CrawlSpider 工厂函数并注册到 Registry。
+// 无需编写 Go 代码，通过 REST API 即可创建基于规则的爬虫。
+//
+// 请求体示例：
+//
+//	{
+//	  "name": "quotes",
+//	  "start_urls": ["https://quotes.toscrape.com"],
+//	  "allowed_domains": ["quotes.toscrape.com"],
+//	  "rules": [
+//	    {
+//	      "link_extractor": {
+//	        "allow": ["/page/\\d+"],
+//	        "restrict_css": ["li.next a"]
+//	      },
+//	      "follow": true
+//	    },
+//	    {
+//	      "link_extractor": {
+//	        "allow": ["/author/"],
+//	        "deny": ["/login"]
+//	      },
+//	      "callback": "parse_detail",
+//	      "follow": false
+//	    }
+//	  ],
+//	  "item_schemas": {
+//	    "parse_detail": {
+//	      "title": {"css": "h1::text"},
+//	      "content": {"xpath": "//div[@class='content']/text()"},
+//	      "url": {"value": "_response_url"}
+//	    }
+//	  },
+//	  "settings": {
+//	    "CONCURRENT_REQUESTS": 8,
+//	    "DOWNLOAD_DELAY": "500ms"
+//	  }
+//	}
+//
+// 响应示例：
+//
+//	{
+//	  "code": 200,
+//	  "message": "spider registered",
+//	  "data": {"name": "quotes", "type": "declarative"}
+//	}
+//
+// Phase 1.5 预留端点：当前返回 501 Not Implemented。
+// 完整实现将在声明式 Spider 配置功能（P5-005h~j）中交付。
+func (s *Server) handleRegisterSpider(w http.ResponseWriter, r *http.Request) {
+	// 解析请求体，验证 SpiderSpec 格式
+	var spec SpiderSpec
+	if err := json.NewDecoder(r.Body).Decode(&spec); err != nil {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	// 基本校验
+	if spec.Name == "" {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Code:    http.StatusBadRequest,
+			Message: "spider name is required",
+		})
+		return
+	}
+	if len(spec.StartURLs) == 0 {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Code:    http.StatusBadRequest,
+			Message: "at least one start_url is required",
+		})
+		return
+	}
+
+	// TODO(P5-005h): 将 SpiderSpec 转换为 CrawlSpider 工厂函数并注册
+	// factory := spec.ToFactory()
+	// s.registry.Register(spec.Name, factory)
+
+	writeJSON(w, http.StatusNotImplemented, apiResponse{
+		Code:    http.StatusNotImplemented,
+		Message: "declarative spider registration is not yet implemented (planned for P5-005h)",
+		Data: map[string]any{
+			"name":          spec.Name,
+			"start_urls":    spec.StartURLs,
+			"rules_count":   len(spec.Rules),
+			"schemas_count": len(spec.ItemSchemas),
+		},
+	})
+}
+
+// handleUnregisterSpider 处理 DELETE /api/spiders/{name} — 注销已注册的 Spider。
+//
+// 路径参数：
+//   - name: Spider 注册名称
+//
+// 注意：如果该 Spider 有正在运行的实例，注销不会停止它们，
+// 但后续无法再通过 start 端点启动新实例。
+//
+// 响应示例：
+//
+//	{
+//	  "code": 200,
+//	  "message": "spider unregistered: quotes"
+//	}
+func (s *Server) handleUnregisterSpider(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Code:    http.StatusBadRequest,
+			Message: "spider name is required",
+		})
+		return
+	}
+
+	if !s.registry.Has(name) {
+		writeJSON(w, http.StatusNotFound, apiResponse{
+			Code:    http.StatusNotFound,
+			Message: "spider not registered: " + name,
+		})
+		return
+	}
+
+	s.registry.Unregister(name)
+	s.logger.Info("spider unregistered", "name", name)
+
+	writeJSON(w, http.StatusOK, apiResponse{
+		Code:    http.StatusOK,
+		Message: "spider unregistered: " + name,
 	})
 }
 
