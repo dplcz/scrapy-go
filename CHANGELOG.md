@@ -5,14 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [v1.2.0-alpha.3] — 2026-05-13
+## [v1.1.2] — 2026-05-13
 
-> **🎯 Post-v1.0 生态完善 — P5-005 Phase 1 REST API 启动项参数注入增强**
+> **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 生态完善**
 >
-> v1.2.0-alpha.3 在 alpha.2 基础上新增：
-> - `POST /api/spiders/:name/start` 支持 JSON 请求体传入启动项参数（`args`）✅
-> - 启动项参数以 `PriorityCmdline`（最高优先级）注入 Crawler Settings ✅
-> - `GET /api/spiders/:name/stats` 响应中同步返回对应任务的启动项参数 ✅
+> v1.1.2 是 scrapy-go 的生态完善版本，包含以下核心交付物：
+> - P5-005 Phase 1 轻量级 REST API（`contrib/web` 独立模块）✅
+> - P5-005 Phase 1 增强：启动项参数注入 + 状态查询回显 ✅
+> - P5-008 Redis 去重 Pipeline 批量优化（`contrib/redisqueue` 性能增强）✅
 
 ### 新增
 
@@ -38,17 +38,6 @@
   - `TestHandleGetStats_WithArgs` — 验证统计查询中包含启动项参数
   - `TestHandleGetStats_WithoutArgs` — 验证无参数时 args 字段省略
   - `TestIntegration_StartWithArgsAndCheckStats` — 端到端集成测试
-
----
-
-## [v1.2.0-alpha.2] — 2026-05-13
-
-> **🌐 Post-v1.0 生态完善 — Sprint 12 P5-005 Phase 1 Web 可视化管理平台 REST API**
->
-> v1.2.0-alpha.2 在 alpha.1 基础上新增：
-> - P5-005 Phase 1 轻量级 REST API（`contrib/web` 独立模块）✅
-
-### 新增
 
 #### P5-005 Phase 1：轻量级 REST API（Sprint 12）
 
@@ -80,17 +69,6 @@
 
 - ✅ **测试覆盖** — 32 个测试全部通过，覆盖率 85.3%，`go test -race` 通过
 - 📖 **使用文档** — `contrib/web/README.md`
-
----
-
-## [v1.2.0-alpha.1] — 2026-05-13
-
-> **🚀 Post-v1.0 生产增强 — Sprint 12 P5-008 Redis 去重 Pipeline 批量优化**
->
-> v1.2.0-alpha.1 是 v1.2.0（M7）的首个预发布版本，包含：
-> - P5-008 Redis 去重 Pipeline 批量优化（`contrib/redisqueue` 性能增强）✅
-
-### 新增
 
 #### P5-008：Redis 去重 Pipeline 批量优化（Sprint 12）
 

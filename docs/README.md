@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.1.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.1.2** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1136,46 +1136,19 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### v1.1.1 🎉
+### v1.1.2 🎉
 
-> **Post-v1.0 Sprint 13 完成 — 生产增强里程碑 M7**
+> **Post-v1.0 Sprint 13 生态完善 — P5-005 REST API + P5-008 Redis Pipeline 优化**
 
-- 💾 **P5-009 通用持久化存储适配器** — `contrib/storage` 独立模块，MongoDB + PostgreSQL + Elasticsearch 批量写入 + Upsert
-- 🔄 **P5-010 高级重试策略** — RetryMiddleware 指数退避 + 随机抖动 + 按状态码差异化重试 + 自定义重试条件
-- 🔌 **P5-010 熔断器中间件** — `CircuitBreakerMiddleware` 域名级别状态机（Closed → Open → Half-Open），连续失败自动熔断
-- ⚙️ **11 个新增配置项** — 退避策略（`RETRY_BACKOFF_*`）+ 熔断器（`CIRCUIT_BREAKER_*`）
-- 🧪 **测试覆盖率 89.1%** — 中间件包 153 个测试全部通过，`go test -race` 竞态检测通过
-
-### v1.2.0-alpha.3
-
-> **Post-v1.0 P5-005 Phase 1 增强 — REST API 启动项参数注入**
-
+- 🌐 **P5-005 Web 管理 API** — `contrib/web` 独立模块，基于标准库 `net/http` 实现零外部依赖 REST API
+- 📡 **REST API 端点** — `GET /api/spiders` / `POST /api/spiders/:name/start` / `POST /api/spiders/:name/stop` / `GET /api/spiders/:name/stats` / `GET /api/health`
 - 🎯 **启动项参数注入** — `POST /api/spiders/:name/start` 支持 JSON 请求体传入 `args` 参数，以 `PriorityCmdline` 最高优先级注入 Crawler Settings
 - 📊 **状态查询回显** — `GET /api/spiders/:name/stats` 响应中同步返回对应任务的启动项参数
-- 🧪 **测试覆盖率 86.0%** — 42 个测试全部通过（新增 6 个 args 相关测试），`go test -race` 竞态检测通过
-
-### v1.2.0-alpha.2
-
-> **Post-v1.0 Sprint 12 P5-005 Phase 1 — Web 可视化管理平台 REST API**
-
-- 🌐 **P5-005 Web 管理服务器** — `contrib/web` 独立模块，基于标准库 `net/http` 实现零外部依赖 REST API
-- 🕷️ **Spider 注册表** — 按名称注册工厂函数，支持动态创建 Spider 实例，可选 Crawler 配置回调
-- 📡 **REST API 端点** — `GET /api/spiders` / `POST /api/spiders/:name/start` / `POST /api/spiders/:name/stop` / `GET /api/spiders/:name/stats` / `GET /api/health`
-- 🔄 **多实例支持** — 同名 Spider 可启动多个独立实例，支持按名称批量停止或按 ID 精确停止
-- 🧪 **测试覆盖率 85.3%** — 32 个测试全部通过，`go test -race` 竞态检测通过
-
-### v1.2.0-alpha.1
-
-> **Post-v1.0 Sprint 12 P5-008 — Redis 去重 Pipeline 批量优化**
-
 - 🚀 **P5-008 Pipeline 批量去重** — 新增 `PipelinedRedisDupeFilter`，聚合多个 SADD 为 Redis Pipeline 批量提交，减少网络往返
-- ⚙️ **Pipeline 配置选项** — `WithBatchSize(64)` / `WithFlushInterval(100ms)` / `WithBufferSize(4096)` Functional Options
 - 🌸 **布隆过滤器支持** — 与 `RedisDupeFilter` 一致的布隆过滤器一级缓存
-- 📊 **运行时统计** — `PipelineStats()` 返回 Pipeline 刷新次数、提交总数、缓冲区状态
-- 🔒 **优雅关闭** — Close 时自动排空缓冲区，确保数据完整写入 Redis
-- 🧪 **测试覆盖率 90.3%** — 24 个测试全部通过，`go test -race` 竞态检测通过
+- 🧪 **测试覆盖率 86.0%+** — 42 个 Web API 测试 + 24 个 Redis Pipeline 测试全部通过，`go test -race` 竞态检测通过
 
-### v1.1.0 🎉
+### v1.1.1 🎉
 
 > **Post-v1.0 Sprint 12 完成 — 生态完善里程碑 M6**
 
