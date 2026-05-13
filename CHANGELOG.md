@@ -5,6 +5,72 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.2.0-alpha.1] — 2026-05-13
+
+> **🚀 Post-v1.0 生产增强 — Sprint 12 P5-008 Redis 去重 Pipeline 批量优化**
+>
+> v1.2.0-alpha.1 是 v1.2.0（M7）的首个预发布版本，包含：
+> - P5-008 Redis 去重 Pipeline 批量优化（`contrib/redisqueue` 性能增强）✅
+
+### 新增
+
+#### P5-008：Redis 去重 Pipeline 批量优化（Sprint 12）
+
+> **Post-v1.0 性能增强 — 聚合多个 SADD 为 Pipeline 批量提交，减少网络往返**
+
+##### P5-008a：PipelinedRedisDupeFilter 实现
+
+- 🚀 **Pipeline 批量去重** — 新增 `PipelinedRedisDupeFilter`（`contrib/redisqueue/pipelined_dupefilter.go`）
+  - 将多个 SADD 命令聚合为 Redis Pipeline 批量提交，一次网络往返处理多个去重请求
+  - 后台 goroutine 异步批量提交，避免阻塞调用方
+  - 双触发条件：达到批量大小（默认 64）或超过刷新间隔（默认 100ms），以先到者为准
+  - 使用 buffered channel 作为请求缓冲区，天然支持背压
+  - 每个 SADD 结果通过独立 channel 返回给调用方，保证正确性
+  - 实现 `scheduler.DupeFilter` 接口，可直接替换 `RedisDupeFilter`
+
+- ⚙️ **Pipeline 配置选项** — 3 个 Functional Options
+  - `WithBatchSize(n)` — Pipeline 批量大小（默认 64）
+  - `WithFlushInterval(d)` — Pipeline 刷新间隔（默认 100ms）
+  - `WithBufferSize(n)` — 待提交指纹缓冲区大小（默认 4096）
+
+- 🌸 **布隆过滤器支持** — 与 `RedisDupeFilter` 一致的布隆过滤器一级缓存
+  - 通过 `BloomFilterEnabled` 配置启用
+  - 新请求跳过 Pipeline 提交，进一步减少网络往返
+
+- 📊 **运行时统计** — `PipelineStats()` 返回 Pipeline 运行指标
+  - `pipeline_flushes` — Pipeline 刷新次数
+  - `pipeline_items` — Pipeline 提交的总指纹数
+  - `pending` — 当前缓冲区中待提交的指纹数
+
+- 🔒 **优雅关闭** — Close 时自动排空缓冲区中的剩余数据
+  - 通知后台 goroutine 退出
+  - 排空 channel 中的剩余数据并刷新到 Redis
+  - 等待后台 goroutine 完成后再关闭连接
+
+- 🔗 **共享客户端** — `NewPipelinedRedisDupeFilterFromClient` 支持共享 Redis 连接
+
+##### P5-008b：单元测试 + 基准测试
+
+- ✅ **测试覆盖** — 24 个测试全部通过
+  - 功能测试：RequestSeen / SeenCount / Contains / Clear / FlushOnStart
+  - 并发测试：50 goroutine × 20 请求并发去重
+  - 一致性测试：与 RedisDupeFilter 结果完全一致
+  - Pipeline 触发测试：批量大小触发 / 定时器触发
+  - 关闭排空测试：Close 时缓冲区数据完整写入 Redis
+  - 布隆过滤器测试：基本功能 / 统计 / 禁用 / 并发
+  - 配置选项测试：有效值 / 无效值 / 默认值
+  - `go test -race` 竞态检测通过
+  - 整体覆盖率 90.3%（目标 85%）✅
+
+- 📈 **基准测试** — 逐条 vs Pipeline 吞吐量对比
+  - `BenchmarkRedisDupeFilter_RequestSeen` — 逐条模式基准
+  - `BenchmarkPipelinedRedisDupeFilter_RequestSeen` — Pipeline 模式基准
+  - `Benchmark*_Parallel` — 并行基准测试
+  - `Benchmark*_WithBloom_Parallel` — 布隆过滤器 + 并行基准测试
+  - `BenchmarkPipelinedRedisDupeFilter_BatchSizes` — 不同批量大小性能对比
+
+---
+
 ## [v1.1.1] — 2026-05-12
 
 > **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 完成**

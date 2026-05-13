@@ -9,6 +9,7 @@
 - 🔌 **可插拔设计** — 通过 `WithExternalQueue` / `WithDupeFilter` 注入，主模块零 Redis 依赖
 - 🌐 **分布式爬取** — 多实例共享队列和去重集合，实现分布式协作
 - ⚡ **高性能** — 基于 Redis Sorted Set + Set，O(log N) 入队，O(1) 出队和去重
+- 🚀 **Pipeline 批量优化** — `PipelinedRedisDupeFilter` 聚合多个 SADD 为 Pipeline 批量提交，减少网络往返
 - 🌸 **布隆过滤器加速** — 可选本地布隆过滤器一级缓存，新请求跳过 Redis 查询，大幅减少网络往返
 - 💾 **断点续爬** — Redis 持久化保证数据不丢失，重启后自动恢复
 - 🔒 **并发安全** — 使用 Redis 原子命令（ZADD/ZPOPMAX/SADD），多实例无锁协作
@@ -194,6 +195,58 @@ score = priority × 10^10 + sequence_number
 | 性能 | 受磁盘 IO 限制 | 内存级速度 |
 | 依赖 | 无外部依赖 | 需要 Redis 服务 |
 | 适用场景 | 单机断点续爬 | 分布式爬取 |
+
+### Pipeline 批量去重
+
+`PipelinedRedisDupeFilter` 将多个 SADD 命令聚合为 Redis Pipeline 批量提交，
+显著减少网络往返次数，适合高并发、高延迟网络场景。
+
+```go
+opts := redisqueue.DefaultOptions()
+opts.Addr = "localhost:6379"
+opts.KeyPrefix = "scrapy:myspider"
+
+// 创建 Pipeline 批量去重过滤器
+df, _ := redisqueue.NewPipelinedRedisDupeFilter(opts,
+    redisqueue.WithBatchSize(64),              // 每批最多 64 个指纹
+    redisqueue.WithFlushInterval(100*time.Millisecond), // 最长 100ms 刷新一次
+    redisqueue.WithBufferSize(4096),           // 缓冲区大小
+)
+
+// 注入到调度器（与 RedisDupeFilter 完全兼容）
+sched := scheduler.NewDefaultScheduler(
+    scheduler.WithDupeFilter(df),
+)
+
+// 运行时查看 Pipeline 统计
+stats := df.PipelineStats()
+// {"batch_size": 64, "flush_interval": "100ms", "pipeline_flushes": 150, "pipeline_items": 9600}
+```
+
+**触发条件（以先到者为准）：**
+
+1. 缓冲区中的待提交数量达到 `batchSize`
+2. 距离上次刷新超过 `flushInterval`
+3. 收到关闭信号（刷新剩余数据后退出）
+
+**Pipeline 配置选项：**
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `WithBatchSize(n)` | `64` | Pipeline 批量大小 |
+| `WithFlushInterval(d)` | `100ms` | Pipeline 刷新间隔 |
+| `WithBufferSize(n)` | `4096` | 待提交指纹缓冲区大小 |
+
+### RedisDupeFilter vs PipelinedRedisDupeFilter
+
+| 特性 | RedisDupeFilter | PipelinedRedisDupeFilter |
+|------|----------------|-------------------------|
+| 提交方式 | 逐条 SADD | Pipeline 批量 SADD |
+| 网络往返 | 每次 1 RTT | 每批 1 RTT |
+| 适用场景 | 低并发、低延迟 | 高并发、高延迟网络 |
+| 延迟特性 | 即时返回 | 可能有微小延迟（≤ flushInterval） |
+| 吞吐量 | 受网络 RTT 限制 | 批量化减少 RTT 开销 |
+| 接口兼容 | DupeFilter | DupeFilter（完全兼容） |
 
 ## 依赖
 

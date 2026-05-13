@@ -7,6 +7,7 @@
 //
 //   - RedisQueue：基于 Redis Sorted Set 的分布式优先级队列，实现 scheduler.PriorityAwareQueue 接口
 //   - RedisDupeFilter：基于 Redis Set 的分布式去重过滤器，实现 scheduler.DupeFilter 接口
+//   - PipelinedRedisDupeFilter：基于 Redis Pipeline 批量提交的高性能去重过滤器，实现 scheduler.DupeFilter 接口
 //
 // # 使用方式
 //
@@ -70,4 +71,5 @@
 //   - 使用 SADD 原子操作去重，保证多实例一致性
 //   - 序列化格式与 DiskQueue 一致（JSON），支持跨后端迁移
 //   - 布隆过滤器作为可选本地缓存层，减少 Redis 网络往返
+//   - Pipeline 批量提交模式将多个 SADD 聚合为一次网络往返，高并发场景下显著提升吞吐量
 package redisqueue

@@ -17,7 +17,7 @@
 - 📤 **Feed Export** — JSON / JSON Lines / CSV / XML 多格式数据导出
 - 🕷️ **CrawlSpider** — 基于规则的自动链接提取和跟踪
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重，中断后自动恢复
-- 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取 + 本地布隆过滤器加速（`contrib/redisqueue`）
+- 🌐 **Redis 分布式队列** — 可插拔 Redis 扩展，支持多实例分布式爬取 + 本地布隆过滤器加速 + Pipeline 批量去重优化（`contrib/redisqueue`）
 - 🎛️ **AutoThrottle** — 基于延迟反馈的自适应速率调整，自动优化下载延迟
 - 🛡️ **高级重试策略** — 指数退避 + 随机抖动 + 域名级熔断器 + 按状态码差异化重试
 - 📊 **可观测性** — OpenTelemetry 分布式追踪 + Prometheus 指标收集，信号驱动自动采集（`contrib/telemetry`）
