@@ -5,6 +5,150 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v1.2.0-alpha.3] — 2026-05-13
+
+> **🎯 Post-v1.0 生态完善 — P5-005 Phase 1 REST API 启动项参数注入增强**
+>
+> v1.2.0-alpha.3 在 alpha.2 基础上新增：
+> - `POST /api/spiders/:name/start` 支持 JSON 请求体传入启动项参数（`args`）✅
+> - 启动项参数以 `PriorityCmdline`（最高优先级）注入 Crawler Settings ✅
+> - `GET /api/spiders/:name/stats` 响应中同步返回对应任务的启动项参数 ✅
+
+### 新增
+
+#### P5-005 Phase 1 增强：启动项参数注入
+
+> **REST API 启动端点支持用户自定义参数，覆盖爬虫配置并在状态查询中回显**
+
+- 🎯 **启动项参数** — `POST /api/spiders/:name/start` 支持可选 JSON 请求体（`contrib/web/handler.go`）
+  - 新增 `args` 字段（`map[string]any`），支持传入框架配置覆盖和自定义业务参数
+  - 参数以 `PriorityCmdline`（最高优先级 40）注入 Crawler 的 `Settings`，覆盖所有其他级别配置
+  - 向后兼容：无请求体或空请求体时行为不变
+  - 启动响应中回显传入的 `args`
+
+- 📊 **状态查询回显** — `GET /api/spiders/:name/stats` 响应中包含启动项参数（`contrib/web/server.go`）
+  - `SpiderStats` 新增 `Args` 字段（`json:"args,omitempty"`）
+  - `runningSpider` 内部保存启动时传入的 `args`，在统计查询和全局统计中返回
+  - 无启动项时 `args` 字段省略（`omitempty`）
+
+- ✅ **测试覆盖** — 新增 6 个测试用例，总计 42 个测试全部通过，覆盖率 86.0%，`go test -race` 通过
+  - `TestHandleStartSpider_WithArgs` — 验证带参数启动及响应回显
+  - `TestHandleStartSpider_WithEmptyArgs` — 验证空参数处理
+  - `TestHandleStartSpider_WithInvalidBody` — 验证无效 JSON 请求体返回 400
+  - `TestHandleGetStats_WithArgs` — 验证统计查询中包含启动项参数
+  - `TestHandleGetStats_WithoutArgs` — 验证无参数时 args 字段省略
+  - `TestIntegration_StartWithArgsAndCheckStats` — 端到端集成测试
+
+---
+
+## [v1.2.0-alpha.2] — 2026-05-13
+
+> **🌐 Post-v1.0 生态完善 — Sprint 12 P5-005 Phase 1 Web 可视化管理平台 REST API**
+>
+> v1.2.0-alpha.2 在 alpha.1 基础上新增：
+> - P5-005 Phase 1 轻量级 REST API（`contrib/web` 独立模块）✅
+
+### 新增
+
+#### P5-005 Phase 1：轻量级 REST API（Sprint 12）
+
+> **Post-v1.0 生态完善 — 基于标准库 net/http 的零外部依赖 Web 管理 API**
+
+##### P5-005a：HTTP Server + Spider 注册表
+
+- 🌐 **Web 管理服务器** — 新增 `contrib/web/` 独立 Go 子模块（`contrib/web/server.go`）
+  - 基于 Go 标准库 `net/http.ServeMux` 实现路由，零外部 Web 框架依赖
+  - 内部使用 `crawler.Runner` 管理多爬虫并发执行，复用框架已有的生命周期管理
+  - 支持 `context.Context` 驱动的优雅关闭（HTTP 服务器 + 所有运行中 Spider）
+  - Functional Options 模式：`WithLogger` / `WithRunner` / `WithRegistry`
+
+- 🕷️ **Spider 注册表** — 新增 `Registry`（`contrib/web/registry.go`）
+  - 按名称注册 `SpiderFactory` 工厂函数，每次启动创建全新 Spider + Crawler 实例
+  - 可选 `CrawlerConfigurator` 回调，在启动前为 Crawler 注册 Pipeline、扩展等
+  - 线程安全：所有操作通过 `sync.RWMutex` 保护
+
+##### P5-005b：REST API Handlers
+
+- 📡 **REST API 端点** — 4 个核心端点 + 1 个健康检查（`contrib/web/handler.go`）
+  - `GET /api/spiders` — 获取已注册 Spider 列表及运行实例数
+  - `POST /api/spiders/:name/start` — 按名称启动 Spider，返回唯一运行 ID
+  - `POST /api/spiders/:name/stop` — 按名称或 ID 停止 Spider
+  - `GET /api/spiders/:name/stats` — 获取指定 Spider 的运行统计数据
+  - `GET /api/health` — 健康检查
+
+##### P5-005c：集成测试 + 使用文档
+
+- ✅ **测试覆盖** — 32 个测试全部通过，覆盖率 85.3%，`go test -race` 通过
+- 📖 **使用文档** — `contrib/web/README.md`
+
+---
+
+## [v1.2.0-alpha.1] — 2026-05-13
+
+> **🚀 Post-v1.0 生产增强 — Sprint 12 P5-008 Redis 去重 Pipeline 批量优化**
+>
+> v1.2.0-alpha.1 是 v1.2.0（M7）的首个预发布版本，包含：
+> - P5-008 Redis 去重 Pipeline 批量优化（`contrib/redisqueue` 性能增强）✅
+
+### 新增
+
+#### P5-008：Redis 去重 Pipeline 批量优化（Sprint 12）
+
+> **Post-v1.0 性能增强 — 聚合多个 SADD 为 Pipeline 批量提交，减少网络往返**
+
+##### P5-008a：PipelinedRedisDupeFilter 实现
+
+- 🚀 **Pipeline 批量去重** — 新增 `PipelinedRedisDupeFilter`（`contrib/redisqueue/pipelined_dupefilter.go`）
+  - 将多个 SADD 命令聚合为 Redis Pipeline 批量提交，一次网络往返处理多个去重请求
+  - 后台 goroutine 异步批量提交，避免阻塞调用方
+  - 双触发条件：达到批量大小（默认 64）或超过刷新间隔（默认 100ms），以先到者为准
+  - 使用 buffered channel 作为请求缓冲区，天然支持背压
+  - 每个 SADD 结果通过独立 channel 返回给调用方，保证正确性
+  - 实现 `scheduler.DupeFilter` 接口，可直接替换 `RedisDupeFilter`
+
+- ⚙️ **Pipeline 配置选项** — 3 个 Functional Options
+  - `WithBatchSize(n)` — Pipeline 批量大小（默认 64）
+  - `WithFlushInterval(d)` — Pipeline 刷新间隔（默认 100ms）
+  - `WithBufferSize(n)` — 待提交指纹缓冲区大小（默认 4096）
+
+- 🌸 **布隆过滤器支持** — 与 `RedisDupeFilter` 一致的布隆过滤器一级缓存
+  - 通过 `BloomFilterEnabled` 配置启用
+  - 新请求跳过 Pipeline 提交，进一步减少网络往返
+
+- 📊 **运行时统计** — `PipelineStats()` 返回 Pipeline 运行指标
+  - `pipeline_flushes` — Pipeline 刷新次数
+  - `pipeline_items` — Pipeline 提交的总指纹数
+  - `pending` — 当前缓冲区中待提交的指纹数
+
+- 🔒 **优雅关闭** — Close 时自动排空缓冲区中的剩余数据
+  - 通知后台 goroutine 退出
+  - 排空 channel 中的剩余数据并刷新到 Redis
+  - 等待后台 goroutine 完成后再关闭连接
+
+- 🔗 **共享客户端** — `NewPipelinedRedisDupeFilterFromClient` 支持共享 Redis 连接
+
+##### P5-008b：单元测试 + 基准测试
+
+- ✅ **测试覆盖** — 24 个测试全部通过
+  - 功能测试：RequestSeen / SeenCount / Contains / Clear / FlushOnStart
+  - 并发测试：50 goroutine × 20 请求并发去重
+  - 一致性测试：与 RedisDupeFilter 结果完全一致
+  - Pipeline 触发测试：批量大小触发 / 定时器触发
+  - 关闭排空测试：Close 时缓冲区数据完整写入 Redis
+  - 布隆过滤器测试：基本功能 / 统计 / 禁用 / 并发
+  - 配置选项测试：有效值 / 无效值 / 默认值
+  - `go test -race` 竞态检测通过
+  - 整体覆盖率 90.3%（目标 85%）✅
+
+- 📈 **基准测试** — 逐条 vs Pipeline 吞吐量对比
+  - `BenchmarkRedisDupeFilter_RequestSeen` — 逐条模式基准
+  - `BenchmarkPipelinedRedisDupeFilter_RequestSeen` — Pipeline 模式基准
+  - `Benchmark*_Parallel` — 并行基准测试
+  - `Benchmark*_WithBloom_Parallel` — 布隆过滤器 + 并行基准测试
+  - `BenchmarkPipelinedRedisDupeFilter_BatchSizes` — 不同批量大小性能对比
+
+---
+
 ## [v1.1.1] — 2026-05-12
 
 > **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 完成**

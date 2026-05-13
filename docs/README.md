@@ -41,7 +41,7 @@ scrapy-go 的目标是为 Go 开发者提供一个**生产级的爬虫框架**�
 完整实现 Scrapy 经典五大组件：
 
 - **Engine** — 核心调度引擎，协调所有组件，支持暂停/恢复，使用 `errgroup` 统一管理多 goroutine 生命周期
-- **Scheduler** — 基于内存优先级队列 + 磁盘队列的请求调度，支持断点续爬（`JOBDIR`），有序优先级切片 O(1) 出队，可插拔 Redis 分布式队列（`contrib/redisqueue`）
+- **Scheduler** — 基于内存优先级队列 + 磁盘队列的请求调度，支持断点续爬（`JOBDIR`），有序优先级切片 O(1) 出队，可插拔 Redis 分布式队列（`contrib/redisqueue`），支持 Pipeline 批量去重优化
 - **Downloader** — 基于 Slot 机制的 HTTP 下载，按域名分组控制并发和延迟，支持 HTTP/2 多路复用优化和连接池精细化管理
 - **Scraper** — 调用 Spider 回调并分发结果（Request/Item），`semaphore.Weighted` 控制 CONCURRENT_ITEMS
 - **Crawler** — 顶层编排器，一行代码组装并启动爬虫
@@ -1145,6 +1145,35 @@ scrapy-go/
 - 🔌 **P5-010 熔断器中间件** — `CircuitBreakerMiddleware` 域名级别状态机（Closed → Open → Half-Open），连续失败自动熔断
 - ⚙️ **11 个新增配置项** — 退避策略（`RETRY_BACKOFF_*`）+ 熔断器（`CIRCUIT_BREAKER_*`）
 - 🧪 **测试覆盖率 89.1%** — 中间件包 153 个测试全部通过，`go test -race` 竞态检测通过
+
+### v1.2.0-alpha.3
+
+> **Post-v1.0 P5-005 Phase 1 增强 — REST API 启动项参数注入**
+
+- 🎯 **启动项参数注入** — `POST /api/spiders/:name/start` 支持 JSON 请求体传入 `args` 参数，以 `PriorityCmdline` 最高优先级注入 Crawler Settings
+- 📊 **状态查询回显** — `GET /api/spiders/:name/stats` 响应中同步返回对应任务的启动项参数
+- 🧪 **测试覆盖率 86.0%** — 42 个测试全部通过（新增 6 个 args 相关测试），`go test -race` 竞态检测通过
+
+### v1.2.0-alpha.2
+
+> **Post-v1.0 Sprint 12 P5-005 Phase 1 — Web 可视化管理平台 REST API**
+
+- 🌐 **P5-005 Web 管理服务器** — `contrib/web` 独立模块，基于标准库 `net/http` 实现零外部依赖 REST API
+- 🕷️ **Spider 注册表** — 按名称注册工厂函数，支持动态创建 Spider 实例，可选 Crawler 配置回调
+- 📡 **REST API 端点** — `GET /api/spiders` / `POST /api/spiders/:name/start` / `POST /api/spiders/:name/stop` / `GET /api/spiders/:name/stats` / `GET /api/health`
+- 🔄 **多实例支持** — 同名 Spider 可启动多个独立实例，支持按名称批量停止或按 ID 精确停止
+- 🧪 **测试覆盖率 85.3%** — 32 个测试全部通过，`go test -race` 竞态检测通过
+
+### v1.2.0-alpha.1
+
+> **Post-v1.0 Sprint 12 P5-008 — Redis 去重 Pipeline 批量优化**
+
+- 🚀 **P5-008 Pipeline 批量去重** — 新增 `PipelinedRedisDupeFilter`，聚合多个 SADD 为 Redis Pipeline 批量提交，减少网络往返
+- ⚙️ **Pipeline 配置选项** — `WithBatchSize(64)` / `WithFlushInterval(100ms)` / `WithBufferSize(4096)` Functional Options
+- 🌸 **布隆过滤器支持** — 与 `RedisDupeFilter` 一致的布隆过滤器一级缓存
+- 📊 **运行时统计** — `PipelineStats()` 返回 Pipeline 刷新次数、提交总数、缓冲区状态
+- 🔒 **优雅关闭** — Close 时自动排空缓冲区，确保数据完整写入 Redis
+- 🧪 **测试覆盖率 90.3%** — 24 个测试全部通过，`go test -race` 竞态检测通过
 
 ### v1.1.0 🎉
 
