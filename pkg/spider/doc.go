@@ -125,8 +125,13 @@
 //
 // # 回调函数类型
 //
+// 回调函数类型的实际定义位于 pkg/http 包中（以打破循环依赖，TD-003 偿还），
+// spider 包通过类型别名重新导出，用户代码可继续使用 spider.CallbackFunc / spider.ErrbackFunc：
+//
 //   - [CallbackFunc]：响应回调，接收 context 和 Response，返回 []Output
 //   - [ErrbackFunc]：错误回调，接收 context、error 和原始 Request，返回 []Output
+//
+// Output 类型同样定义在 pkg/http 包中，spider 包通过类型别名重新导出。
 //
 // # 与 Scrapy 的差异
 //

@@ -8,33 +8,17 @@ import (
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
 )
 
-// Output 表示 Spider 回调的输出，可以是 Request 或 Item。
-// 每个输出只能是 Request 或 Item 之一，不能同时设置。
-type Output struct {
-	// Request 非 nil 表示产出一个新请求，将被 Engine 调度。
-	Request *shttp.Request
+// Output 是 shttp.Output 的类型别名，保持向后兼容。
+// 实际定义已迁移至 pkg/http 包以打破循环依赖（TD-003 偿还）。
+type Output = shttp.Output
 
-	// Item 非 nil 表示产出一个数据项，将被 Item Pipeline 处理。
-	Item any
-}
+// CallbackFunc 是 shttp.CallbackFunc 的类型别名，保持向后兼容。
+// 实际定义已迁移至 pkg/http 包以打破循环依赖（TD-003 偿还）。
+type CallbackFunc = shttp.CallbackFunc
 
-// IsRequest 检查输出是否为 Request。
-func (o Output) IsRequest() bool {
-	return o.Request != nil
-}
-
-// IsItem 检查输出是否为 Item。
-func (o Output) IsItem() bool {
-	return o.Item != nil
-}
-
-// CallbackFunc 定义 Spider 回调函数类型。
-// 接收 context 和 Response，返回 Output 切片和可能的错误。
-type CallbackFunc func(ctx context.Context, response *shttp.Response) ([]Output, error)
-
-// ErrbackFunc 定义 Spider 错误回调函数类型。
-// 接收 context、错误和原始请求，返回 Output 切片和可能的错误。
-type ErrbackFunc func(ctx context.Context, err error, request *shttp.Request) ([]Output, error)
+// ErrbackFunc 是 shttp.ErrbackFunc 的类型别名，保持向后兼容。
+// 实际定义已迁移至 pkg/http 包以打破循环依赖（TD-003 偿还）。
+type ErrbackFunc = shttp.ErrbackFunc
 
 // Spider 定义爬虫的核心接口。
 // 用户通过实现此接口来定义爬取逻辑。

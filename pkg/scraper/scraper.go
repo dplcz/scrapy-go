@@ -169,14 +169,12 @@ func (s *Scraper) Scrape(ctx context.Context, response *shttp.Response, request 
 func (s *Scraper) ScrapeError(ctx context.Context, err error, request *shttp.Request) ([]*shttp.Request, error) {
 	// 调用 errback
 	if request.Errback != nil {
-		if errbackFn, ok := request.Errback.(spider.ErrbackFunc); ok {
-			outputs, callErr := errbackFn(ctx, err, request)
-			if callErr != nil {
-				s.handleSpiderError(callErr, request, nil)
-				return nil, nil
-			}
-			return s.processOutputs(ctx, outputs, nil)
+		outputs, callErr := request.Errback(ctx, err, request)
+		if callErr != nil {
+			s.handleSpiderError(callErr, request, nil)
+			return nil, nil
 		}
+		return s.processOutputs(ctx, outputs, nil)
 	}
 
 	// 无 errback，记录错误
@@ -192,18 +190,16 @@ func (s *Scraper) ScrapeError(ctx context.Context, err error, request *shttp.Req
 // ============================================================================
 
 // resolveCallback 确定请求的回调函数。
-func (s *Scraper) resolveCallback(request *shttp.Request) spider.CallbackFunc {
+func (s *Scraper) resolveCallback(request *shttp.Request) shttp.CallbackFunc {
 	if request.Callback != nil {
 		// 检查是否为 NoCallback 哨兵值
 		if shttp.IsNoCallback(request.Callback) {
 			// NoCallback 表示不需要回调，返回空操作
-			return func(ctx context.Context, response *shttp.Response) ([]spider.Output, error) {
+			return func(ctx context.Context, response *shttp.Response) ([]shttp.Output, error) {
 				return nil, nil
 			}
 		}
-		if cb, ok := request.Callback.(spider.CallbackFunc); ok {
-			return cb
-		}
+		return request.Callback
 	}
 	// 使用 Spider.Parse 作为默认回调
 	return s.spiderRef.Parse

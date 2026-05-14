@@ -1090,7 +1090,7 @@ req, _ := shttp.NewRequest("https://example.com/api",
 ### ⚠️ 已知约束
 
 - **Go 版本要求** — 需要 Go 1.25.1+
-- **回调函数类型** — `Callback`/`Errback` 使用 `any` 类型，需运行时类型断言
+- **回调函数类型安全** — `CallbackFunc`/`ErrbackFunc` 为具体函数类型（P5-021 已消除 `any` 类型），编译期即可捕获签名错误
 
 ---
 
@@ -1150,14 +1150,41 @@ scrapy-go/
 
 ## 📝 更新日志
 
+### Unreleased — P5-021 类型安全增强（TD-003 偿还）
+
+> **消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型，提供编译期类型安全**
+
+- 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
+- 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
+- ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
+- 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
+- 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
+>>>>>>> fc844d4 (feat(types): P5-021 消除 CallbackFunc/ErrbackFunc 的 any 类型（TD-003 偿还）)
+=======
 ### Unreleased
 
-> **TD-004 Settings 编译期类型安全增强**
+> **TD-004 Settings 编译期类型安全增强 + P5-021 类型安全增强（TD-003 偿还）**
 
 - 🛡️ **泛型类型安全 API** — 新增 `Key[T]` 泛型类型 + `Get[T]`/`Set[T]`/`MustGet[T]` 顶层函数
 - 🔑 **类型化配置键常量** — 80+ 个框架内置配置项定义为 `Key[T]` 常量，消除魔法字符串
 - ♻️ **Crawler 迁移** — `pkg/crawler` 中 50+ 处调用迁移至泛型 API
 - ✅ **TD-004 已偿还** — 旧 API 保留完全向后兼容
+- 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
+- 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
+- ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
+- 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
+- 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
+=======
+### Unreleased — P5-021 类型安全增强（TD-003 偿还）
+
+> **消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型，提供编译期类型安全**
+
+- 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
+- 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
+- ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
+- 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
+- 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
+>>>>>>> fc844d4 (feat(types): P5-021 消除 CallbackFunc/ErrbackFunc 的 any 类型（TD-003 偿还）)
 
 ### v1.1.3 🎉
 
