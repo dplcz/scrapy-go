@@ -6,7 +6,7 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
-## [Unreleased]
+## [v1.1.4] — 2026-05-14
 
 > **🔧 TD-004 Settings 编译期类型安全增强**
 
