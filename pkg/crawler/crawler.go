@@ -962,14 +962,26 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 		itemCount := settings.Get(c.Settings, settings.KeyCloseSpiderItemCount)
 		pageCount := settings.Get(c.Settings, settings.KeyCloseSpiderPageCount)
 		errorCount := settings.Get(c.Settings, settings.KeyCloseSpiderErrorCount)
+		if timeout == 0 && itemCount == 0 && pageCount == 0 && errorCount == 0 {
+			// 所有关闭条件均为 0，无需加载
+			return nil
+		}
 		return extension.NewCloseSpiderExtension(float64(timeout), itemCount, pageCount, errorCount, c.Signals, c.Stats, c.Logger)
 	},
 	"LogStats": func(c *Crawler) extension.Extension {
 		interval := settings.Get(c.Settings, settings.KeyLogStatsInterval)
+		if interval <= 0 {
+			// 未配置统计日志间隔，跳过加载
+			return nil
+		}
 		return extension.NewLogStatsExtension(interval, c.Stats, c.Signals, c.Logger)
 	},
 	"MemoryUsage": func(c *Crawler) extension.Extension {
 		enabled := settings.Get(c.Settings, settings.KeyMemUsageEnabled)
+		if !enabled {
+			// 未启用内存监控，跳过加载
+			return nil
+		}
 		limitMB := settings.Get(c.Settings, settings.KeyMemUsageLimitMB)
 		warningMB := settings.Get(c.Settings, settings.KeyMemUsageWarningMB)
 		checkInterval := settings.Get(c.Settings, settings.KeyMemUsageCheckIntervalSeconds)
@@ -985,6 +997,10 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 	},
 	"AutoThrottle": func(c *Crawler) extension.Extension {
 		enabled := settings.Get(c.Settings, settings.KeyAutoThrottleEnabled)
+		if !enabled {
+			// 未启用自适应限速，跳过加载
+			return nil
+		}
 		startDelay := settings.Get(c.Settings, settings.KeyAutoThrottleStartDelay)
 		maxDelay := settings.Get(c.Settings, settings.KeyAutoThrottleMaxDelay)
 		targetConcurrency := settings.Get(c.Settings, settings.KeyAutoThrottleTargetConcurrency)

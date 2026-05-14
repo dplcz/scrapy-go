@@ -800,7 +800,7 @@ req, _ := shttp.NewRequest("https://example.com/page",
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `HTTPPROXY_ENABLED` | bool | true | 是否启用 HttpProxy 中间件 |
+| `HTTPPROXY_ENABLED` | bool | false | 是否启用 HttpProxy 中间件 |
 | `HTTPPROXY_AUTH_ENCODING` | string | "latin-1" | 代理认证信息编码（Go 中使用 UTF-8） |
 
 代理来源（按优先级从高到低）：
@@ -824,7 +824,7 @@ req, _ := shttp.NewRequest("https://example.com",
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `LOG_LEVEL` | string | "DEBUG" | 日志级别：DEBUG/INFO/WARN/ERROR |
-| `STATS_DUMP` | bool | true | Spider 关闭时是否输出统计信息 |
+| `STATS_DUMP` | bool | false | Spider 关闭时是否输出统计信息 |
 | `SCHEDULER_DEBUG` | bool | false | 是否输出调度器调试日志 |
 | `MEMORY_QUEUE_THRESHOLD` | int | 0 | 内存队列最大容量阈值（0=不限制），超阈值自动溢出到磁盘队列 |
 | `DOWNLOADER_STATS` | bool | true | 是否启用下载器统计中间件 |
@@ -1150,20 +1150,9 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### Unreleased — P5-021 类型安全增强（TD-003 偿还）
-
-> **消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型，提供编译期类型安全**
-
-- 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
-- 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
-- ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
-- 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
-- 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
->>>>>>> fc844d4 (feat(types): P5-021 消除 CallbackFunc/ErrbackFunc 的 any 类型（TD-003 偿还）)
-=======
 ### Unreleased
 
-> **TD-004 Settings 编译期类型安全增强 + P5-021 类型安全增强（TD-003 偿还）**
+> **TD-004 Settings 编译期类型安全增强 + P5-021 类型安全增强（TD-003 偿还）+ 扩展按需加载优化**
 
 - 🛡️ **泛型类型安全 API** — 新增 `Key[T]` 泛型类型 + `Get[T]`/`Set[T]`/`MustGet[T]` 顶层函数
 - 🔑 **类型化配置键常量** — 80+ 个框架内置配置项定义为 `Key[T]` 常量，消除魔法字符串
@@ -1174,17 +1163,9 @@ scrapy-go/
 - ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
 - 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
 - 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
-=======
-### Unreleased — P5-021 类型安全增强（TD-003 偿还）
-
-> **消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型，提供编译期类型安全**
-
-- 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
-- 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
-- ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
-- 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
-- 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
->>>>>>> fc844d4 (feat(types): P5-021 消除 CallbackFunc/ErrbackFunc 的 any 类型（TD-003 偿还）)
+- ⚡ **扩展按需加载** — 未启用的扩展（AutoThrottle/MemoryUsage/CloseSpider/LogStats）不再实例化
+- 🔧 **`EXTENSIONS_BASE` 优先级分配** — 消除优先级冲突警告，确定性执行顺序
+- 🛡️ **默认值保守化** — `HTTPPROXY_ENABLED`/`STATS_DUMP`/`MEMUSAGE_ENABLED`/`REFERER_ENABLED` 默认改为 `false`
 
 ### v1.1.3 🎉
 

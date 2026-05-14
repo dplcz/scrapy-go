@@ -96,6 +96,27 @@
 - ✅ 所有 examples、contrib 模块、集成测试全部通过
 - ✅ `go test -race` 无竞态报告
 
+#### 扩展按需加载优化
+
+> **未启用的扩展不再实例化，减少启动开销和日志噪声**
+
+- ⚡ **扩展工厂前置检查** — `pkg/crawler/crawler.go`
+  - `AutoThrottle`：`AUTOTHROTTLE_ENABLED=false` 时直接返回 `nil`，不再实例化
+  - `MemoryUsage`：`MEMUSAGE_ENABLED=false` 时直接返回 `nil`
+  - `CloseSpider`：所有关闭条件均为 0 时直接返回 `nil`
+  - `LogStats`：`LOGSTATS_INTERVAL<=0` 时直接返回 `nil`
+  - 此前这些扩展即使未启用也会被实例化，在 `Open()` 阶段通过 `ErrNotConfigured` 跳过
+
+- 🔧 **`EXTENSIONS_BASE` 优先级分配** — `pkg/settings/defaults.go`
+  - 从全部 `0`（执行顺序不确定）改为递增优先级：CoreStats(10) → CloseSpider(20) → LogStats(30) → MemoryUsage(40) → FeedExport(50) → AutoThrottle(60)
+  - 消除启动时 "multiple extensions share the same priority" 警告
+
+- 🛡️ **默认值保守化调整** — `pkg/settings/defaults.go`
+  - `HTTPPROXY_ENABLED`：`true` → `false`（无代理环境下避免不必要的环境变量探测）
+  - `STATS_DUMP`：`true` → `false`（减少默认日志输出噪声）
+  - `MEMUSAGE_ENABLED`：`true` → `false`（轻量场景下避免后台 goroutine 开销）
+  - `REFERER_ENABLED`：`true` → `false`（默认不自动添加 Referer 头，需要时显式启用）
+
 ---
 
 ## [v1.1.3] — 2026-05-13
