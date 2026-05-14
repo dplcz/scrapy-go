@@ -1,14 +1,18 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
-// noCallbackSentinel 是 NoCallback 哨兵值的内部标记类型。
-type noCallbackSentinel struct{}
+// noCallbackSentinel 是 NoCallback 哨兵函数的内部实现。
+// 永远不会被实际调用，仅用于指针比较来识别哨兵值。
+func noCallbackSentinel(_ context.Context, _ *Response) ([]Output, error) {
+	panic("scrapy-go: NoCallback sentinel should never be called")
+}
 
 // NoCallback 是一个哨兵值，用于显式标记请求不需要回调函数。
 // 当 Request.Callback 设置为 NoCallback 时，中间件和 Engine 可以识别
@@ -21,25 +25,55 @@ type noCallbackSentinel struct{}
 //	req, _ := http.NewRequest("https://example.com",
 //	    http.WithCallback(http.NoCallback),
 //	)
-var NoCallback CallbackFunc = noCallbackSentinel{}
+var NoCallback CallbackFunc = noCallbackSentinel
 
 // IsNoCallback 检查给定的回调是否为 NoCallback 哨兵值。
+// 通过函数指针比较实现，避免运行时类型断言。
 func IsNoCallback(cb CallbackFunc) bool {
-	_, ok := cb.(noCallbackSentinel)
-	return ok
+	// 函数值不可直接比较，但可以通过转换为指针进行比较。
+	// 使用 fmt.Sprintf("%p") 获取函数指针地址进行比较。
+	return fmt.Sprintf("%p", cb) == fmt.Sprintf("%p", noCallbackSentinel)
+}
+
+// Output 表示 Spider 回调的输出，可以是 Request 或 Item。
+// 每个输出只能是 Request 或 Item 之一，不能同时设置。
+//
+// 此类型定义在 http 包中以打破 http ↔ spider 的循环依赖。
+// spider 包通过类型别名 `type Output = shttp.Output` 重新导出此类型，
+// 用户代码可继续使用 spider.Output。
+type Output struct {
+	// Request 非 nil 表示产出一个新请求，将被 Engine 调度。
+	Request *Request
+
+	// Item 非 nil 表示产出一个数据项，将被 Item Pipeline 处理。
+	Item any
+}
+
+// IsRequest 检查输出是否为 Request。
+func (o Output) IsRequest() bool {
+	return o.Request != nil
+}
+
+// IsItem 检查输出是否为 Item。
+func (o Output) IsItem() bool {
+	return o.Item != nil
 }
 
 // CallbackFunc 定义响应回调函数类型。
-// 使用 any 类型避免与 spider 包的循环依赖，实际类型为：
+// 接收 context 和 Response，返回 Output 切片和可能的错误。
 //
-//	func(ctx context.Context, response *Response) ([]Output, error)
-type CallbackFunc = any
+// 此类型定义在 http 包中以打破 http ↔ spider 的循环依赖。
+// spider 包通过类型别名 `type CallbackFunc = shttp.CallbackFunc` 重新导出，
+// 用户代码可继续使用 spider.CallbackFunc。
+type CallbackFunc func(ctx context.Context, response *Response) ([]Output, error)
 
 // ErrbackFunc 定义错误回调函数类型。
-// 使用 any 类型避免与 spider 包的循环依赖，实际类型为：
+// 接收 context、错误和原始请求，返回 Output 切片和可能的错误。
 //
-//	func(ctx context.Context, err error, request *Request) ([]Output, error)
-type ErrbackFunc = any
+// 此类型定义在 http 包中以打破 http ↔ spider 的循环依赖。
+// spider 包通过类型别名 `type ErrbackFunc = shttp.ErrbackFunc` 重新导出，
+// 用户代码可继续使用 spider.ErrbackFunc。
+type ErrbackFunc func(ctx context.Context, err error, request *Request) ([]Output, error)
 
 // Request 表示一个 HTTP 请求。
 // 对应 Scrapy 的 scrapy.http.Request 类。

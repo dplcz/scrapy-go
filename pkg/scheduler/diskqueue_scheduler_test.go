@@ -505,9 +505,9 @@ func TestSchedulerWithCallbackRegistry(t *testing.T) {
 	dir := t.TempDir()
 	registry := shttp.NewCallbackRegistry()
 
-	parseFn := func(ctx context.Context, resp *shttp.Response) ([]any, error) {
+	parseFn := shttp.CallbackFunc(func(ctx context.Context, resp *shttp.Response) ([]shttp.Output, error) {
 		return nil, nil
-	}
+	})
 	registry.Register("Parse", parseFn)
 
 	s := NewDefaultScheduler(

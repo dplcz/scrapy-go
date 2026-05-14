@@ -104,7 +104,7 @@ Engine (调度引擎)
 ## ⚠️ 注意事项
 
 - **Go 版本要求** — 需要 Go 1.25.1+
-- **回调函数注册** — 使用 `CallbackRegistry` 注册回调函数，支持断点续爬时的回调恢复
+- **回调函数类型安全** — `CallbackFunc`/`ErrbackFunc` 为具体函数类型（非 `any`），编译期即可捕获签名错误；使用 `CallbackRegistry` 注册回调函数支持断点续爬时的回调恢复
 - **对象池** — 高并发场景建议使用 `pkg/pool` 包的对象池减少 GC 压力
 - **优雅关闭** — 第一次 Ctrl+C 优雅关闭（等待进行中的请求完成），第二次强制退出
 - **中间件顺序** — ProcessRequest 按优先级正序执行，ProcessResponse 按优先级逆序执行

@@ -54,9 +54,9 @@ func TestRequestSerializerWithRegistry(t *testing.T) {
 	registry := shttp.NewCallbackRegistry()
 
 	// 注册一个简单的回调
-	parseFn := func(ctx context.Context, resp *shttp.Response) ([]any, error) {
+	parseFn := shttp.CallbackFunc(func(ctx context.Context, resp *shttp.Response) ([]shttp.Output, error) {
 		return nil, nil
-	}
+	})
 	registry.Register("Parse", parseFn)
 
 	s := NewRequestSerializer(registry, nil)
@@ -174,9 +174,9 @@ func TestRequestSerializerInvalidData(t *testing.T) {
 func TestRequestSerializerWithErrback(t *testing.T) {
 	registry := shttp.NewCallbackRegistry()
 
-	errbackFn := func(ctx context.Context, err error, req *shttp.Request) ([]any, error) {
+	errbackFn := shttp.ErrbackFunc(func(ctx context.Context, err error, req *shttp.Request) ([]shttp.Output, error) {
 		return nil, nil
-	}
+	})
 	registry.RegisterErrback("HandleError", errbackFn)
 
 	s := NewRequestSerializer(registry, nil)
@@ -232,9 +232,9 @@ func TestRequestSerializerUnregisteredCallback(t *testing.T) {
 	s := NewRequestSerializer(registry, nil)
 
 	// 使用未注册的回调
-	unregisteredFn := func(ctx context.Context, resp *shttp.Response) ([]any, error) {
+	unregisteredFn := shttp.CallbackFunc(func(ctx context.Context, resp *shttp.Response) ([]shttp.Output, error) {
 		return nil, nil
-	}
+	})
 
 	req := shttp.MustNewRequest("https://example.com",
 		shttp.WithCallback(unregisteredFn),

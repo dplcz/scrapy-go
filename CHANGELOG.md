@@ -5,6 +5,61 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased] — P5-021 公共类型包重构（TD-003 偿还）
+
+> **🔧 类型安全增强 — 消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型**
+>
+> P5-021 偿还了自 MVP 以来的技术债务 TD-003：将 `CallbackFunc`/`ErrbackFunc` 从 `any` 类型别名
+> 替换为具体的函数类型定义，消除运行时类型断言，提供编译期类型安全。
+
+### 变更
+
+#### P5-021a：将共享类型下沉至 `pkg/http` 包
+
+- 🏗️ **`Output` 类型迁移** — 将 `Output` 结构体从 `pkg/spider` 迁移至 `pkg/http`
+  - `pkg/spider` 通过类型别名 `type Output = shttp.Output` 保持完全向后兼容
+  - 用户代码无需任何修改，`spider.Output` 继续可用
+
+- 🔒 **`CallbackFunc` 具体类型定义** — `pkg/http/request.go`
+  - 从 `type CallbackFunc = any` 替换为 `type CallbackFunc func(ctx context.Context, response *Response) ([]Output, error)`
+  - `pkg/spider` 通过类型别名 `type CallbackFunc = shttp.CallbackFunc` 保持向后兼容
+  - 编译期即可捕获回调签名不匹配的错误
+
+- 🔒 **`ErrbackFunc` 具体类型定义** — `pkg/http/request.go`
+  - 从 `type ErrbackFunc = any` 替换为 `type ErrbackFunc func(ctx context.Context, err error, request *Request) ([]Output, error)`
+  - `pkg/spider` 通过类型别名 `type ErrbackFunc = shttp.ErrbackFunc` 保持向后兼容
+
+#### P5-021b：消除运行时类型断言
+
+- ✅ **`pkg/scraper/scraper.go`** — `resolveCallback` 和 `ScrapeError` 方法
+  - 移除 `request.Callback.(spider.CallbackFunc)` 运行时类型断言
+  - 移除 `request.Errback.(spider.ErrbackFunc)` 运行时类型断言
+  - 直接使用具体类型调用，零运行时开销
+
+#### P5-021c：`NoCallback` 哨兵值重构
+
+- 🔄 **`NoCallback` 实现方式变更** — `pkg/http/request.go`
+  - 从 `noCallbackSentinel` 结构体改为哨兵函数值
+  - `IsNoCallback` 通过函数指针比较实现，替代接口类型断言
+
+#### P5-021d：`CallbackRegistry` 签名匹配增强
+
+- 🎯 **精确签名匹配** — `pkg/http/callback_registry.go`
+  - `matchesCallbackSignature` / `matchesErrbackSignature` 现在精确检查返回类型为 `[]Output`
+  - `RegisterSpider` 使用 `reflect.Value.Convert` 将匿名函数类型零开销转换为命名类型 `CallbackFunc`/`ErrbackFunc`
+
+### 技术债务
+
+- ✅ **TD-003 已偿还** — `CallbackFunc`/`ErrbackFunc` 不再使用 `any` 类型，编译期类型安全
+
+### 向后兼容性
+
+- ✅ `spider.Output`、`spider.CallbackFunc`、`spider.ErrbackFunc` 通过类型别名保持完全兼容
+- ✅ 所有 examples、contrib 模块、集成测试全部通过
+- ✅ `go test -race` 无竞态报告
+
+---
+
 ## [v1.1.3] — 2026-05-13
 
 > **🚀 Post-v1.0 生产增强里程碑 M7 — Sprint 13 生产增强**
