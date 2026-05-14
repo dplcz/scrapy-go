@@ -1077,7 +1077,7 @@ req, _ := shttp.NewRequest("https://example.com/api",
 ### ⚠️ 已知约束
 
 - **Go 版本要求** — 需要 Go 1.25.1+
-- **回调函数类型** — `Callback`/`Errback` 使用 `any` 类型，需运行时类型断言
+- **回调函数类型安全** — `CallbackFunc`/`ErrbackFunc` 为具体函数类型（P5-021 已消除 `any` 类型），编译期即可捕获签名错误
 
 ---
 
@@ -1136,6 +1136,17 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### Unreleased — P5-021 类型安全增强（TD-003 偿还）
+
+> **消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型，提供编译期类型安全**
+
+- 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
+- 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
+- ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
+- 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
+- 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
+
 ### v1.1.3 🎉
 
 > **Post-v1.0 Sprint 13 生产增强 — P5-012 分布式限速器 + P5-017 Scheduler 内存队列溢出优化**

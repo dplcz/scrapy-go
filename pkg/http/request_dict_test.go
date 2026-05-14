@@ -22,7 +22,7 @@ func TestCallbackRegistryBasic(t *testing.T) {
 	}
 
 	// 注册回调
-	cb := func() {}
+	cb := CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil })
 	registry.Register("parse_detail", cb)
 
 	if registry.Len() != 1 {
@@ -48,7 +48,7 @@ func TestCallbackRegistryBasic(t *testing.T) {
 func TestCallbackRegistryErrback(t *testing.T) {
 	registry := NewCallbackRegistry()
 
-	eb := func() {}
+	eb := ErrbackFunc(func(ctx context.Context, err error, req *Request) ([]Output, error) { return nil, nil })
 	registry.RegisterErrback("handle_error", eb)
 
 	if registry.ErrbackLen() != 1 {
@@ -71,7 +71,7 @@ func TestCallbackRegistryErrback(t *testing.T) {
 
 func TestCallbackRegistryMustLookup(t *testing.T) {
 	registry := NewCallbackRegistry()
-	cb := func() {}
+	cb := CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil })
 	registry.Register("parse", cb)
 
 	// 正常查找
@@ -91,7 +91,7 @@ func TestCallbackRegistryMustLookup(t *testing.T) {
 
 func TestCallbackRegistryMustLookupErrback(t *testing.T) {
 	registry := NewCallbackRegistry()
-	eb := func() {}
+	eb := ErrbackFunc(func(ctx context.Context, err error, req *Request) ([]Output, error) { return nil, nil })
 	registry.RegisterErrback("handle_error", eb)
 
 	found := registry.MustLookupErrback("handle_error")
@@ -109,9 +109,9 @@ func TestCallbackRegistryMustLookupErrback(t *testing.T) {
 
 func TestCallbackRegistryNames(t *testing.T) {
 	registry := NewCallbackRegistry()
-	registry.Register("parse_a", func() {})
-	registry.Register("parse_b", func() {})
-	registry.Register("parse_c", func() {})
+	registry.Register("parse_a", CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil }))
+	registry.Register("parse_b", CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil }))
+	registry.Register("parse_c", CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil }))
 
 	names := registry.Names()
 	sort.Strings(names)
@@ -125,8 +125,8 @@ func TestCallbackRegistryNames(t *testing.T) {
 
 func TestCallbackRegistryErrbackNames(t *testing.T) {
 	registry := NewCallbackRegistry()
-	registry.RegisterErrback("err_a", func() {})
-	registry.RegisterErrback("err_b", func() {})
+	registry.RegisterErrback("err_a", ErrbackFunc(func(ctx context.Context, err error, req *Request) ([]Output, error) { return nil, nil }))
+	registry.RegisterErrback("err_b", ErrbackFunc(func(ctx context.Context, err error, req *Request) ([]Output, error) { return nil, nil }))
 
 	names := registry.ErrbackNames()
 	sort.Strings(names)
@@ -141,8 +141,10 @@ func TestCallbackRegistryErrbackNames(t *testing.T) {
 func TestCallbackRegistryOverwrite(t *testing.T) {
 	registry := NewCallbackRegistry()
 
-	cb1 := "first"
-	cb2 := "second"
+	cb1 := CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil })
+	cb2 := CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) {
+		return []Output{{Item: "second"}}, nil
+	})
 	registry.Register("parse", cb1)
 	registry.Register("parse", cb2)
 
@@ -150,8 +152,10 @@ func TestCallbackRegistryOverwrite(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to find callback")
 	}
-	if found != "second" {
-		t.Error("expected overwritten callback to be 'second'")
+	// 验证覆盖成功：调用返回的回调应返回 "second" item
+	results, _ := found(context.Background(), nil)
+	if len(results) != 1 || results[0].Item != "second" {
+		t.Error("expected overwritten callback")
 	}
 }
 
@@ -432,18 +436,14 @@ func TestFromDictFull(t *testing.T) {
 func TestFromDictWithRegistry(t *testing.T) {
 	registry := NewCallbackRegistry()
 
-	// 使用真实的回调函数类型
-	type mockCallback = func(ctx context.Context, resp *Response) ([]any, error)
-	type mockErrback = func(ctx context.Context, err error, req *Request) ([]any, error)
-
 	var parseCalled bool
 	var errbackCalled bool
 
-	parseDetail := mockCallback(func(ctx context.Context, resp *Response) ([]any, error) {
+	parseDetail := CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) {
 		parseCalled = true
 		return nil, nil
 	})
-	handleError := mockErrback(func(ctx context.Context, err error, req *Request) ([]any, error) {
+	handleError := ErrbackFunc(func(ctx context.Context, err error, req *Request) ([]Output, error) {
 		errbackCalled = true
 		return nil, nil
 	})
@@ -470,20 +470,12 @@ func TestFromDictWithRegistry(t *testing.T) {
 	}
 
 	// 验证回调可以被调用
-	cb, ok := req.Callback.(mockCallback)
-	if !ok {
-		t.Fatal("callback type mismatch")
-	}
-	cb(context.Background(), nil)
+	req.Callback(context.Background(), nil)
 	if !parseCalled {
 		t.Error("callback should have been called")
 	}
 
-	eb, ok := req.Errback.(mockErrback)
-	if !ok {
-		t.Fatal("errback type mismatch")
-	}
-	eb(context.Background(), nil, nil)
+	req.Errback(context.Background(), nil, nil)
 	if !errbackCalled {
 		t.Error("errback should have been called")
 	}
@@ -609,8 +601,8 @@ func TestToDictFromDictRoundTrip(t *testing.T) {
 
 	// FromDict
 	registry := NewCallbackRegistry()
-	registry.Register("parse_detail", func() {})
-	registry.RegisterErrback("handle_error", func() {})
+	registry.Register("parse_detail", CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil }))
+	registry.RegisterErrback("handle_error", ErrbackFunc(func(ctx context.Context, err error, req *Request) ([]Output, error) { return nil, nil }))
 
 	restored, err := FromDict(d2, registry)
 	if err != nil {
@@ -1372,20 +1364,20 @@ type mockSpider struct {
 	handleErrorCalled bool
 }
 
-// Parse 符合 Callback 签名：(context.Context, *Response) ([]any, error)
-func (s *mockSpider) Parse(ctx context.Context, resp *Response) ([]any, error) {
+// Parse 符合 Callback 签名：(context.Context, *Response) ([]Output, error)
+func (s *mockSpider) Parse(ctx context.Context, resp *Response) ([]Output, error) {
 	s.parseCalled = true
 	return nil, nil
 }
 
 // ParseDetail 符合 Callback 签名
-func (s *mockSpider) ParseDetail(ctx context.Context, resp *Response) ([]any, error) {
+func (s *mockSpider) ParseDetail(ctx context.Context, resp *Response) ([]Output, error) {
 	s.parseDetailCalled = true
-	return []any{"item1"}, nil
+	return []Output{{Item: "item1"}}, nil
 }
 
-// HandleError 符合 Errback 签名：(context.Context, error, *Request) ([]any, error)
-func (s *mockSpider) HandleError(ctx context.Context, err error, req *Request) ([]any, error) {
+// HandleError 符合 Errback 签名：(context.Context, error, *Request) ([]Output, error)
+func (s *mockSpider) HandleError(ctx context.Context, err error, req *Request) ([]Output, error) {
 	s.handleErrorCalled = true
 	return nil, nil
 }
@@ -1396,12 +1388,12 @@ func (s *mockSpider) Name() string {
 }
 
 // Start 不符合任何回调签名，不应被注册
-func (s *mockSpider) Start(ctx context.Context) <-chan any {
+func (s *mockSpider) Start(ctx context.Context) <-chan Output {
 	return nil
 }
 
 // helperMethod 未导出方法，不应被注册
-func (s *mockSpider) helperMethod(ctx context.Context, resp *Response) ([]any, error) {
+func (s *mockSpider) helperMethod(ctx context.Context, resp *Response) ([]Output, error) {
 	return nil, nil
 }
 
@@ -1448,16 +1440,11 @@ func TestRegisterSpiderCallbackInvocation(t *testing.T) {
 	}
 
 	// 类型断言并调用
-	fn, ok := cb.(func(context.Context, *Response) ([]any, error))
-	if !ok {
-		t.Fatalf("callback type mismatch: %T", cb)
-	}
-
-	results, err := fn(context.Background(), nil)
+	results, err := cb(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(results) != 1 || results[0] != "item1" {
+	if len(results) != 1 || results[0].Item != "item1" {
 		t.Errorf("unexpected results: %v", results)
 	}
 	if !spider.parseDetailCalled {
@@ -1477,12 +1464,7 @@ func TestRegisterSpiderErrbackInvocation(t *testing.T) {
 		t.Fatal("expected to find HandleError errback")
 	}
 
-	fn, ok := eb.(func(context.Context, error, *Request) ([]any, error))
-	if !ok {
-		t.Fatalf("errback type mismatch: %T", eb)
-	}
-
-	_, err := fn(context.Background(), fmt.Errorf("test error"), nil)
+	_, err := eb(context.Background(), fmt.Errorf("test error"), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1550,11 +1532,7 @@ func TestFromDictWithRegisteredSpider(t *testing.T) {
 	}
 
 	// 调用恢复的回调验证绑定正确
-	fn, ok := req.Callback.(func(context.Context, *Response) ([]any, error))
-	if !ok {
-		t.Fatalf("callback type mismatch: %T", req.Callback)
-	}
-	fn(context.Background(), nil)
+	req.Callback(context.Background(), nil)
 	if !spider.parseDetailCalled {
 		t.Error("restored callback should invoke spider method")
 	}
@@ -1562,7 +1540,7 @@ func TestFromDictWithRegisteredSpider(t *testing.T) {
 
 func TestFromDictWithUnregisteredErrback(t *testing.T) {
 	registry := NewCallbackRegistry()
-	registry.Register("Parse", func() {}) // 注册一个回调，使 registry 非空
+	registry.Register("Parse", CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) { return nil, nil })) // 注册一个回调，使 registry 非空
 
 	d := map[string]any{
 		"url":     "https://example.com",
@@ -1648,11 +1626,7 @@ func TestRegisterSpiderRoundTrip(t *testing.T) {
 	}
 
 	// 验证恢复的回调绑定到正确的 spider 实例
-	fn, ok := restored.Callback.(func(context.Context, *Response) ([]any, error))
-	if !ok {
-		t.Fatalf("callback type mismatch: %T", restored.Callback)
-	}
-	fn(context.Background(), nil)
+	restored.Callback(context.Background(), nil)
 	if !spider.parseDetailCalled {
 		t.Error("restored callback should be bound to the original spider instance")
 	}
@@ -1666,12 +1640,12 @@ func TestRegisterSpiderRoundTrip(t *testing.T) {
 type mockSpiderMixedSignatures struct{}
 
 // ValidCallback 标准 Callback 签名
-func (s *mockSpiderMixedSignatures) ValidCallback(ctx context.Context, resp *Response) ([]any, error) {
+func (s *mockSpiderMixedSignatures) ValidCallback(ctx context.Context, resp *Response) ([]Output, error) {
 	return nil, nil
 }
 
 // ValidErrback 标准 Errback 签名
-func (s *mockSpiderMixedSignatures) ValidErrback(ctx context.Context, err error, req *Request) ([]any, error) {
+func (s *mockSpiderMixedSignatures) ValidErrback(ctx context.Context, err error, req *Request) ([]Output, error) {
 	return nil, nil
 }
 
@@ -1681,12 +1655,12 @@ func (s *mockSpiderMixedSignatures) WrongReturnCount(ctx context.Context, resp *
 }
 
 // WrongParamCount 参数数量不对
-func (s *mockSpiderMixedSignatures) WrongParamCount(ctx context.Context) ([]any, error) {
+func (s *mockSpiderMixedSignatures) WrongParamCount(ctx context.Context) ([]Output, error) {
 	return nil, nil
 }
 
 // WrongParamType 参数类型不对（第二个参数不是 *Response）
-func (s *mockSpiderMixedSignatures) WrongParamType(ctx context.Context, data string) ([]any, error) {
+func (s *mockSpiderMixedSignatures) WrongParamType(ctx context.Context, data string) ([]Output, error) {
 	return nil, nil
 }
 

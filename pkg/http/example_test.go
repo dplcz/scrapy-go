@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"context"
 	"fmt"
 
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
@@ -153,8 +154,12 @@ func ExampleCallbackRegistry() {
 	registry := shttp.NewCallbackRegistry()
 
 	// 手动注册回调
-	registry.Register("ParseDetail", func() {})
-	registry.Register("ParseList", func() {})
+	registry.Register("ParseDetail", shttp.CallbackFunc(func(ctx context.Context, resp *shttp.Response) ([]shttp.Output, error) {
+		return nil, nil
+	}))
+	registry.Register("ParseList", shttp.CallbackFunc(func(ctx context.Context, resp *shttp.Response) ([]shttp.Output, error) {
+		return nil, nil
+	}))
 
 	// 查找回调
 	_, found := registry.Lookup("ParseDetail")

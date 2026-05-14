@@ -100,7 +100,13 @@ func (r *CallbackRegistry) RegisterSpider(spider any) {
 		if matchesCallbackSignature(methodType) {
 			// 获取绑定后的方法值（已绑定 receiver）
 			boundMethod := v.Method(i)
-			r.Register(method.Name, boundMethod.Interface())
+			// 使用 reflect.Value.Convert 将匿名函数类型转换为命名类型 CallbackFunc。
+			// reflect.Value.Interface() 返回的是匿名函数类型 func(context.Context, *Response) ([]Output, error)，
+			// 与命名类型 CallbackFunc 底层相同但 Go 类型系统视为不同类型，直接类型断言会失败。
+			// Convert 在底层类型相同时零开销转换，调用时不经过反射。
+			cbType := reflect.TypeOf(CallbackFunc(nil))
+			cb := boundMethod.Convert(cbType).Interface().(CallbackFunc)
+			r.Register(method.Name, cb)
 			continue
 		}
 
@@ -108,7 +114,9 @@ func (r *CallbackRegistry) RegisterSpider(spider any) {
 		// 绑定方法含 receiver，所以实际签名是 (receiver, context.Context, error, *Request) ([]T, error)
 		if matchesErrbackSignature(methodType) {
 			boundMethod := v.Method(i)
-			r.RegisterErrback(method.Name, boundMethod.Interface())
+			ebType := reflect.TypeOf(ErrbackFunc(nil))
+			eb := boundMethod.Convert(ebType).Interface().(ErrbackFunc)
+			r.RegisterErrback(method.Name, eb)
 		}
 	}
 }
@@ -138,8 +146,9 @@ func matchesCallbackSignature(mt reflect.Type) bool {
 		return false
 	}
 
-	// 第 1 个返回值：slice 类型
-	if mt.Out(0).Kind() != reflect.Slice {
+	// 第 1 个返回值：[]Output 类型
+	outputSliceType := reflect.TypeOf([]Output{})
+	if mt.Out(0) != outputSliceType {
 		return false
 	}
 
@@ -183,8 +192,9 @@ func matchesErrbackSignature(mt reflect.Type) bool {
 		return false
 	}
 
-	// 第 1 个返回值：slice 类型
-	if mt.Out(0).Kind() != reflect.Slice {
+	// 第 1 个返回值：[]Output 类型
+	outputSliceType := reflect.TypeOf([]Output{})
+	if mt.Out(0) != outputSliceType {
 		return false
 	}
 

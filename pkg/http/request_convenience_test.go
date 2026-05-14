@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -277,11 +278,11 @@ func TestNoCallback(t *testing.T) {
 }
 
 func TestIsNoCallbackWithNormalCallback(t *testing.T) {
-	if IsNoCallback(nil) {
-		t.Error("nil should not be NoCallback")
-	}
-	if IsNoCallback("not a callback") {
-		t.Error("string should not be NoCallback")
+	normalCb := CallbackFunc(func(ctx context.Context, resp *Response) ([]Output, error) {
+		return nil, nil
+	})
+	if IsNoCallback(normalCb) {
+		t.Error("normal callback should not be NoCallback")
 	}
 }
 
