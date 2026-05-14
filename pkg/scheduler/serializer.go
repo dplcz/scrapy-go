@@ -3,9 +3,8 @@ package scheduler
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
-
 	shttp "github.com/dplcz/scrapy-go/pkg/http"
+	"log/slog"
 )
 
 // RequestSerializer 负责 Request 与 []byte 之间的序列化/反序列化。
@@ -83,38 +82,24 @@ func (s *RequestSerializer) Deserialize(data []byte) (*shttp.Request, error) {
 	return req, nil
 }
 
-// lookupCallbackName 通过注册表查找回调函数的注册名称。
+// lookupCallbackName 通过注册表的反向索引查找回调函数的注册名称。
+// 利用函数代码指针在 O(1) 时间内完成查找。
 // 如果回调为 nil 或未注册，返回空字符串。
 func (s *RequestSerializer) lookupCallbackName(cb shttp.CallbackFunc) string {
 	if cb == nil || s.registry == nil {
 		return ""
 	}
-
-	// 遍历注册表查找匹配的回调
-	for _, name := range s.registry.Names() {
-		registered, ok := s.registry.Lookup(name)
-		if ok && fmt.Sprintf("%v", registered) == fmt.Sprintf("%v", cb) {
-			return name
-		}
-	}
-
-	return ""
+	name, _ := s.registry.LookupByFunc(cb)
+	return name
 }
 
-// lookupErrbackName 通过注册表查找错误回调函数的注册名称。
+// lookupErrbackName 通过注册表的反向索引查找错误回调函数的注册名称。
+// 利用函数代码指针在 O(1) 时间内完成查找。
 // 如果错误回调为 nil 或未注册，返回空字符串。
 func (s *RequestSerializer) lookupErrbackName(eb shttp.ErrbackFunc) string {
 	if eb == nil || s.registry == nil {
 		return ""
 	}
-
-	// 遍历注册表查找匹配的错误回调
-	for _, name := range s.registry.ErrbackNames() {
-		registered, ok := s.registry.LookupErrback(name)
-		if ok && fmt.Sprintf("%v", registered) == fmt.Sprintf("%v", eb) {
-			return name
-		}
-	}
-
-	return ""
+	name, _ := s.registry.LookupErrbackByFunc(eb)
+	return name
 }

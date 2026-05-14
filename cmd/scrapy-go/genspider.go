@@ -120,7 +120,9 @@ func runGenSpider(args []string) error {
 		return err
 	}
 
-	fmt.Printf("已创建爬虫 '%s'（使用模板 '%s'）:\n    %s\n", name, *templateName, outputFile)
+	fmt.Printf("已创建爬虫 '%s'（使用模板 '%s'）:\n    %s\n\n", name, *templateName, outputFile)
+	fmt.Println("提示: 请运行以下命令以同步依赖:")
+	fmt.Println("    go mod tidy")
 	return nil
 }
 

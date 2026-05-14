@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -43,13 +45,21 @@ type CallbackRegistry struct {
 	mu        sync.RWMutex
 	callbacks map[string]CallbackFunc
 	errbacks  map[string]ErrbackFunc
+
+	// 反向索引：函数 reflect.Pointer → 注册名称
+	// 用于手动注册的匿名闭包场景（extractFuncName 无法提取方法名时的 fallback）。
+	// 对于通过 RegisterSpider 自动注册的方法，优先使用 runtime.FuncForPC 提取方法名。
+	callbackPtrs map[uintptr]string
+	errbackPtrs  map[uintptr]string
 }
 
 // NewCallbackRegistry 创建一个新的回调函数注册表。
 func NewCallbackRegistry() *CallbackRegistry {
 	return &CallbackRegistry{
-		callbacks: make(map[string]CallbackFunc),
-		errbacks:  make(map[string]ErrbackFunc),
+		callbacks:    make(map[string]CallbackFunc),
+		errbacks:     make(map[string]ErrbackFunc),
+		callbackPtrs: make(map[uintptr]string),
+		errbackPtrs:  make(map[uintptr]string),
 	}
 }
 
@@ -208,18 +218,22 @@ func matchesErrbackSignature(mt reflect.Type) bool {
 
 // Register 注册一个回调函数。
 // name 是回调的唯一标识符（通常是 Spider 方法名），cb 是回调函数。
+// 同时建立 reflect.Pointer → 名称的反向索引，用于匿名闭包场景的 fallback 查找。
 func (r *CallbackRegistry) Register(name string, cb CallbackFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.callbacks[name] = cb
+	r.callbackPtrs[reflect.ValueOf(cb).Pointer()] = name
 }
 
 // RegisterErrback 注册一个错误回调函数。
 // name 是错误回调的唯一标识符，eb 是错误回调函数。
+// 同时建立 reflect.Pointer → 名称的反向索引，用于匿名闭包场景的 fallback 查找。
 func (r *CallbackRegistry) RegisterErrback(name string, eb ErrbackFunc) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.errbacks[name] = eb
+	r.errbackPtrs[reflect.ValueOf(eb).Pointer()] = name
 }
 
 // Lookup 通过名称查找已注册的回调函数。
@@ -292,4 +306,106 @@ func (r *CallbackRegistry) ErrbackLen() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.errbacks)
+}
+
+// LookupByFunc 通过回调函数值反向查找其注册名称。
+//
+// 查找策略（按优先级）：
+//  1. 通过 runtime.FuncForPC 从函数值提取方法名，在注册表中验证（适用于 method value）
+//  2. 通过 reflect.ValueOf().Pointer() 在反向索引中查找（适用于手动注册的匿名闭包）
+//
+// 返回注册名称和是否找到的标志。
+func (r *CallbackRegistry) LookupByFunc(cb CallbackFunc) (string, bool) {
+	if cb == nil {
+		return "", false
+	}
+
+	// 策略 1：通过 runtime.FuncForPC 提取方法名
+	name := extractFuncName(cb)
+	if name != "" {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		if _, ok := r.callbacks[name]; ok {
+			return name, true
+		}
+		return "", false
+	}
+
+	// 策略 2：通过 reflect.Pointer 反向索引查找（fallback，适用于匿名闭包）
+	ptr := reflect.ValueOf(cb).Pointer()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if n, ok := r.callbackPtrs[ptr]; ok {
+		return n, true
+	}
+	return "", false
+}
+
+// LookupErrbackByFunc 通过错误回调函数值反向查找其注册名称。
+//
+// 查找策略同 LookupByFunc：优先 runtime.FuncForPC，fallback 到 reflect.Pointer。
+//
+// 返回注册名称和是否找到的标志。
+func (r *CallbackRegistry) LookupErrbackByFunc(eb ErrbackFunc) (string, bool) {
+	if eb == nil {
+		return "", false
+	}
+
+	// 策略 1：通过 runtime.FuncForPC 提取方法名
+	name := extractFuncName(eb)
+	if name != "" {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		if _, ok := r.errbacks[name]; ok {
+			return name, true
+		}
+		return "", false
+	}
+
+	// 策略 2：通过 reflect.Pointer 反向索引查找（fallback，适用于匿名闭包）
+	ptr := reflect.ValueOf(eb).Pointer()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if n, ok := r.errbackPtrs[ptr]; ok {
+		return n, true
+	}
+	return "", false
+}
+
+// extractFuncName 从任意函数值中提取方法名。
+//
+// 通过 reflect.ValueOf(fn).Pointer() 获取函数代码入口地址，
+// 再通过 runtime.FuncForPC 获取全限定函数名，最后解析出方法名。
+//
+// 返回规则：
+//   - method value（如 s.ParseDetail）→ 返回 "ParseDetail"
+//   - 匿名闭包 → 返回 ""（包含 "func" 前缀的名称被过滤）
+//   - 反射生成的函数值 → 返回 ""（包含 "reflect." 的被过滤）
+func extractFuncName(fn any) string {
+	pc := reflect.ValueOf(fn).Pointer()
+	f := runtime.FuncForPC(pc)
+	if f == nil {
+		return ""
+	}
+	fullName := f.Name()
+
+	// 排除反射生成的方法值
+	if strings.Contains(fullName, "reflect.") {
+		return ""
+	}
+
+	// 去掉 -fm 后缀（method value wrapper 的标记）
+	name := strings.TrimSuffix(fullName, "-fm")
+
+	// 取最后一个 "." 后面的部分作为方法名
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		name = name[idx+1:]
+	}
+
+	// 过滤匿名闭包（名称形如 "func1"、"func2" 等）
+	if strings.HasPrefix(name, "func") {
+		return ""
+	}
+
+	return name
 }
