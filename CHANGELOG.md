@@ -113,9 +113,9 @@
 
 - 🛡️ **默认值保守化调整** — `pkg/settings/defaults.go`
   - `HTTPPROXY_ENABLED`：`true` → `false`（无代理环境下避免不必要的环境变量探测）
-  - `STATS_DUMP`：`true` → `false`（减少默认日志输出噪声）
   - `MEMUSAGE_ENABLED`：`true` → `false`（轻量场景下避免后台 goroutine 开销）
   - `REFERER_ENABLED`：`true` → `false`（默认不自动添加 Referer 头，需要时显式启用）
+  - `ROBOTSTXT_OBEY`：`true` → `false`（默认不遵守 robots.txt，与文档和 Scrapy 默认行为对齐）
 
 ---
 

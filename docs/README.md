@@ -824,7 +824,7 @@ req, _ := shttp.NewRequest("https://example.com",
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `LOG_LEVEL` | string | "DEBUG" | 日志级别：DEBUG/INFO/WARN/ERROR |
-| `STATS_DUMP` | bool | false | Spider 关闭时是否输出统计信息 |
+| `STATS_DUMP` | bool | true | Spider 关闭时是否输出统计信息 |
 | `SCHEDULER_DEBUG` | bool | false | 是否输出调度器调试日志 |
 | `MEMORY_QUEUE_THRESHOLD` | int | 0 | 内存队列最大容量阈值（0=不限制），超阈值自动溢出到磁盘队列 |
 | `DOWNLOADER_STATS` | bool | true | 是否启用下载器统计中间件 |
@@ -1165,7 +1165,7 @@ scrapy-go/
 - 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
 - ⚡ **扩展按需加载** — 未启用的扩展（AutoThrottle/MemoryUsage/CloseSpider/LogStats）不再实例化
 - 🔧 **`EXTENSIONS_BASE` 优先级分配** — 消除优先级冲突警告，确定性执行顺序
-- 🛡️ **默认值保守化** — `HTTPPROXY_ENABLED`/`STATS_DUMP`/`MEMUSAGE_ENABLED`/`REFERER_ENABLED` 默认改为 `false`
+- 🛡️ **默认值保守化** — `HTTPPROXY_ENABLED`/`MEMUSAGE_ENABLED`/`REFERER_ENABLED`/`ROBOTSTXT_OBEY` 默认改为 `false`
 
 ### v1.1.3 🎉
 

@@ -136,7 +136,7 @@ func (s *Settings) loadDefaults() {
 	// Robots.txt
 	// ========================================================================
 
-	s.Set("ROBOTSTXT_OBEY", true, d)
+	s.Set("ROBOTSTXT_OBEY", false, d)
 	s.Set("ROBOTSTXT_USER_AGENT", "", d)
 
 	// ========================================================================
@@ -177,7 +177,7 @@ func (s *Settings) loadDefaults() {
 	// 统计配置
 	// ========================================================================
 
-	s.Set("STATS_DUMP", false, d)
+	s.Set("STATS_DUMP", true, d)
 	s.Set("LOGSTATS_INTERVAL", 60.0, d)
 
 	// ========================================================================
