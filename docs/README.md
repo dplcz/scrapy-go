@@ -346,6 +346,7 @@ req4.SetMeta("cookiejar", "session-user-1")
 - Spider 级别类型安全配置（`CustomSettings()`）
 - 配置冻结，防止运行时意外修改
 - `_BASE` + 用户配置合并，负数优先级禁用组件
+- **泛型类型安全 API** — `Key[T]` + `Get[T]`/`Set[T]` 编译期类型检查，消除魔法字符串
 
 ### 📊 统计与日志
 
@@ -562,6 +563,18 @@ s := settings.New()
 s.Set("CONCURRENT_REQUESTS", 32, settings.PriorityProject)
 s.Set("DOWNLOAD_DELAY", time.Second, settings.PriorityProject)
 
+
+**⑤ 泛型类型安全 API（推荐）** — 编译期类型检查，消除魔法字符串：
+
+```go
+// 使用类型化键常量，编译期确定返回类型
+concurrency := settings.Get(s, settings.KeyConcurrentRequests) // int
+botName := settings.Get(s, settings.KeyBotName)               // string
+enabled := settings.Get(s, settings.KeyRetryEnabled)          // bool
+
+// 类型安全的设置（编译期约束值类型）
+settings.Set(s, settings.KeyConcurrentRequests, 32, settings.PriorityProject)
+```
 c := crawler.New(crawler.WithSettings(s))
 ```
 
@@ -1136,6 +1149,16 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### Unreleased
+
+> **TD-004 Settings 编译期类型安全增强**
+
+- 🛡️ **泛型类型安全 API** — 新增 `Key[T]` 泛型类型 + `Get[T]`/`Set[T]`/`MustGet[T]` 顶层函数
+- 🔑 **类型化配置键常量** — 80+ 个框架内置配置项定义为 `Key[T]` 常量，消除魔法字符串
+- ♻️ **Crawler 迁移** — `pkg/crawler` 中 50+ 处调用迁移至泛型 API
+- ✅ **TD-004 已偿还** — 旧 API 保留完全向后兼容
+
 ### v1.1.3 🎉
 
 > **Post-v1.0 Sprint 13 生产增强 — P5-012 分布式限速器 + P5-017 Scheduler 内存队列溢出优化**
