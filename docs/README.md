@@ -346,6 +346,7 @@ req4.SetMeta("cookiejar", "session-user-1")
 - Spider 级别类型安全配置（`CustomSettings()`）
 - 配置冻结，防止运行时意外修改
 - `_BASE` + 用户配置合并，负数优先级禁用组件
+- **泛型类型安全 API** — `Key[T]` + `Get[T]`/`Set[T]` 编译期类型检查，消除魔法字符串
 
 ### 📊 统计与日志
 
@@ -562,6 +563,18 @@ s := settings.New()
 s.Set("CONCURRENT_REQUESTS", 32, settings.PriorityProject)
 s.Set("DOWNLOAD_DELAY", time.Second, settings.PriorityProject)
 
+
+**⑤ 泛型类型安全 API（推荐）** — 编译期类型检查，消除魔法字符串：
+
+```go
+// 使用类型化键常量，编译期确定返回类型
+concurrency := settings.Get(s, settings.KeyConcurrentRequests) // int
+botName := settings.Get(s, settings.KeyBotName)               // string
+enabled := settings.Get(s, settings.KeyRetryEnabled)          // bool
+
+// 类型安全的设置（编译期约束值类型）
+settings.Set(s, settings.KeyConcurrentRequests, 32, settings.PriorityProject)
+```
 c := crawler.New(crawler.WithSettings(s))
 ```
 
@@ -787,7 +800,7 @@ req, _ := shttp.NewRequest("https://example.com/page",
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `HTTPPROXY_ENABLED` | bool | true | 是否启用 HttpProxy 中间件 |
+| `HTTPPROXY_ENABLED` | bool | false | 是否启用 HttpProxy 中间件 |
 | `HTTPPROXY_AUTH_ENCODING` | string | "latin-1" | 代理认证信息编码（Go 中使用 UTF-8） |
 
 代理来源（按优先级从高到低）：
@@ -1137,15 +1150,22 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### Unreleased — P5-021 类型安全增强（TD-003 偿还）
+### Unreleased
 
-> **消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型，提供编译期类型安全**
+> **TD-004 Settings 编译期类型安全增强 + P5-021 类型安全增强（TD-003 偿还）+ 扩展按需加载优化**
 
+- 🛡️ **泛型类型安全 API** — 新增 `Key[T]` 泛型类型 + `Get[T]`/`Set[T]`/`MustGet[T]` 顶层函数
+- 🔑 **类型化配置键常量** — 80+ 个框架内置配置项定义为 `Key[T]` 常量，消除魔法字符串
+- ♻️ **Crawler 迁移** — `pkg/crawler` 中 50+ 处调用迁移至泛型 API
+- ✅ **TD-004 已偿还** — 旧 API 保留完全向后兼容
 - 🔒 **`CallbackFunc`/`ErrbackFunc` 具体类型定义** — 从 `any` 替换为具体函数签名，编译期捕获签名错误
 - 🏗️ **`Output` 类型下沉至 `pkg/http`** — `pkg/spider` 通过类型别名保持完全向后兼容
 - ✅ **消除运行时类型断言** — `Scraper` 中不再需要 `request.Callback.(spider.CallbackFunc)` 断言
 - 🎯 **`CallbackRegistry` 精确签名匹配** — 使用 `reflect.Value.Convert` 零开销类型转换
 - 🔄 **`NoCallback` 哨兵值重构** — 从结构体改为函数值，通过指针比较实现
+- ⚡ **扩展按需加载** — 未启用的扩展（AutoThrottle/MemoryUsage/CloseSpider/LogStats）不再实例化
+- 🔧 **`EXTENSIONS_BASE` 优先级分配** — 消除优先级冲突警告，确定性执行顺序
+- 🛡️ **默认值保守化** — `HTTPPROXY_ENABLED`/`MEMUSAGE_ENABLED`/`REFERER_ENABLED`/`ROBOTSTXT_OBEY` 默认改为 `false`
 
 ### v1.1.3 🎉
 

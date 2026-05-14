@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"sort"
@@ -125,7 +124,7 @@ func (c *Crawler) initDefaults() {
 	}
 	if c.Stats == nil {
 		c.Stats = stats.NewMemoryCollector(
-			c.Settings.GetBool("STATS_DUMP", true),
+			settings.Get(c.Settings, settings.KeyStatsDump),
 			c.Logger,
 		)
 	}
@@ -134,7 +133,7 @@ func (c *Crawler) initDefaults() {
 // newDefaultLogger 根据 Settings 中的 LOG_LEVEL 创建默认日志记录器。
 // 支持的级别：DEBUG、INFO、WARN、ERROR（不区分大小写）。
 func newDefaultLogger(s *settings.Settings) *slog.Logger {
-	levelStr := s.GetString("LOG_LEVEL", "DEBUG")
+	levelStr := settings.Get(s, settings.KeyLogLevel)
 	return sslog.NewColorLogger(levelStr, nil, false)
 }
 
@@ -304,7 +303,7 @@ func (c *Crawler) crawl(ctx context.Context, sp spider.Spider) error {
 		c.Logger = newDefaultLogger(c.Settings)
 		c.Signals = sig.NewManager(c.Logger)
 		c.Stats = stats.NewMemoryCollector(
-			c.Settings.GetBool("STATS_DUMP", true),
+			settings.Get(c.Settings, settings.KeyStatsDump),
 			c.Logger,
 		)
 	}
@@ -337,7 +336,7 @@ func (c *Crawler) crawl(ctx context.Context, sp spider.Spider) error {
 
 	c.Logger.Info("spider started",
 		"spider", sp.Name(),
-		"concurrent_requests", c.Settings.GetInt("CONCURRENT_REQUESTS", 16),
+		"concurrent_requests", settings.Get(c.Settings, settings.KeyConcurrentRequests),
 	)
 
 	// 启动引擎
@@ -392,11 +391,11 @@ func (c *Crawler) assembleComponents() {
 	schedulerOpts := []scheduler.DefaultSchedulerOption{
 		scheduler.WithStats(c.Stats),
 		scheduler.WithSchedulerLogger(c.Logger),
-		scheduler.WithDebug(c.Settings.GetBool("SCHEDULER_DEBUG", false)),
+		scheduler.WithDebug(settings.Get(c.Settings, settings.KeySchedulerDebug)),
 	}
 
 	// 配置 JOBDIR（断点续爬）
-	jobDir := c.Settings.GetString("JOBDIR", "")
+	jobDir := settings.Get(c.Settings, settings.KeyJobDir)
 	if jobDir != "" {
 		schedulerOpts = append(schedulerOpts, scheduler.WithJobDir(jobDir))
 
@@ -408,7 +407,7 @@ func (c *Crawler) assembleComponents() {
 		// 使用持久化的去重过滤器
 		dupeFilter := scheduler.NewPersistentRFPDupeFilter(
 			c.Logger,
-			c.Settings.GetBool("DUPEFILTER_DEBUG", false),
+			settings.Get(c.Settings, settings.KeyDupeFilterDebug),
 			jobDir,
 		)
 		schedulerOpts = append(schedulerOpts, scheduler.WithDupeFilter(dupeFilter))
@@ -421,9 +420,9 @@ func (c *Crawler) assembleComponents() {
 	c.scheduler = scheduler.NewDefaultScheduler(schedulerOpts...)
 
 	// 2. 下载器
-	timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
+	timeout := settings.Get(c.Settings, settings.KeyDownloadTimeoutDuration)
 	var handler downloader.DownloadHandler
-	if c.Settings.GetBool("HTTP2_ENABLED", false) {
+	if settings.Get(c.Settings, settings.KeyHTTP2Enabled) {
 		// 使用 HTTP/2 优化的下载处理器
 		connPoolConfig := downloader.ConnPoolConfigFromSettings(
 			c.Settings.GetInt,
@@ -432,14 +431,14 @@ func (c *Crawler) assembleComponents() {
 		)
 		handler = downloader.NewHTTP2DownloadHandler(timeout, connPoolConfig)
 		c.Logger.Info("HTTP/2 download handler enabled")
-	} else if c.Settings.GetBool("DOWNLOAD_PROGRESS_ENABLED", false) {
+	} else if settings.Get(c.Settings, settings.KeyDownloadProgressEnabled) {
 		// 使用支持进度回调的下载处理器
 		connPoolConfig := downloader.ConnPoolConfigFromSettings(
 			c.Settings.GetInt,
 			c.Settings.GetDuration,
 			c.Settings.GetBool,
 		)
-		minInterval := c.Settings.GetDuration("DOWNLOAD_PROGRESS_MIN_INTERVAL", 100*time.Millisecond)
+		minInterval := time.Duration(settings.Get(c.Settings, settings.KeyDownloadProgressMinInterval)) * time.Millisecond
 		handler = downloader.NewProgressHTTPDownloadHandler(timeout, connPoolConfig, minInterval)
 		c.Logger.Info("progress download handler enabled")
 	} else {
@@ -465,8 +464,8 @@ func (c *Crawler) assembleComponents() {
 	c.extensions = c.buildExtensions()
 
 	// 7. Scraper
-	maxActiveSize := c.Settings.GetInt("SCRAPER_SLOT_MAX_ACTIVE_SIZE", 5000000)
-	concurrentItems := c.Settings.GetInt("CONCURRENT_ITEMS", 100)
+	maxActiveSize := settings.Get(c.Settings, settings.KeyScraperSlotMaxActiveSize)
+	concurrentItems := settings.Get(c.Settings, settings.KeyConcurrentItems)
 	c.scraper = scraper.NewScraper(c.spiderMW, c.pipelines, c.spider, c.Signals, c.Stats, c.Logger, maxActiveSize, concurrentItems)
 
 	// 8. Engine
@@ -487,60 +486,59 @@ type componentEntry struct {
 // key 为中间件名称，与 DOWNLOADER_MIDDLEWARES_BASE 中的名称一一对应。
 var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 	"RobotsTxt": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("ROBOTSTXT_OBEY", false) {
+		if !settings.Get(c.Settings, settings.KeyRobotsTxtObey) {
 			return nil
 		}
 		opts := []dmiddle.RobotsTxtOption{
-			dmiddle.WithRobotsTxtDefaultUserAgent(c.Settings.GetString("USER_AGENT", "scrapy-go")),
+			dmiddle.WithRobotsTxtDefaultUserAgent(settings.Get(c.Settings, settings.KeyUserAgent)),
 		}
-		if ua := c.Settings.GetString("ROBOTSTXT_USER_AGENT", ""); ua != "" {
+		if ua := settings.Get(c.Settings, settings.KeyRobotsTxtUserAgent); ua != "" {
 			opts = append(opts, dmiddle.WithRobotsTxtUserAgent(ua))
 		}
 		return dmiddle.NewRobotsTxtMiddleware(c.Stats, c.Logger, opts...)
 	},
 	"DownloadTimeout": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		timeout := c.Settings.GetDuration("DOWNLOAD_TIMEOUT", 180*time.Second)
+		timeout := settings.Get(c.Settings, settings.KeyDownloadTimeoutDuration)
 		if timeout <= 0 {
 			return nil
 		}
 		return dmiddle.NewDownloadTimeoutMiddleware(timeout, c.Logger)
 	},
 	"DefaultHeaders": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		defaultHeaders := c.Settings.Get("DEFAULT_REQUEST_HEADERS", nil)
-		if headers, ok := defaultHeaders.(http.Header); ok {
-			return dmiddle.NewDefaultHeadersMiddleware(headers)
+		headers := settings.Get(c.Settings, settings.KeyDefaultRequestHeaders)
+		if len(headers) == 0 {
+			return nil
 		}
-		// 没有配置默认请求头，返回 nil 表示跳过
-		return nil
+		return dmiddle.NewDefaultHeadersMiddleware(headers)
 	},
 	"HttpAuth": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		user := c.Settings.GetString("HTTP_USER", "")
-		pass := c.Settings.GetString("HTTP_PASS", "")
+		user := settings.Get(c.Settings, settings.KeyHTTPUser)
+		pass := settings.Get(c.Settings, settings.KeyHTTPPass)
 		if user == "" && pass == "" {
 			return nil
 		}
-		domain := c.Settings.GetString("HTTP_AUTH_DOMAIN", "")
+		domain := settings.Get(c.Settings, settings.KeyHTTPAuthDomain)
 		return dmiddle.NewHttpAuthMiddleware(user, pass, domain, c.Logger)
 	},
 	"UserAgent": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		userAgent := c.Settings.GetString("USER_AGENT", "scrapy-go/0.1.0")
+		userAgent := settings.Get(c.Settings, settings.KeyUserAgent)
 		return dmiddle.NewUserAgentMiddleware(userAgent)
 	},
 	"Retry": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("RETRY_ENABLED", true) {
+		if !settings.Get(c.Settings, settings.KeyRetryEnabled) {
 			return nil
 		}
-		retryTimes := c.Settings.GetInt("RETRY_TIMES", 2)
-		retryPriorityAdjust := c.Settings.GetInt("RETRY_PRIORITY_ADJUST", -1)
+		retryTimes := settings.Get(c.Settings, settings.KeyRetryTimes)
+		retryPriorityAdjust := settings.Get(c.Settings, settings.KeyRetryPriorityAdjust)
 		retryHTTPCodes := c.getIntSlice("RETRY_HTTP_CODES", []int{500, 502, 503, 504, 522, 524, 408, 429})
 
 		var opts []dmiddle.RetryOption
 
 		// 指数退避配置
-		if c.Settings.GetBool("RETRY_BACKOFF_ENABLED", false) {
-			baseDelay := time.Duration(c.Settings.GetFloat("RETRY_BACKOFF_BASE_DELAY", 1.0) * float64(time.Second))
-			maxDelay := time.Duration(c.Settings.GetFloat("RETRY_BACKOFF_MAX_DELAY", 60.0) * float64(time.Second))
-			jitter := c.Settings.GetBool("RETRY_BACKOFF_JITTER", true)
+		if settings.Get(c.Settings, settings.KeyRetryBackoffEnabled) {
+			baseDelay := time.Duration(settings.Get(c.Settings, settings.KeyRetryBackoffBaseDelay) * float64(time.Second))
+			maxDelay := time.Duration(settings.Get(c.Settings, settings.KeyRetryBackoffMaxDelay) * float64(time.Second))
+			jitter := settings.Get(c.Settings, settings.KeyRetryBackoffJitter)
 			opts = append(opts, dmiddle.WithRetryBackoff(baseDelay, maxDelay, jitter))
 		}
 
@@ -552,22 +550,22 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		return dmiddle.NewRetryMiddleware(retryTimes, retryHTTPCodes, retryPriorityAdjust, c.Stats, c.Logger, opts...)
 	},
 	"CircuitBreaker": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("CIRCUIT_BREAKER_ENABLED", false) {
+		if !settings.Get(c.Settings, settings.KeyCircuitBreakerEnabled) {
 			return nil
 		}
 
 		var opts []dmiddle.CircuitBreakerOption
 
-		failThreshold := c.Settings.GetInt("CIRCUIT_BREAKER_FAIL_THRESHOLD", 5)
+		failThreshold := settings.Get(c.Settings, settings.KeyCircuitBreakerFailThreshold)
 		opts = append(opts, dmiddle.WithCircuitBreakerFailThreshold(failThreshold))
 
-		recoveryTimeout := time.Duration(c.Settings.GetInt("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", 30)) * time.Second
+		recoveryTimeout := time.Duration(settings.Get(c.Settings, settings.KeyCircuitBreakerRecoveryTimeout)) * time.Second
 		opts = append(opts, dmiddle.WithCircuitBreakerRecoveryTimeout(recoveryTimeout))
 
-		halfOpenMax := c.Settings.GetInt("CIRCUIT_BREAKER_HALF_OPEN_MAX_REQUESTS", 1)
+		halfOpenMax := settings.Get(c.Settings, settings.KeyCircuitBreakerHalfOpenMaxRequests)
 		opts = append(opts, dmiddle.WithCircuitBreakerHalfOpenMaxRequests(halfOpenMax))
 
-		successThreshold := c.Settings.GetInt("CIRCUIT_BREAKER_SUCCESS_THRESHOLD", 2)
+		successThreshold := settings.Get(c.Settings, settings.KeyCircuitBreakerSuccessThreshold)
 		opts = append(opts, dmiddle.WithCircuitBreakerSuccessThreshold(successThreshold))
 
 		cbHTTPCodes := c.getIntSlice("CIRCUIT_BREAKER_HTTP_CODES", []int{500, 502, 503, 504})
@@ -576,61 +574,61 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 		return dmiddle.NewCircuitBreakerMiddleware(c.Stats, c.Logger, opts...)
 	},
 	"Redirect": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("REDIRECT_ENABLED", true) {
+		if !settings.Get(c.Settings, settings.KeyRedirectEnabled) {
 			return nil
 		}
-		maxRedirects := c.Settings.GetInt("REDIRECT_MAX_TIMES", 20)
-		redirectPriorityAdjust := c.Settings.GetInt("REDIRECT_PRIORITY_ADJUST", 2)
+		maxRedirects := settings.Get(c.Settings, settings.KeyRedirectMaxTimes)
+		redirectPriorityAdjust := settings.Get(c.Settings, settings.KeyRedirectPriorityAdjust)
 		return dmiddle.NewRedirectMiddleware(maxRedirects, redirectPriorityAdjust, c.Logger)
 	},
 	"HttpCompression": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("COMPRESSION_ENABLED", true) {
+		if !settings.Get(c.Settings, settings.KeyCompressionEnabled) {
 			return nil
 		}
-		maxSize := c.Settings.GetInt("DOWNLOAD_MAXSIZE", 1024*1024*1024)
-		warnSize := c.Settings.GetInt("DOWNLOAD_WARNSIZE", 32*1024*1024)
+		maxSize := settings.Get(c.Settings, settings.KeyDownloadMaxSize)
+		warnSize := settings.Get(c.Settings, settings.KeyDownloadWarnSize)
 		return dmiddle.NewHttpCompressionMiddleware(maxSize, warnSize, c.Stats, c.Logger)
 	},
 	"Cookies": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("COOKIES_ENABLED", true) {
+		if !settings.Get(c.Settings, settings.KeyCookiesEnabled) {
 			return nil
 		}
-		debug := c.Settings.GetBool("COOKIES_DEBUG", false)
+		debug := settings.Get(c.Settings, settings.KeyCookiesDebug)
 		return dmiddle.NewCookiesMiddleware(debug, c.Logger)
 	},
 	"HttpProxy": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("HTTPPROXY_ENABLED", true) {
+		if !settings.Get(c.Settings, settings.KeyHTTPProxyEnabled) {
 			return nil
 		}
 		return dmiddle.NewHttpProxyMiddleware(c.Logger)
 	},
 	"DownloaderStats": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("DOWNLOADER_STATS", true) {
+		if !settings.Get(c.Settings, settings.KeyDownloaderStats) {
 			return nil
 		}
 		return dmiddle.NewDownloaderStatsMiddleware(c.Stats, c.Logger)
 	},
 	"HttpCache": func(c *Crawler) dmiddle.DownloaderMiddleware {
-		if !c.Settings.GetBool("HTTPCACHE_ENABLED", false) {
+		if !settings.Get(c.Settings, settings.KeyHTTPCacheEnabled) {
 			return nil
 		}
 
 		// 构建缓存存储后端
-		cacheDir := c.Settings.GetString("HTTPCACHE_DIR", "httpcache")
+		cacheDir := settings.Get(c.Settings, settings.KeyHTTPCacheDir)
 		storageOpts := []httpcache.FilesystemOption{
-			httpcache.WithExpirationSecs(c.Settings.GetInt("HTTPCACHE_EXPIRATION_SECS", 0)),
-			httpcache.WithGzip(c.Settings.GetBool("HTTPCACHE_GZIP", false)),
+			httpcache.WithExpirationSecs(settings.Get(c.Settings, settings.KeyHTTPCacheExpirationSecs)),
+			httpcache.WithGzip(settings.Get(c.Settings, settings.KeyHTTPCacheGzip)),
 			httpcache.WithStorageLogger(c.Logger),
 		}
 		storage := httpcache.NewFilesystemCacheStorage(cacheDir, storageOpts...)
 
 		// 构建缓存策略
 		var policy httpcache.CachePolicy
-		policyName := c.Settings.GetString("HTTPCACHE_POLICY", "dummy")
+		policyName := settings.Get(c.Settings, settings.KeyHTTPCachePolicy)
 		switch policyName {
 		case "rfc2616":
 			rfcOpts := []httpcache.RFC2616PolicyOption{
-				httpcache.WithAlwaysStore(c.Settings.GetBool("HTTPCACHE_ALWAYS_STORE", false)),
+				httpcache.WithAlwaysStore(settings.Get(c.Settings, settings.KeyHTTPCacheAlwaysStore)),
 			}
 			if schemes := c.getStringSlice("HTTPCACHE_IGNORE_SCHEMES", []string{"file"}); len(schemes) > 0 {
 				rfcOpts = append(rfcOpts, httpcache.WithRFC2616IgnoreSchemes(schemes))
@@ -652,7 +650,7 @@ var builtinMiddlewareFactories = map[string]MiddlewareFactory{
 
 		// 构建中间件
 		mwOpts := []httpcache.MiddlewareOption{
-			httpcache.WithIgnoreMissing(c.Settings.GetBool("HTTPCACHE_IGNORE_MISSING", false)),
+			httpcache.WithIgnoreMissing(settings.Get(c.Settings, settings.KeyHTTPCacheIgnoreMissing)),
 			httpcache.WithMiddlewareLogger(c.Logger),
 		}
 		mw := httpcache.NewHttpCacheMiddleware(policy, storage, c.Stats, mwOpts...)
@@ -741,21 +739,21 @@ type SpiderMiddlewareFactory func(c *Crawler) smiddle.SpiderMiddleware
 // key 为中间件名称，与 SPIDER_MIDDLEWARES_BASE 中的名称一一对应。
 var builtinSpiderMiddlewareFactories = map[string]SpiderMiddlewareFactory{
 	"HttpError": func(c *Crawler) smiddle.SpiderMiddleware {
-		allowAll := c.Settings.GetBool("HTTPERROR_ALLOW_ALL", false)
+		allowAll := settings.Get(c.Settings, settings.KeyHTTPErrorAllowAll)
 		allowCodes := c.getIntSlice("HTTPERROR_ALLOWED_CODES", nil)
 		return smiddle.NewHttpErrorMiddleware(allowAll, allowCodes, c.Stats, c.Logger)
 	},
 	"UrlLength": func(c *Crawler) smiddle.SpiderMiddleware {
-		maxLength := c.Settings.GetInt("URLLENGTH_LIMIT", 2083)
+		maxLength := settings.Get(c.Settings, settings.KeyURLLengthLimit)
 		if maxLength <= 0 {
 			return nil
 		}
 		return smiddle.NewUrlLengthMiddleware(maxLength, c.Stats, c.Logger)
 	},
 	"Depth": func(c *Crawler) smiddle.SpiderMiddleware {
-		maxDepth := c.Settings.GetInt("DEPTH_LIMIT", 0)
-		priority := c.Settings.GetInt("DEPTH_PRIORITY", 0)
-		verbose := c.Settings.GetBool("DEPTH_STATS_VERBOSE", false)
+		maxDepth := settings.Get(c.Settings, settings.KeyDepthLimit)
+		priority := settings.Get(c.Settings, settings.KeyDepthPriority)
+		verbose := settings.Get(c.Settings, settings.KeyDepthStatsVerbose)
 		return smiddle.NewDepthMiddleware(maxDepth, priority, verbose, c.Stats, c.Logger)
 	},
 	"Offsite": func(c *Crawler) smiddle.SpiderMiddleware {
@@ -769,7 +767,7 @@ var builtinSpiderMiddlewareFactories = map[string]SpiderMiddlewareFactory{
 		return smiddle.NewOffsiteMiddleware(allowedDomains, c.Stats, c.Logger)
 	},
 	"Referer": func(c *Crawler) smiddle.SpiderMiddleware {
-		if !c.Settings.GetBool("REFERER_ENABLED", true) {
+		if !settings.Get(c.Settings, settings.KeyRefererEnabled) {
 			return nil
 		}
 		return smiddle.NewRefererMiddleware()
@@ -866,8 +864,11 @@ func (c *Crawler) buildFeedExportConfigs() []feedexport.FeedConfig {
 	}
 
 	// 向后兼容：FEED_URI + FEED_FORMAT
-	if uri := c.Settings.GetString("FEED_URI", ""); uri != "" {
-		format := c.Settings.GetString("FEED_FORMAT", "jsonlines")
+	if uri := settings.Get(c.Settings, settings.KeyFeedURI); uri != "" {
+		format := settings.Get(c.Settings, settings.KeyFeedFormat)
+		if format == "" {
+			format = "jsonlines"
+		}
 		configs = append(configs, feedConfigFromMap(uri, map[string]any{
 			"format": format,
 		}, c.Settings))
@@ -881,14 +882,14 @@ func feedConfigFromMap(uri string, opts map[string]any, s *settings.Settings) fe
 	cfg := feedexport.FeedConfig{
 		URI:        uri,
 		Options:    feedexport.DefaultExporterOptions(),
-		StoreEmpty: s.GetBool("FEED_STORE_EMPTY", true),
+		StoreEmpty: settings.Get(s, settings.KeyFeedStoreEmpty),
 	}
 
 	// 全局默认
-	if enc := s.GetString("FEED_EXPORT_ENCODING", ""); enc != "" {
+	if enc := settings.Get(s, settings.KeyFeedExportEncoding); enc != "" {
 		cfg.Options.Encoding = enc
 	}
-	if indent := s.GetInt("FEED_EXPORT_INDENT", 0); indent > 0 {
+	if indent := settings.Get(s, settings.KeyFeedExportIndent); indent > 0 {
 		cfg.Options.Indent = indent
 	}
 
@@ -957,21 +958,33 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 		return extension.NewCoreStatsExtension(c.Stats, c.Signals, c.Logger)
 	},
 	"CloseSpider": func(c *Crawler) extension.Extension {
-		timeout := c.Settings.GetFloat("CLOSESPIDER_TIMEOUT", 0)
-		itemCount := c.Settings.GetInt("CLOSESPIDER_ITEMCOUNT", 0)
-		pageCount := c.Settings.GetInt("CLOSESPIDER_PAGECOUNT", 0)
-		errorCount := c.Settings.GetInt("CLOSESPIDER_ERRORCOUNT", 0)
-		return extension.NewCloseSpiderExtension(timeout, itemCount, pageCount, errorCount, c.Signals, c.Stats, c.Logger)
+		timeout := settings.Get(c.Settings, settings.KeyCloseSpiderTimeout)
+		itemCount := settings.Get(c.Settings, settings.KeyCloseSpiderItemCount)
+		pageCount := settings.Get(c.Settings, settings.KeyCloseSpiderPageCount)
+		errorCount := settings.Get(c.Settings, settings.KeyCloseSpiderErrorCount)
+		if timeout == 0 && itemCount == 0 && pageCount == 0 && errorCount == 0 {
+			// 所有关闭条件均为 0，无需加载
+			return nil
+		}
+		return extension.NewCloseSpiderExtension(float64(timeout), itemCount, pageCount, errorCount, c.Signals, c.Stats, c.Logger)
 	},
 	"LogStats": func(c *Crawler) extension.Extension {
-		interval := c.Settings.GetFloat("LOGSTATS_INTERVAL", 60.0)
+		interval := settings.Get(c.Settings, settings.KeyLogStatsInterval)
+		if interval <= 0 {
+			// 未配置统计日志间隔，跳过加载
+			return nil
+		}
 		return extension.NewLogStatsExtension(interval, c.Stats, c.Signals, c.Logger)
 	},
 	"MemoryUsage": func(c *Crawler) extension.Extension {
-		enabled := c.Settings.GetBool("MEMUSAGE_ENABLED", true)
-		limitMB := c.Settings.GetInt("MEMUSAGE_LIMIT_MB", 0)
-		warningMB := c.Settings.GetInt("MEMUSAGE_WARNING_MB", 0)
-		checkInterval := c.Settings.GetFloat("MEMUSAGE_CHECK_INTERVAL_SECONDS", 60.0)
+		enabled := settings.Get(c.Settings, settings.KeyMemUsageEnabled)
+		if !enabled {
+			// 未启用内存监控，跳过加载
+			return nil
+		}
+		limitMB := settings.Get(c.Settings, settings.KeyMemUsageLimitMB)
+		warningMB := settings.Get(c.Settings, settings.KeyMemUsageWarningMB)
+		checkInterval := settings.Get(c.Settings, settings.KeyMemUsageCheckIntervalSeconds)
 		return extension.NewMemoryUsageExtension(enabled, limitMB, warningMB, checkInterval, c.Stats, c.Signals, c.Logger)
 	},
 	"FeedExport": func(c *Crawler) extension.Extension {
@@ -983,11 +996,15 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 		return extension.NewFeedExportExtension(configs, c.Signals, c.Stats, c.Logger)
 	},
 	"AutoThrottle": func(c *Crawler) extension.Extension {
-		enabled := c.Settings.GetBool("AUTOTHROTTLE_ENABLED", false)
-		startDelay := c.Settings.GetFloat("AUTOTHROTTLE_START_DELAY", 5.0)
-		maxDelay := c.Settings.GetFloat("AUTOTHROTTLE_MAX_DELAY", 60.0)
-		targetConcurrency := c.Settings.GetFloat("AUTOTHROTTLE_TARGET_CONCURRENCY", 1.0)
-		debug := c.Settings.GetBool("AUTOTHROTTLE_DEBUG", false)
+		enabled := settings.Get(c.Settings, settings.KeyAutoThrottleEnabled)
+		if !enabled {
+			// 未启用自适应限速，跳过加载
+			return nil
+		}
+		startDelay := settings.Get(c.Settings, settings.KeyAutoThrottleStartDelay)
+		maxDelay := settings.Get(c.Settings, settings.KeyAutoThrottleMaxDelay)
+		targetConcurrency := settings.Get(c.Settings, settings.KeyAutoThrottleTargetConcurrency)
+		debug := settings.Get(c.Settings, settings.KeyAutoThrottleDebug)
 		return extension.NewAutoThrottleExtension(enabled, startDelay, maxDelay, targetConcurrency, debug, c.downloader, c.Signals, c.Stats, c.Logger)
 	},
 }

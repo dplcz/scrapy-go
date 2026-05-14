@@ -5,7 +5,45 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased] — P5-021 公共类型包重构（TD-003 偿还）
+
+## [Unreleased]
+
+> **🔧 TD-004 Settings 编译期类型安全增强**
+
+### 新增
+
+#### TD-004：泛型类型安全 Settings API
+
+> **通过 Go 泛型为 Settings 系统引入编译期类型安全，消除魔法字符串和运行时类型断言风险**
+
+- 🎯 **`Key[T]` 泛型类型** — 新增 `pkg/settings/typed.go`
+  - 将配置项名称与其值类型在编译期绑定
+  - 内置默认值，调用者无需重复指定
+  - 实现 `String()` 方法，支持日志输出
+
+- 🔑 **类型化配置键常量** — 新增 `pkg/settings/keys.go`
+  - 所有框架内置配置项（80+）均定义为 `Key[T]` 类型常量
+  - 按功能分组：并发控制、下载配置、重试、熔断器、缓存、扩展等
+  - 完整的 GoDoc 注释
+
+- 🛡️ **泛型顶层函数** — `Get[T]` / `Set[T]` / `MustGet[T]`
+  - `settings.Get(s, settings.KeyConcurrentRequests)` → 编译期确定返回 `int`
+  - `settings.Set(s, settings.KeyBotName, "mybot", settings.PriorityProject)` → 编译期约束值类型
+  - `settings.MustGet(s, key)` → 配置项不存在时 panic（适用于必须存在的配置）
+  - 自动类型转换：int64→int、float64→int、string→bool 等，与旧 API 行为一致
+
+- ♻️ **Crawler 调用方迁移** — `pkg/crawler/crawler.go`
+  - 所有 50+ 处 `GetInt`/`GetString`/`GetBool`/`GetFloat`/`GetDuration` 调用迁移至泛型 API
+  - 消除所有魔法字符串和重复的默认值声明
+  - 保留旧 API 完全向后兼容
+
+### 技术债务
+
+- ✅ **TD-004 已偿还** — Settings 使用 `any` 类型存储值，缺少编译期类型安全
+  - 新增泛型 `Key[T]` + `Get[T]`/`Set[T]` API 提供编译期类型检查
+  - 框架核心调用方（`pkg/crawler`）已完成迁移
+  - 旧 API（`GetInt`/`GetString` 等）保留向后兼容
+
 
 > **🔧 类型安全增强 — 消除 `CallbackFunc`/`ErrbackFunc` 的 `any` 类型**
 >
@@ -57,6 +95,27 @@
 - ✅ `spider.Output`、`spider.CallbackFunc`、`spider.ErrbackFunc` 通过类型别名保持完全兼容
 - ✅ 所有 examples、contrib 模块、集成测试全部通过
 - ✅ `go test -race` 无竞态报告
+
+#### 扩展按需加载优化
+
+> **未启用的扩展不再实例化，减少启动开销和日志噪声**
+
+- ⚡ **扩展工厂前置检查** — `pkg/crawler/crawler.go`
+  - `AutoThrottle`：`AUTOTHROTTLE_ENABLED=false` 时直接返回 `nil`，不再实例化
+  - `MemoryUsage`：`MEMUSAGE_ENABLED=false` 时直接返回 `nil`
+  - `CloseSpider`：所有关闭条件均为 0 时直接返回 `nil`
+  - `LogStats`：`LOGSTATS_INTERVAL<=0` 时直接返回 `nil`
+  - 此前这些扩展即使未启用也会被实例化，在 `Open()` 阶段通过 `ErrNotConfigured` 跳过
+
+- 🔧 **`EXTENSIONS_BASE` 优先级分配** — `pkg/settings/defaults.go`
+  - 从全部 `0`（执行顺序不确定）改为递增优先级：CoreStats(10) → CloseSpider(20) → LogStats(30) → MemoryUsage(40) → FeedExport(50) → AutoThrottle(60)
+  - 消除启动时 "multiple extensions share the same priority" 警告
+
+- 🛡️ **默认值保守化调整** — `pkg/settings/defaults.go`
+  - `HTTPPROXY_ENABLED`：`true` → `false`（无代理环境下避免不必要的环境变量探测）
+  - `MEMUSAGE_ENABLED`：`true` → `false`（轻量场景下避免后台 goroutine 开销）
+  - `REFERER_ENABLED`：`true` → `false`（默认不自动添加 Referer 头，需要时显式启用）
+  - `ROBOTSTXT_OBEY`：`true` → `false`（默认不遵守 robots.txt，与文档和 Scrapy 默认行为对齐）
 
 ---
 

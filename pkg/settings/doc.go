@@ -96,6 +96,28 @@
 //   - [Settings.GetStringMap]：获取 map[string]any
 //   - [Settings.GetIntMap]：获取 map[string]int（组件优先级字典）
 //
+// # 泛型类型安全 API（推荐）
+//
+// 自 v1.2.0 起，settings 包提供基于泛型的编译期类型安全 API（TD-004 偿还）：
+//
+//	// 使用类型化键常量，编译期确定返回类型
+//	concurrency := settings.Get(s, settings.KeyConcurrentRequests) // 返回 int
+//	botName := settings.Get(s, settings.KeyBotName)               // 返回 string
+//	enabled := settings.Get(s, settings.KeyRetryEnabled)          // 返回 bool
+//
+//	// 设置配置（使用简洁的方法调用）
+//	s.Set(settings.KeyConcurrentRequests.Name, 32, settings.PriorityProject)
+//
+//	// 必须存在的配置项（不存在时 panic）
+//	timeout := settings.MustGet(s, settings.KeyDownloadTimeoutDuration)
+//
+// 泛型 API 的优势：
+//   - 编译期类型检查：Get 返回类型由 Key[T] 的 T 参数确定
+//   - 消除魔法字符串：所有配置键名集中定义为 Key[T] 常量
+//   - 内置默认值：Key 中携带默认值，调用者无需重复指定
+//   - Set 简洁直观：s.Set(key.Name, value, priority)
+//   - 完全向后兼容：旧的 GetInt/GetString 等方法继续可用
+//
 // # 与 Scrapy 的差异
 //
 //   - 使用 sync.RWMutex 保证并发安全（Scrapy 依赖 GIL）

@@ -114,7 +114,7 @@ func (s *Settings) loadDefaults() {
 	// HTTP 代理
 	// ========================================================================
 
-	s.Set("HTTPPROXY_ENABLED", true, d)
+	s.Set("HTTPPROXY_ENABLED", false, d)
 	s.Set("HTTPPROXY_AUTH_ENCODING", "latin-1", d)
 
 	// ========================================================================
@@ -136,7 +136,7 @@ func (s *Settings) loadDefaults() {
 	// Robots.txt
 	// ========================================================================
 
-	s.Set("ROBOTSTXT_OBEY", true, d)
+	s.Set("ROBOTSTXT_OBEY", false, d)
 	s.Set("ROBOTSTXT_USER_AGENT", "", d)
 
 	// ========================================================================
@@ -193,7 +193,7 @@ func (s *Settings) loadDefaults() {
 	// 内存监控
 	// ========================================================================
 
-	s.Set("MEMUSAGE_ENABLED", true, d)
+	s.Set("MEMUSAGE_ENABLED", false, d)
 	s.Set("MEMUSAGE_CHECK_INTERVAL_SECONDS", 60.0, d)
 	s.Set("MEMUSAGE_LIMIT_MB", 0, d)
 	s.Set("MEMUSAGE_WARNING_MB", 0, d)
@@ -244,12 +244,12 @@ func (s *Settings) loadDefaults() {
 	// ========================================================================
 
 	s.Set("EXTENSIONS_BASE", map[string]int{
-		"CoreStats":    0,
-		"CloseSpider":  0,
-		"LogStats":     0,
-		"MemoryUsage":  0,
-		"FeedExport":   0,
-		"AutoThrottle": 0,
+		"CoreStats":    10,
+		"CloseSpider":  20,
+		"LogStats":     30,
+		"MemoryUsage":  40,
+		"FeedExport":   50,
+		"AutoThrottle": 60,
 	}, d)
 	s.Set("EXTENSIONS", map[string]int{}, d)
 
@@ -324,7 +324,7 @@ func (s *Settings) loadDefaults() {
 	// Referer 配置
 	// ========================================================================
 
-	s.Set("REFERER_ENABLED", true, d)
+	s.Set("REFERER_ENABLED", false, d)
 
 	// ========================================================================
 	// Offsite 配置

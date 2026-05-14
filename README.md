@@ -16,6 +16,7 @@
 - 📤 **数据导出** — Feed Export（JSON/CSV/XML）+ MongoDB/PostgreSQL/ES 批量写入
 - 🌐 **分布式支持** — Redis 队列 + 布隆过滤器 + 滑动窗口限速 + Web 管理 API
 - 📊 **可观测性** — OpenTelemetry 追踪 + Prometheus 指标
+- 🛡️ **类型安全配置** — 泛型 `Key[T]` + `Get[T]` API，编译期类型检查，消除魔法字符串
 
 ## 📊 性能数据
 
