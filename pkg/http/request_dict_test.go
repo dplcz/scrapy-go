@@ -428,7 +428,7 @@ func TestFromDictFull(t *testing.T) {
 	if !req.Cookies[0].Secure {
 		t.Error("expected secure cookie")
 	}
-	if req.Meta["depth"] != float64(1) {
+	if req.Meta["depth"] != 1 {
 		t.Errorf("unexpected meta: %v", req.Meta)
 	}
 }
@@ -1698,6 +1698,111 @@ func TestRegisterSpiderSignatureMatching(t *testing.T) {
 		}
 		if _, ok := registry.LookupErrback(name); ok {
 			t.Errorf("%s should NOT be registered as errback", name)
+		}
+	}
+}
+
+// ============================================================================
+// LookupByFunc / LookupErrbackByFunc 反向索引测试
+// ============================================================================
+
+// TestLookupByFunc_MethodValue 验证通过 RegisterSpider（反射）注册的回调，
+// 能通过直接引用的 method value（如 spider.ParseDetail）反向查找到正确的名称。
+// 这是方案 4 的核心测试：确保两种路径获取的函数值共享同一个代码入口地址。
+func TestLookupByFunc_MethodValue(t *testing.T) {
+	spider := &mockSpider{}
+
+	registry := NewCallbackRegistry()
+	registry.RegisterSpider(spider)
+
+	// 通过直接引用 method value 查找（模拟用户代码中 shttp.WithCallback(s.ParseDetail) 的场景）
+	name, ok := registry.LookupByFunc(spider.ParseDetail)
+	if !ok {
+		t.Fatal("LookupByFunc should find ParseDetail via method value reference")
+	}
+	if name != "ParseDetail" {
+		t.Errorf("expected name 'ParseDetail', got %q", name)
+	}
+
+	// 验证 Parse 也能找到
+	name, ok = registry.LookupByFunc(spider.Parse)
+	if !ok {
+		t.Fatal("LookupByFunc should find Parse via method value reference")
+	}
+	if name != "Parse" {
+		t.Errorf("expected name 'Parse', got %q", name)
+	}
+}
+
+// TestLookupErrbackByFunc_MethodValue 验证 Errback 的反向查找。
+func TestLookupErrbackByFunc_MethodValue(t *testing.T) {
+	spider := &mockSpider{}
+
+	registry := NewCallbackRegistry()
+	registry.RegisterSpider(spider)
+
+	name, ok := registry.LookupErrbackByFunc(spider.HandleError)
+	if !ok {
+		t.Fatal("LookupErrbackByFunc should find HandleError via method value reference")
+	}
+	if name != "HandleError" {
+		t.Errorf("expected name 'HandleError', got %q", name)
+	}
+}
+
+// TestLookupByFunc_NilCallback 验证 nil 回调返回空字符串。
+func TestLookupByFunc_NilCallback(t *testing.T) {
+	registry := NewCallbackRegistry()
+	registry.RegisterSpider(&mockSpider{})
+
+	name, ok := registry.LookupByFunc(nil)
+	if ok {
+		t.Error("LookupByFunc(nil) should return false")
+	}
+	if name != "" {
+		t.Errorf("expected empty name for nil callback, got %q", name)
+	}
+}
+
+// TestLookupByFunc_UnregisteredCallback 验证未注册的回调返回空字符串。
+func TestLookupByFunc_UnregisteredCallback(t *testing.T) {
+	registry := NewCallbackRegistry()
+	registry.RegisterSpider(&mockSpider{})
+
+	// 一个未注册的匿名函数
+	unregistered := func(ctx context.Context, resp *Response) ([]Output, error) {
+		return nil, nil
+	}
+
+	name, ok := registry.LookupByFunc(unregistered)
+	if ok {
+		t.Error("LookupByFunc should return false for unregistered callback")
+	}
+	if name != "" {
+		t.Errorf("expected empty name for unregistered callback, got %q", name)
+	}
+}
+
+// TestLookupByFunc_MultipleReferences 验证同一方法的多次引用都能正确查找。
+// 这模拟了用户在不同地方多次使用 spider.ParseDetail 的场景。
+func TestLookupByFunc_MultipleReferences(t *testing.T) {
+	spider := &mockSpider{}
+
+	registry := NewCallbackRegistry()
+	registry.RegisterSpider(spider)
+
+	// 多次获取 method value 引用
+	ref1 := spider.ParseDetail
+	ref2 := spider.ParseDetail
+	ref3 := spider.ParseDetail
+
+	for i, ref := range []CallbackFunc{ref1, ref2, ref3} {
+		name, ok := registry.LookupByFunc(ref)
+		if !ok {
+			t.Fatalf("ref%d: LookupByFunc should find ParseDetail", i+1)
+		}
+		if name != "ParseDetail" {
+			t.Errorf("ref%d: expected 'ParseDetail', got %q", i+1, name)
 		}
 	}
 }

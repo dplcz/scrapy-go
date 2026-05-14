@@ -13,7 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/dplcz/scrapy-go/pkg/feedexport"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -108,7 +108,15 @@ func newPaginationServer(pages int) *httptest.Server {
 		})
 	}
 
-	return httptest.NewServer(mux)
+	ts := httptest.NewUnstartedServer(mux)
+	l, err := net.Listen("tcp", "127.0.0.1:8080")
+	if err != nil {
+		panic(fmt.Sprintf("无法监听固定端口: %v", err))
+	}
+	ts.Listener.Close()
+	ts.Listener = l
+	ts.Start()
+	return ts
 }
 
 // ============================================================================
@@ -150,7 +158,7 @@ func (s *PaginationSpider) Parse(ctx context.Context, response *shttp.Response) 
 	if detailHref != "" {
 		detailURL, err := response.URLJoin(detailHref)
 		if err == nil {
-			req, _ := shttp.NewRequest(detailURL, shttp.WithCallback(s.ParseDetail))
+			req, _ := shttp.NewRequest(detailURL, shttp.WithCallback(s.ParseDetail), shttp.WithPriority(10))
 			req.SetMeta("page", page)
 			outputs = append(outputs, spider.Output{Request: req})
 		}
@@ -161,7 +169,7 @@ func (s *PaginationSpider) Parse(ctx context.Context, response *shttp.Response) 
 	if nextHref != "" {
 		nextURL, err := response.URLJoin(nextHref)
 		if err == nil {
-			req, _ := shttp.NewRequest(nextURL)
+			req, _ := shttp.NewRequest(nextURL, shttp.WithCallback(s.Parse))
 			outputs = append(outputs, spider.Output{Request: req})
 		}
 	}
@@ -188,13 +196,13 @@ func (s *PaginationSpider) ParseDetail(ctx context.Context, response *shttp.Resp
 }
 
 // CustomSettings 返回 Spider 级别的配置。
-func (s *PaginationSpider) CustomSettings() *spider.Settings {
-	return &spider.Settings{
-		ConcurrentRequests: spider.IntPtr(8),
-		DownloadDelay:      spider.DurationPtr(0),
-		LogLevel:           spider.StringPtr("INFO"),
-	}
-}
+//func (s *PaginationSpider) CustomSettings() *spider.Settings {
+//	return &spider.Settings{
+//		ConcurrentRequests: spider.IntPtr(8),
+//		DownloadDelay:      spider.DurationPtr(0),
+//		LogLevel:           spider.StringPtr("INFO"),
+//	}
+//}
 
 // ============================================================================
 // 主函数
@@ -212,40 +220,45 @@ func main() {
 
 	// 3. 创建 Crawler 并运行
 	c := crawler.NewDefault()
-	c.AddFeed(feedexport.FeedConfig{
-		URI:       "./output.jsonl",
-		Format:    feedexport.FormatJSONLines,
-		Overwrite: true,
-		Options: feedexport.ExporterOptions{
-			Indent: 1,
-		},
-	})
-	c.AddFeed(feedexport.FeedConfig{
-		URI:       "./output.xml",
-		Format:    feedexport.FormatXML,
-		Overwrite: true,
-		Options: feedexport.ExporterOptions{
-			Indent: 4,
-		},
-	})
-	c.AddFeed(feedexport.FeedConfig{
-		URI:       "./output.csv",
-		Format:    feedexport.FormatCSV,
-		Overwrite: true,
-		Options: feedexport.ExporterOptions{
-			FieldsToExport: []string{"page", "random_content"},
-		},
-		Filter: func(item any) bool {
-			temp, ok := item.(DetailItem)
-			if !ok {
-				return false
-			}
-			if temp.Page%2 == 0 {
-				return true
-			}
-			return false
-		},
-	})
+	_, err := c.Settings.LoadFromFile("/data/workspace/git_refactor/scrapy-go/examples/pagination/scrapy-go.toml")
+	if err != nil {
+		fmt.Printf("❌ 加载配置文件失败: %v\n", err)
+		os.Exit(1)
+	}
+	//c.AddFeed(feedexport.FeedConfig{
+	//	URI:       "./output.jsonl",
+	//	Format:    feedexport.FormatJSONLines,
+	//	Overwrite: true,
+	//	Options: feedexport.ExporterOptions{
+	//		Indent: 1,
+	//	},
+	//})
+	//c.AddFeed(feedexport.FeedConfig{
+	//	URI:       "./output.xml",
+	//	Format:    feedexport.FormatXML,
+	//	Overwrite: true,
+	//	Options: feedexport.ExporterOptions{
+	//		Indent: 4,
+	//	},
+	//})
+	//c.AddFeed(feedexport.FeedConfig{
+	//	URI:       "./output.csv",
+	//	Format:    feedexport.FormatCSV,
+	//	Overwrite: true,
+	//	Options: feedexport.ExporterOptions{
+	//		FieldsToExport: []string{"page", "random_content"},
+	//	},
+	//	Filter: func(item any) bool {
+	//		temp, ok := item.(DetailItem)
+	//		if !ok {
+	//			return false
+	//		}
+	//		if temp.Page%2 == 0 {
+	//			return true
+	//		}
+	//		return false
+	//	},
+	//})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -254,7 +267,7 @@ func main() {
 	fmt.Println("============================================================")
 
 	start := time.Now()
-	err := c.Run(ctx, sp)
+	err = c.Run(ctx, sp)
 	elapsed := time.Since(start)
 
 	if err != nil && err != context.Canceled && err != context.DeadlineExceeded {

@@ -263,8 +263,10 @@ func FromDict(d map[string]any, registry *CallbackRegistry) (*Request, error) {
 	}
 
 	// Meta
+	// JSON 反序列化时所有数字都会变为 float64，需要将可以无损转换为 int 的值还原，
+	// 避免用户代码中 meta["key"].(int) 类型断言失败。
 	if meta, ok := d["meta"].(map[string]any); ok {
-		req.Meta = meta
+		req.Meta = restoreMetaTypes(meta)
 	}
 
 	// Priority
@@ -332,6 +334,54 @@ func FromDict(d map[string]any, registry *CallbackRegistry) (*Request, error) {
 	}
 
 	return req, nil
+}
+
+// restoreMetaTypes 递归处理 JSON 反序列化后的 meta map，
+// 将可以无损转换为 int 的 float64 值还原为 int。
+//
+// 背景：Go 的 encoding/json 在反序列化到 any（interface{}）类型时，
+// 所有 JSON 数字都会被解码为 float64。这导致用户在序列化前通过
+// req.SetMeta("page", 1) 设置的 int 值，在反序列化后变成 float64，
+// 使得 meta["page"].(int) 类型断言失败。
+//
+// 转换规则：
+//   - float64 值如果没有小数部分（如 1.0、42.0），转换为 int
+//   - float64 值如果有小数部分（如 3.14），保持 float64 不变
+//   - 嵌套的 map[string]any 递归处理
+//   - 嵌套的 []any 中的元素也递归处理
+//   - 其他类型保持不变
+func restoreMetaTypes(meta map[string]any) map[string]any {
+	for k, v := range meta {
+		meta[k] = restoreValue(v)
+	}
+	return meta
+}
+
+// restoreValue 递归还原单个值的类型。
+func restoreValue(v any) any {
+	switch val := v.(type) {
+	case float64:
+		// 如果 float64 没有小数部分，且在 int 范围内，转换为 int
+		intVal := int(val)
+		if float64(intVal) == val {
+			return intVal
+		}
+		return val
+	case map[string]any:
+		// 递归处理嵌套 map
+		for k, item := range val {
+			val[k] = restoreValue(item)
+		}
+		return val
+	case []any:
+		// 递归处理嵌套 slice
+		for i, item := range val {
+			val[i] = restoreValue(item)
+		}
+		return val
+	default:
+		return val
+	}
 }
 
 // ============================================================================

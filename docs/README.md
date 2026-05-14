@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.1.4** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.1.5** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -117,7 +117,7 @@ go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAccep
 - **NewMultipartFormRequest** — multipart/form-data 文件上传请求构造器，基于 `mime/multipart` 标准库
 - **NoCallback** — 哨兵值，标记请求不需要回调函数（对齐 Scrapy `NO_CALLBACK`）
 - **ToDict / FromDict** — Request 序列化与反序列化，支撑磁盘队列断点续爬（对齐 Scrapy `to_dict` / `request_from_dict`）
-- **CallbackRegistry** — 回调函数注册表，支持 `RegisterSpider` 通过 reflect 自动扫描注册（替代 Scrapy `getattr` 反射），方法命名遵循 Go PascalCase 规范
+- **CallbackRegistry** — 回调函数注册表，支持 `RegisterSpider` 通过 reflect 自动扫描注册（替代 Scrapy `getattr` 反射），方法命名遵循 Go PascalCase 规范；新增 `LookupByFunc` 反向查找（`runtime.FuncForPC` + 反向索引双策略 O(1)），确保断点续爬时回调名称正确序列化
 - **FromCURL** — 从 curl 命令字符串创建 Request（对齐 Scrapy `Request.from_curl()`），自实现 shell 词法分析器
 - **ToCURL** — 将 Request 转换为 curl 命令字符串（对齐 Scrapy `request_to_curl()`）
 - **便捷 Option** — `WithRawBody` / `WithBasicAuth` / `WithUserAgent` / `WithFormData`
@@ -1149,6 +1149,17 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.1.5 🐛
+
+> **P5-022 断点续爬回调序列化修复 + Meta 类型还原 + 性能基准测试**
+
+- 🎯 **`LookupByFunc` / `LookupErrbackByFunc`** — 通过 `runtime.FuncForPC` + 反向索引双策略 O(1) 查找回调注册名称
+- 🐛 **修复回调序列化 bug** — 原 `fmt.Sprintf("%v", func)` 比较方式失败，改为函数名提取 + 指针反向索引
+- ♻️ **`RequestSerializer` 简化** — `lookupCallbackName` 从 O(N) 遍历降为 O(1) 查找
+- 🔧 **Meta 类型还原** — `FromDict` 反序列化后递归将 `float64` 无损还原为 `int`，解决 `meta["page"].(int)` 断言失败
+- 📈 **性能基准测试** — `LookupByFunc` ~150ns/op 零分配；完整往返 ~8.8μs 支撑 ~11 万次/秒
+- 🔧 **脚手架工具增强** — `genspider` 模板更新 + `scrapy-go.toml` 配置模板精简
 
 ### v1.1.4 🎉
 

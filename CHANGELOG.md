@@ -6,6 +6,65 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.1.5] — 2026-05-14
+
+> **🐛 P5-022 断点续爬回调序列化修复 + Meta 类型还原 + 性能基准测试**
+
+### 修复
+
+#### P5-022：断点续爬回调序列化修复
+
+> **修复 `CallbackRegistry` 无法通过函数值反向查找注册名称的 bug，导致断点续爬时回调函数名称无法正确序列化**
+
+##### P5-022a：`CallbackRegistry` 反向索引
+
+- 🎯 **`LookupByFunc` / `LookupErrbackByFunc`** — 新增通过回调函数值反向查找注册名称的方法（`pkg/http/callback_registry.go`）
+  - 策略 1：通过 `runtime.FuncForPC` 从函数值提取方法全限定名，解析出方法名后在注册表中验证
+  - 策略 2：通过 `reflect.ValueOf().Pointer()` 在反向索引 map 中 O(1) 查找（fallback，适用于手动注册的匿名闭包）
+  - 修复根因：原 `fmt.Sprintf("%v", registered) == fmt.Sprintf("%v", cb)` 比较方式失败——通过反射 `v.Method(i).Convert().Interface()` 获取的函数值与用户直接引用的 method value 闭包指针不同
+  - ~150ns/op 零分配，O(1) 扩展性（3→50 方法耗时不变）
+
+- 🔗 **反向索引自动维护** — `Register` / `RegisterErrback` 方法同时建立 `reflect.Pointer → 名称` 映射
+  - 新增 `callbackPtrs` / `errbackPtrs` 字段（`map[uintptr]string`）
+  - 注册时自动写入，无需额外调用
+
+##### P5-022b：`RequestSerializer` 简化
+
+- ♻️ **`lookupCallbackName` / `lookupErrbackName` 重构** — `pkg/scheduler/serializer.go`
+  - 从 O(N) 遍历 + `fmt.Sprintf` 比较降为调用 `registry.LookupByFunc` O(1) 查找
+  - 代码量减少 ~30 行，逻辑更清晰
+
+##### P5-022c：`restoreMetaTypes` 类型还原
+
+- 🔧 **Meta 类型还原** — 新增 `restoreMetaTypes` 函数（`pkg/http/request_dict.go`）
+  - `FromDict` 反序列化后递归处理 meta map，将 JSON 解码产生的 `float64` 无损还原为 `int`
+  - 判断条件：`float64(int(val)) == val`，确保无精度损失
+  - 嵌套 `map[string]any` 和 `[]any` 递归处理
+  - 解决 `encoding/json` 反序列化到 `any` 时所有数字变为 `float64` 的经典问题
+  - 用户代码 `meta["page"].(int)` 类型断言不再失败
+
+##### P5-022d：性能基准测试套件
+
+- 📈 **新增基准测试** — `pkg/http/callback_registry_bench_test.go` + `pkg/scheduler/serializer_bench_test.go`
+  - `LookupByFunc` 各路径 benchmark（method value / 反向索引 / 未注册）
+  - `restoreMetaTypes` benchmark（4 字段 ~250ns/op 零分配）
+  - 完整序列化/反序列化/往返 benchmark（~8.8μs/63allocs，支撑 ~11 万次/秒吞吐量）
+
+##### P5-022e：脚手架工具增强
+
+- 🔧 **`genspider` 模板更新** — `cmd/scrapy-go/genspider.go`
+  - 生成的爬虫代码自动包含 `CallbackRegistry` 注册示例
+- 📋 **`scrapy-go.toml` 配置模板精简** — `cmd/scrapy-go/templates/project/scrapy-go.toml.tmpl`
+  - 移除冗余配置项，保留核心配置 + 注释说明
+
+### 向后兼容性
+
+- ✅ 无 API 变更，用户代码零修改
+- ✅ 已持久化的 JSON 文件（无 callback 字段）反序列化后回调为 nil，回退到 Spider 默认 `Parse` 方法（与修复前行为一致）
+- ✅ 所有测试通过，`go test -race` 无竞态
+
+---
+
 ## [v1.1.4] — 2026-05-14
 
 > **🔧 TD-004 Settings 编译期类型安全增强**

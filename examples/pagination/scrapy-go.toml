@@ -1,4 +1,4 @@
-# {{.ProjectName}} scrapy-go 配置文件
+# pagenation scrapy-go 配置文件
 #
 # 本文件仅包含重要或常用的配置项。
 # 完整配置项列表请参考文档：
@@ -7,21 +7,22 @@
 # 环境变量 SCRAPY_GO_CONFIG 可指定配置文件路径，
 # 默认自动加载当前目录下的 scrapy-go.toml。
 
-bot_name = "{{.ProjectName}}"
+bot_name = "pagenation"
 
 # 负责任地爬取：通过 User-Agent 标识自己（和你的网站）
-# user_agent = "{{.ProjectName}} (+http://www.yourdomain.com)"
+# user_agent = "pagenation (+http://www.yourdomain.com)"
 
 # 是否遵守 robots.txt 规则
-robotstxt_obey = true
+robotstxt_obey = false
 
-# 日志级别，可选值：DEBUG、INFO、WARNING、ERROR、CRITICAL
-# log_level = "DEBUG"
+log_level = "debug"
 
 # 并发与限速配置
-# concurrent_requests = 16
+concurrent_requests = 1
 # concurrent_requests_per_domain = 1
-download_delay = 1
+download_delay = 0
+
+jobdir = "jobs"
 
 # 禁用 Cookies（默认启用）
 # cookies_enabled = false
@@ -42,8 +43,8 @@ download_delay = 1
 
 # 启用或禁用下载器中间件
 # （default_request_headers 为空时自动禁用 DefaultHeaders）
-# [downloader_middlewares]
-# UserAgent      = 500
+[downloader_middlewares]
+UserAgent = -1
 # DefaultHeaders = 400
 # DownloadTimeout = 300
 # MyCustomDownloaderMiddleware = 543
@@ -100,9 +101,9 @@ download_delay = 1
 # root_element = "products"
 #
 # 也可使用内联 table 语法（更紧凑）：
-# [feeds]
-# "output/items.jsonl" = { format = "jsonlines", overwrite = true }
-# "output/items.csv" = { format = "csv", fields = ["title", "url"] }
+#[feeds]
+#"./items.jsonl" = { format = "jsonlines", overwrite = true }
+#"./items.csv" = { format = "csv", fields = ["page", "random_content"] }
 #
 # 全局导出选项（作为各 feed 未指定时的默认值）
 # feed_export_encoding = "utf-8"

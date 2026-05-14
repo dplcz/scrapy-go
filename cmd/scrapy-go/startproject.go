@@ -122,7 +122,7 @@ func runStartProject(args []string) error {
 	// 输出成功信息
 	absDir, _ := filepath.Abs(projectDir)
 	fmt.Printf("已创建新的 scrapy-go 项目 '%s'，位于:\n    %s\n\n", projectName, absDir)
-	fmt.Printf("你可以使用以下命令创建第一个爬虫:\n    cd %s\n    scrapy-go genspider example example.com\n", projectDir)
+	fmt.Printf("下一步:\n    cd %s\n    go mod tidy\n    scrapy-go genspider example example.com\n", projectDir)
 
 	return nil
 }
