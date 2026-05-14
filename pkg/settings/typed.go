@@ -72,11 +72,12 @@ func MustGet[T any](s *Settings, key Key[T]) T {
 	return convertValue[T](attr.value, key.Default)
 }
 
-// Set 以类型安全的方式设置配置值。
-// 通过 Key[T] 的泛型参数在编译期约束值的类型。
-func Set[T any](s *Settings, key Key[T], value T, priority Priority) error {
-	return s.Set(key.Name, value, priority)
-}
+// NOTE: Set 操作直接使用 Settings.Set 方法即可：
+//
+//	s.Set("CONCURRENT_REQUESTS", 32, settings.PriorityProject)
+//
+// 设置配置的频率远低于读取，且通常集中在初始化阶段，
+// 因此不提供泛型 Set 函数，以保持 API 简洁。
 
 // ============================================================================
 // 内部类型转换

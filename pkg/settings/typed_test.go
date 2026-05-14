@@ -177,11 +177,11 @@ func TestGenericGet_TypeConversion(t *testing.T) {
 	}
 }
 
-func TestGenericSet(t *testing.T) {
+func TestMethodSet(t *testing.T) {
 	s := NewEmpty()
 
-	// 类型安全的 Set
-	err := Set(s, KeyConcurrentRequests, 32, PriorityProject)
+	// 使用 Settings.Set 方法设置配置
+	err := s.Set(KeyConcurrentRequests.Name, 32, PriorityProject)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,8 +191,8 @@ func TestGenericSet(t *testing.T) {
 		t.Errorf("expected 32, got %d", val)
 	}
 
-	// 类型安全的 Set（string）
-	err = Set(s, KeyBotName, "testbot", PriorityProject)
+	// 使用 Settings.Set 方法设置 string 配置
+	err = s.Set(KeyBotName.Name, "testbot", PriorityProject)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,11 +203,11 @@ func TestGenericSet(t *testing.T) {
 	}
 }
 
-func TestGenericSet_Frozen(t *testing.T) {
+func TestMethodSet_Frozen(t *testing.T) {
 	s := NewEmpty()
 	s.Freeze()
 
-	err := Set(s, KeyConcurrentRequests, 32, PriorityProject)
+	err := s.Set(KeyConcurrentRequests.Name, 32, PriorityProject)
 	if err == nil {
 		t.Error("expected error when setting frozen settings")
 	}

@@ -1,10 +1,11 @@
 // 示例爬虫：演示 scrapy-go 泛型类型安全 Settings API（TD-004）。
 //
-// 本示例展示如何使用 Key[T] + Get[T]/Set[T] 泛型 API 进行编译期类型安全的配置管理，
+// 本示例展示如何使用 Key[T] + Get[T] 泛型 API 进行编译期类型安全的配置读取，
 // 对比旧式 GetInt/GetString 等方法，展示新 API 的优势：
-//   - 编译期类型检查：无法将错误类型的值赋给配置项
+//   - 编译期类型检查：Get 返回类型由 Key[T] 的 T 参数确定
 //   - 消除魔法字符串：所有配置键名集中定义为 Key[T] 常量
 //   - 内置默认值：Key 中携带默认值，调用者无需重复指定
+//   - Set 使用简洁的方法调用：s.Set(key, value, priority)
 //
 // 运行方式：go run examples/typed_settings/main.go
 package main
@@ -295,22 +296,21 @@ func main() {
 	fmt.Println("============================================================")
 
 	s := settings.New()
-
-	// ✅ 使用 settings.Set 进行类型安全的配置设置
-	// 编译期约束：第三个参数必须与 Key[T] 的 T 类型匹配
-	settings.Set(s, settings.KeyConcurrentRequests, 4, settings.PriorityProject)
-	settings.Set(s, settings.KeyDownloadTimeout, 30, settings.PriorityProject)
-	settings.Set(s, settings.KeyRetryEnabled, true, settings.PriorityProject)
-	settings.Set(s, settings.KeyRetryTimes, 3, settings.PriorityProject)
-	settings.Set(s, settings.KeyBotName, "typed-settings-demo", settings.PriorityProject)
-	settings.Set(s, settings.KeyUserAgent, "TypedSettingsBot/1.0", settings.PriorityProject)
-	settings.Set(s, settings.KeyLogLevel, "INFO", settings.PriorityProject)
-	settings.Set(s, settings.KeyRandomizeDownloadDelay, false, settings.PriorityProject)
+	// ✅ 使用 s.Set 方法设置配置（简洁直观）
+	// 通过 Key[T].Name 获取键名，值类型在运行时检查
+	s.Set(settings.KeyConcurrentRequests.Name, 4, settings.PriorityProject)
+	s.Set(settings.KeyDownloadTimeout.Name, 30, settings.PriorityProject)
+	s.Set(settings.KeyRetryEnabled.Name, true, settings.PriorityProject)
+	s.Set(settings.KeyRetryTimes.Name, 3, settings.PriorityProject)
+	s.Set(settings.KeyBotName.Name, "typed-settings-demo", settings.PriorityProject)
+	s.Set(settings.KeyUserAgent.Name, "TypedSettingsBot/1.0", settings.PriorityProject)
+	s.Set(settings.KeyLogLevel.Name, "INFO", settings.PriorityProject)
+	s.Set(settings.KeyRandomizeDownloadDelay.Name, false, settings.PriorityProject)
 
 	// ✅ 设置自定义配置键（用户定义的 Key[T]）
-	settings.Set(s, KeyMinWordCount, 1500, settings.PriorityProject)
-	settings.Set(s, KeyEnableDetailPage, true, settings.PriorityProject)
-	settings.Set(s, KeyTargetAuthors, []string{"Alice", "Bob", "Charlie"}, settings.PriorityProject)
+	s.Set(KeyMinWordCount.Name, 1500, settings.PriorityProject)
+	s.Set(KeyEnableDetailPage.Name, true, settings.PriorityProject)
+	s.Set(KeyTargetAuthors.Name, []string{"Alice", "Bob", "Charlie"}, settings.PriorityProject)
 
 	// ========================================================================
 	// 3. 使用 settings.Get 读取配置（编译期确定返回类型）
@@ -453,7 +453,7 @@ func main() {
 	fmt.Println("💡 本示例展示的 TD-004 特性：")
 	fmt.Println("   1. Key[T] 泛型类型 — 配置键与值类型编译期绑定")
 	fmt.Println("   2. settings.Get(s, key) — 返回类型由 Key[T] 确定，无需类型断言")
-	fmt.Println("   3. settings.Set(s, key, val, priority) — 编译期约束值类型")
+	fmt.Println("   3. s.Set(key.Name, val, priority) — 简洁的方法调用")
 	fmt.Println("   4. settings.MustGet(s, key) — 必须存在的配置项")
 	fmt.Println("   5. 自定义 Key[T] — 用户可定义自己的类型化配置键")
 	fmt.Println("   6. 向后兼容 — 旧 API（GetInt/GetString）继续可用")
