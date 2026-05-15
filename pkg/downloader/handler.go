@@ -7,6 +7,7 @@ package downloader
 import (
 	"context"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"time"
@@ -216,6 +217,9 @@ func (h *HTTPDownloadHandler) getProxyURL(request *shttp.Request) *url.URL {
 func (h *HTTPDownloadHandler) clientWithProxy(proxyURL *url.URL) *http.Client {
 	proxyTransport := h.transport.Clone()
 	proxyTransport.Proxy = http.ProxyURL(proxyURL)
+	// TODO 因标准库的bug，需要手动clone
+	// 每次都会创建新的对象，后续进行性能优化
+	proxyTransport.TLSNextProto = maps.Clone(h.transport.TLSNextProto)
 
 	return &http.Client{
 		Timeout:   h.client.Timeout,
