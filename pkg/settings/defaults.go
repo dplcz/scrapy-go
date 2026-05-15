@@ -267,7 +267,8 @@ func (s *Settings) loadDefaults() {
 	// HTTP/2 与连接池配置
 	// ========================================================================
 
-	s.Set("HTTP2_ENABLED", false, d)                     // 是否启用 HTTP/2 优化下载处理器
+	s.Set("HTTP2_ENABLED", false, d)                     // 是否启用 HTTP/2 协议支持（通过 ALPN 自动协商）
+	s.Set("HTTP2_ALLOW_H2C", false, d)                   // 是否启用 HTTP/2 over cleartext（h2c）支持
 	s.Set("DOWNLOAD_PROGRESS_ENABLED", false, d)         // 是否启用下载进度回调
 	s.Set("DOWNLOAD_PROGRESS_MIN_INTERVAL", 100, d)      // 进度报告最小间隔（毫秒）
 	s.Set("CONNPOOL_MAX_IDLE_CONNS", 100, d)             // 最大空闲连接总数

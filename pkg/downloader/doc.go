@@ -12,8 +12,7 @@
 //   - [Downloader]：下载器，管理 Slot 和全局并发控制
 //   - [Slot]：域名级别的并发和延迟控制器
 //   - [DownloadHandler]：下载处理器接口（协议适配层）
-//   - [HTTPDownloadHandler]：基于 net/http 的 HTTP/1.1 标准下载处理器
-//   - [HTTP2DownloadHandler]：HTTP/2 优化下载处理器，支持多路复用和 ALPN 自动协商
+//   - [HTTPDownloadHandler]：基于 net/http 的 HTTP/1.1 和 HTTP/2 下载处理器（通过 ALPN 自动协商）
 //   - [ProgressHTTPDownloadHandler]：支持下载进度回调的处理器
 //   - [ConnPoolConfig]：连接池精细化配置（14 项参数）
 //   - [ConnPoolStats]：连接池运行时统计（atomic 无锁）
@@ -46,8 +45,9 @@
 //	              DownloadHandler
 //	       ┌──────────┼──────────┐
 //	       ▼          ▼          ▼
-//	  HTTP/1.1    HTTP/2     Progress
+//	  HTTP/1.1    Progress   WithConfig
 //	  Handler     Handler    Handler
+//	 (默认)    (进度回调)  (连接池统计+h2c)
 //
 // # Slot 调度模型
 //
@@ -70,12 +70,15 @@
 // # 下载处理器选择
 //
 // 框架根据配置自动选择合适的下载处理器：
-//   - HTTP2_ENABLED=true → [HTTP2DownloadHandler]（HTTP/2 多路复用 + 透明降级）
+//   - HTTP2_ENABLED=true → [HTTPDownloadHandler]（通过 NewHTTPDownloadHandlerWithConfig 创建，启用 ForceAttemptHTTP2）
 //   - DOWNLOAD_PROGRESS_ENABLED=true → [ProgressHTTPDownloadHandler]（进度回调）
 //   - 默认 → [HTTPDownloadHandler]（HTTP/1.1 标准处理器）
 //
-// [HTTP2DownloadHandler] 使用 x/net/http2 直接建立 HTTP/2 连接，
-// 当服务器不支持 HTTP/2 时自动降级到 HTTP/1.1（通过 fallbackTransport）。
+// [HTTPDownloadHandler] 通过 Go 标准库 net/http 原生支持 HTTP/2 ALPN 自动协商，
+// 无需独立的 HTTP/2 Handler。当 HTTP2_ENABLED=true 时，通过 ConnPoolConfig.ForceHTTP2
+// 设置 ForceAttemptHTTP2=true，在自定义 DialContext 场景下也能启用 HTTP/2。
+// 当 HTTP2_ALLOW_H2C=true 时，注册 http2.Transport 作为 http:// scheme 的 handler，
+// 支持内网/测试场景的 HTTP/2 over cleartext。
 //
 // [ProgressHTTPDownloadHandler] 通过 request.Meta["download_progress_callback"] 设置回调函数，
 // 支持已知/未知大小响应的进度报告，可配置最小报告间隔避免回调过于频繁。
@@ -85,7 +88,7 @@
 // [ConnPoolConfig] 提供 14 项连接池参数的精细化配置：
 //   - MaxIdleConns / MaxIdleConnsPerHost / MaxConnsPerHost：连接数控制
 //   - IdleConnTimeout / DialTimeout / TLSHandshakeTimeout：超时控制
-//   - DisableKeepAlives / ForceHTTP2：协议行为控制
+//   - DisableKeepAlives / ForceHTTP2 / AllowH2C：协议行为控制
 //   - WriteBufferSize / ReadBufferSize：缓冲区大小
 //   - TLSInsecureSkipVerify：TLS 验证控制
 //
@@ -103,7 +106,8 @@
 //   - DOWNLOAD_DELAY：请求间隔（默认 0）
 //   - RANDOMIZE_DOWNLOAD_DELAY：是否随机化延迟（默认 true）
 //   - DOWNLOAD_TIMEOUT：下载超时时间（默认 180s）
-//   - HTTP2_ENABLED：启用 HTTP/2 优化处理器（默认 false）
+//   - HTTP2_ENABLED：启用 HTTP/2 协议支持（默认 false，通过 ALPN 自动协商）
+//   - HTTP2_ALLOW_H2C：启用 HTTP/2 over cleartext 支持（默认 false，适用于内网/测试场景）
 //   - DOWNLOAD_PROGRESS_ENABLED：启用下载进度回调（默认 false）
 //   - DOWNLOAD_PROGRESS_MIN_INTERVAL：进度报告最小间隔（默认 100ms）
 //   - CONNPOOL_MAX_IDLE_CONNS：最大空闲连接总数（默认 100）
@@ -130,7 +134,8 @@
 //   - Slot GC 机制自动清理空闲超时的 Slot，防止内存泄漏
 //   - 禁用 net/http 自动重定向和自动解压，由中间件统一管理
 //   - 支持通过 request.Meta["proxy"] 动态设置代理
-//   - 内置 HTTP/2 支持（Scrapy 依赖 Twisted 的 h2 库，配置更复杂）
+//   - 内置 HTTP/2 支持（Go 标准库 net/http 原生 ALPN 自动协商，无需独立 Handler）
+//   - 支持 h2c（HTTP/2 over cleartext）配置，适用于内网/测试场景
 //   - 连接池参数可通过 Settings 精细化配置（Scrapy 受限于 Twisted reactor）
 //   - 下载进度回调通过 Meta 传递（Scrapy 通过 Signal 实现，粒度较粗）
 //

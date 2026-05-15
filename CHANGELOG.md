@@ -6,6 +6,73 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.0] — 2026-05-15
+
+> **🏗️ P5-023 下载器 HTTP/2 架构重构：删除冗余 HTTP2DownloadHandler，连接池统计集成至默认 Handler**
+
+### 重构
+
+#### P5-023：下载器 HTTP/2 架构重构
+
+> **删除冗余的 `HTTP2DownloadHandler`，将连接池统计（`ConnPoolStats`）集成至默认 `HTTPDownloadHandler`，新增 h2c 配置支持**
+
+##### P5-023a：删除 `HTTP2DownloadHandler`
+
+- 🗑️ **删除 `handler_h2.go`** — Go 标准库 `net/http` 已原生支持 HTTP/2 ALPN 自动协商，独立的 `HTTP2DownloadHandler` 属于对 Scrapy Python 版本的直译反模式
+  - `http2.Transport` 直连方案在对端不支持时会失败后 fallback，造成双倍开销
+  - 默认 Handler 自动协商后同样支持 HTTP/2 多路复用
+  - Server Push 仅注释预留，未实现
+  - 标准库 ALPN 协商失败直接用 HTTP/1.1，无需手动降级
+- 🗑️ **删除 `handler_h2_test.go`** — 冗余测试文件，有效用例已迁移至 `handler_config_test.go`
+
+##### P5-023b：连接池统计集成至默认 Handler
+
+- 🚀 **`NewHTTPDownloadHandlerWithConfig(timeout, config)`** — 新增带精细化配置的构造函数（`pkg/downloader/handler.go`）
+  - 支持 `ConnPoolConfig` 配置注入（连接池参数、HTTP/2 控制、h2c 支持等）
+  - 集成 `ManagedTransport` 连接池运行时统计（`ConnPoolStats`）
+  - 默认 `NewHTTPDownloadHandler` 行为完全不变（零影响）
+- 📊 **`ConnPoolStats()` / `Config()` 访问器** — 新增连接池统计和配置查询方法
+  - 通过 `NewHTTPDownloadHandlerWithConfig` 创建时可用，默认构造返回 nil
+
+##### P5-023c：新增 `ForceHTTP2` / `AllowH2C` 配置项
+
+- ⚙️ **`AllowH2C` 配置项** — 新增 HTTP/2 over cleartext（h2c）支持（`pkg/downloader/connpool.go`）
+  - `AllowH2C=true` 时注册 `http2.Transport` 作为 `http://` scheme 的 handler
+  - 通过自定义 `DialTLSContext` 建立纯 TCP 连接，实现无 TLS 的 HTTP/2 通信
+  - 适用于内网/测试场景
+- ⚙️ **`HTTP2_ALLOW_H2C` Settings 键** — 新增配置项（`pkg/settings/keys.go` + `defaults.go`）
+- ⚙️ **`HTTP2_ENABLED` 语义更新** — 启用后通过默认 Handler 的 `ForceAttemptHTTP2=true` 实现，不再创建独立 Handler
+
+##### P5-023d：单元测试 + 回归验证
+
+- ✅ **新增 `handler_config_test.go`** — 20+ 测试用例覆盖：
+  - `NewHTTPDownloadHandlerWithConfig` 基本功能（GET/POST/Cookies/重定向/超时/Context 取消）
+  - `ConnPoolStats` 集成验证（WithConfig 非 nil，默认构造 nil）
+  - HTTP/2 ALPN 自动协商验证
+  - HTTP/1.1 fallback 验证
+  - `AllowH2C` h2c 通信验证
+  - `ForceHTTP2` 配置生效验证
+  - HTTP/2 多路复用并发测试
+  - `ConnPoolConfigFromSettings` AllowH2C 配置读取验证
+  - `DownloadHandler` 接口兼容性验证
+
+### 变更
+
+- ♻️ **`crawler.go` Handler 选择逻辑重构** — `HTTP2_ENABLED=true` 时使用 `NewHTTPDownloadHandlerWithConfig` 替代已删除的 `NewHTTP2DownloadHandler`
+- 📝 **`doc.go` 文档更新** — 移除 `HTTP2DownloadHandler` 引用，更新架构图和配置说明
+- 📝 **`ConnPoolConfig` 文档增强** — 新增 `AllowH2C` 字段说明
+
+### 向后兼容性
+
+- ⚠️ **破坏性变更**：`HTTP2DownloadHandler` / `NewHTTP2DownloadHandler` 已删除
+  - **迁移方式**：将 `NewHTTP2DownloadHandler(timeout, config)` 替换为 `NewHTTPDownloadHandlerWithConfig(timeout, config)`
+  - `HTTP2_ENABLED=true` 配置仍然有效，框架内部已自动切换到新实现
+  - 直接使用 `NewHTTPDownloadHandler(timeout)` 的代码不受影响
+- ✅ `NewHTTPDownloadHandler` 默认行为完全不变
+- ✅ `ConnPoolConfig` / `ConnPoolStats` / `ManagedTransport` 接口不变
+- ✅ 所有现有 Settings 配置键兼容
+
+
 ## [v1.1.5] — 2026-05-14
 
 > **🐛 P5-022 断点续爬回调序列化修复 + Meta 类型还原 + 性能基准测试**

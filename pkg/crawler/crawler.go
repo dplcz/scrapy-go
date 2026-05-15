@@ -423,14 +423,16 @@ func (c *Crawler) assembleComponents() {
 	timeout := settings.Get(c.Settings, settings.KeyDownloadTimeoutDuration)
 	var handler downloader.DownloadHandler
 	if settings.Get(c.Settings, settings.KeyHTTP2Enabled) {
-		// 使用 HTTP/2 优化的下载处理器
+		// 启用 HTTP/2 优化：通过 ConnPoolConfig 注入 ForceHTTP2 配置，
+		// 默认 Handler 的 ManagedTransport 会设置 ForceAttemptHTTP2=true，
+		// 使 HTTPS 请求通过 ALPN 自动协商 HTTP/2。
 		connPoolConfig := downloader.ConnPoolConfigFromSettings(
 			c.Settings.GetInt,
 			c.Settings.GetDuration,
 			c.Settings.GetBool,
 		)
-		handler = downloader.NewHTTP2DownloadHandler(timeout, connPoolConfig)
-		c.Logger.Info("HTTP/2 download handler enabled")
+		handler = downloader.NewHTTPDownloadHandlerWithConfig(timeout, connPoolConfig)
+		c.Logger.Info("HTTP/2 download handler enabled (via default handler with ConnPoolConfig)")
 	} else if settings.Get(c.Settings, settings.KeyDownloadProgressEnabled) {
 		// 使用支持进度回调的下载处理器
 		connPoolConfig := downloader.ConnPoolConfigFromSettings(
