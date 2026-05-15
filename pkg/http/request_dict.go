@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/dplcz/scrapy-go/pkg/item"
 	"net/http"
 	"net/url"
 )
@@ -466,6 +467,11 @@ func isJSONSerializable(v any) bool {
 	default:
 		// 对于其他类型，保守地认为不可序列化
 		// 这包括函数、channel、复杂结构体等
+		// 对于实现了adapter接口的对象结构体放行
+		if _, ok := v.(item.ItemAdapter); ok {
+			return true
+		}
+
 		return false
 	}
 }

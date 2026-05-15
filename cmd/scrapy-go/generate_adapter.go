@@ -409,6 +409,11 @@ func (a *{{.Name}}Adapter) FieldMeta(name string) item.FieldMeta {
 	return nil
 }
 
+// MarshalJSON 实现json序列化接口
+func (a *{{.Name}}Adapter) MarshalJSON() ([]byte, error) {
+    return json.Marshal(a.item)
+}
+
 // 编译期接口满足性检查。
 var _ item.ItemAdapter = (*{{.Name}}Adapter)(nil)
 `
