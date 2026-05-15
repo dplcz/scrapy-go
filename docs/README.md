@@ -1150,6 +1150,20 @@ scrapy-go/
 
 ## 📝 更新日志
 
+### v1.1.6 ⚡
+
+> **P5-023 下载器 HTTP/2 架构重构 + Scheduler 单队列优先级修复**
+
+- 🏗️ **P5-023 HTTP/2 架构重构** — 删除冗余 `HTTP2DownloadHandler`，连接池统计集成至默认 Handler，新增 h2c 配置支持
+- 🗑️ **删除 `handler_h2.go`** — Go 标准库原生支持 HTTP/2 ALPN 自动协商，独立 Handler 属于直译反模式
+- 📊 **`ConnPoolStats` 集成** — `NewHTTPDownloadHandlerWithConfig` 支持连接池运行时统计
+- ⚙️ **`AllowH2C` 配置项** — 新增 HTTP/2 over cleartext 支持（内网/测试场景）
+- 🐛 **修复跨批次优先级失效** — 双锁分离设计中 `inBuffer`/`outQueue` 物理隔离导致高优先级请求被低优先级请求"饿死"
+- ♻️ **单队列 + 单锁设计** — 合并为单个 `PriorityQueue` + 单个 `sync.Mutex`，保证全局优先级排序绝对正确
+- ⚡ **DupeFilter 锁外执行** — 去重检查移至队列锁外，最小化临界区（`sync.Map.LoadOrStore` 原子操作）
+- 📈 **性能对比** — 单线程 -11%，并行场景 -46%，并发入队 +28%（IO-bound 场景可忽略）
+- 🧪 **新增 4 个优先级正确性测试** + 1 个跨批次场景基准测试
+
 ### v1.1.5 🐛
 
 > **P5-022 断点续爬回调序列化修复 + Meta 类型还原 + 性能基准测试**
@@ -1217,7 +1231,7 @@ scrapy-go/
 - 🎛️ **P5-002 AutoThrottle 扩展** — 基于延迟反馈的自适应速率调整，自动优化下载延迟
 - 🌐 **P5-003 Redis 队列可插拔扩展** — `contrib/redisqueue` 独立模块，支持分布式爬取 + 布隆过滤器加速
 - 📊 **P5-007 可观测性具体实现** — `contrib/telemetry` 独立模块，OpenTelemetry 追踪 + Prometheus 指标 + 信号驱动自动采集
-- ⚡ **性能优化 P4-007a~m** — Scheduler 双锁分离、Worker Pool 化、信号系统 COW、Meta 预初始化等 13 项优化
+- ⚡ **性能优化 P4-007a~m** — ~~Scheduler 双锁分离~~（已在 v1.1.6 替换为单队列设计）、Worker Pool 化、信号系统 COW、Meta 预初始化等 13 项优化
 - 🧪 **全量测试通过** — `go test -race` 竞态检测通过，`go vet` 无告警，`gofmt` 格式化通过
 
 ### v1.0.3
@@ -1258,9 +1272,9 @@ scrapy-go/
 
 ### v1.0.1
 
-> **性能优化 P4-007j：Scheduler 双锁分离（入队/出队解耦）**
+> **性能优化 P4-007j：Scheduler 双锁分离（入队/出队解耦）** ⚠️ *已在 v1.1.6 中替换为单队列设计以修复优先级排序问题*
 
-- ⚡ **Scheduler 双锁分离** — `enqueueMu` + `dequeueMu` 独立锁，入队/出队并行执行，消除调度循环与 Spider 回调的锁竞争（ConcurrentEnqueue -22~42%）
+- ⚡ ~~**Scheduler 双锁分离**~~ — 已在 v1.1.6 中回退为单锁设计，修复跨批次优先级失效问题
 - ⚡ **DupeFilter sync.Map 无锁化** — `LoadOrStore` 原子操作替代全局锁，高并发去重性能提升 4.6~6.6x
 - ⚡ **HasPendingRequests/Len atomic 无锁** — `pendingCount atomic.Int64`，~9,300x faster
 - 📉 **Scheduler sec/op geomean -58.73%**，B/op -24.15%，端到端 QPS (16c) -5.42%

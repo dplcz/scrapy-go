@@ -6,9 +6,9 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
-## [v1.2.0] — 2026-05-15
+## [v1.1.6] — 2026-05-15
 
-> **🏗️ P5-023 下载器 HTTP/2 架构重构：删除冗余 HTTP2DownloadHandler，连接池统计集成至默认 Handler**
+> **🏗️ P5-023 下载器 HTTP/2 架构重构 + ⚡ Scheduler 单队列优先级修复**
 
 ### 重构
 
@@ -72,6 +72,50 @@
 - ✅ `ConnPoolConfig` / `ConnPoolStats` / `ManagedTransport` 接口不变
 - ✅ 所有现有 Settings 配置键兼容
 
+> **⚡ Scheduler 单队列优先级修复 — 解决跨批次高优先级请求被"饿死"问题**
+
+### 修复
+
+#### Scheduler 全局优先级排序修复
+
+> **修复双锁分离设计导致的跨批次优先级失效问题：当第一批大量低优先级请求未消费完时，回调中产生的高优先级请求无法及时参与全局排序，被低优先级请求"饿死"**
+
+##### 问题根因
+
+- 🐛 **双锁分离 + 双队列 swap 机制** — 原设计使用 `inBuffer`（入队缓冲区）和 `outQueue`（出队队列）两个独立的 `PriorityQueue`，仅当 `outQueue` 完全为空时才触发 swap
+- 🐛 **优先级物理隔离** — 两个堆之间无法进行优先级比较，导致新入队的高优先级请求被困在 `inBuffer` 中，必须等待 `outQueue` 中所有低优先级请求消费完毕
+
+##### 解决方案（方案 E：单队列 + 单锁）
+
+- ♻️ **单优先级队列** — 将 `inBuffer` + `outQueue` 合并为单个 `PriorityQueue`（`pq` 字段），所有请求共享同一个优先级堆
+- 🔒 **单锁保护** — 将 `enqueueMu` + `dequeueMu` 合并为单个 `sync.Mutex`（`mu` 字段），保证入队和出队操作的全局优先级一致性
+- ⚡ **DupeFilter 锁外执行** — `RFPDupeFilter` 使用 `sync.Map.LoadOrStore` 原子操作，去重检查移至队列锁外执行，最小化临界区长度
+- 📊 **atomic 无锁快速路径保留** — `HasPendingRequests`/`Len` 仍使用 `atomic.Int64`，零锁开销
+
+##### 性能对比
+
+| Benchmark | Before (双锁) | After (单锁) | 变化 |
+|-----------|--------------|-------------|------|
+| EnqueueDequeue (单线程) | ~154 ns/op | ~137 ns/op | **-11%** |
+| ConcurrentEnqueue c16 | ~596 ns/op | ~761 ns/op | +28% (预期内) |
+| ParallelEnqueueDequeue c16 | ~704 ns/op | ~382 ns/op | **-46%** |
+
+##### 新增测试
+
+- 🧪 **`TestCrossBatchPriorityOrdering`** — 验证跨批次入队时全局优先级排序正确性
+- 🧪 **`TestCrossBatchPriorityWithConcurrentEnqueue`** — 验证并发入队时优先级排序正确性
+- 🧪 **`TestPriorityInterleavedEnqueueDequeue`** — 验证交错入队/出队时优先级正确性
+- 🧪 **`TestPriorityUnderHighConcurrency`** — 高并发下优先级排序最终一致性验证
+- 📈 **`BenchmarkCrossBatchPriority`** — 跨批次优先级场景基准测试
+
+### 向后兼容性
+
+- ✅ **公共 API 完全不变** — `Scheduler` 接口、`DefaultScheduler` 所有公共方法签名不变
+- ✅ **配置项完全不变** — `WithDupeFilter`/`WithJobDir`/`WithMemoryQueueThreshold`/`WithExternalQueue` 等所有 Option 不变
+- ✅ **行为语义一致** — 出队优先级（内存 > 磁盘）、溢出保护、断点续爬等功能行为不变
+- ⚠️ **内部字段变更** — `enqueueMu`/`dequeueMu`/`inBuffer`/`outQueue` 替换为 `mu`/`pq`（仅影响直接访问内部字段的测试代码）
+
+---
 
 ## [v1.1.5] — 2026-05-14
 

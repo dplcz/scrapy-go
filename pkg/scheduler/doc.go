@@ -116,6 +116,18 @@
 //
 // # 并发安全
 //
-// [DefaultScheduler] 的所有公共方法均为并发安全（内部使用 sync.Mutex 保护）。
-// [RFPDupeFilter] 同样是并发安全的。
+// [DefaultScheduler] 的所有公共方法均为并发安全：
+//   - 内存优先级队列使用单个 sync.Mutex 保护，保证全局优先级排序正确性
+//   - DupeFilter 使用 sync.Map 实现无锁并发去重，在队列锁外执行以减少临界区
+//   - HasPendingRequests/Len 使用 atomic 计数器，无锁快速路径
+//
+// [RFPDupeFilter] 同样是并发安全的（内部使用 sync.Map）。
+//
+// # 优先级排序保证
+//
+// [DefaultScheduler] 使用单队列设计保证全局优先级排序的绝对正确性：
+//   - 所有内存中的请求共享同一个优先级堆
+//   - 新入队的高优先级请求能立即参与全局排序
+//   - 不会出现高优先级请求被低优先级请求"饿死"的情况
+//   - 适用于回调中产生高优先级请求的场景（如详情页优先于列表页）
 package scheduler

@@ -431,6 +431,9 @@ func TestRawNetHTTP_ProxyHTTPS_Sanity(t *testing.T) {
 }
 
 func TestRealGet(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping real network test in short mode")
+	}
 	p := newConnectProxy(t)
 	defer p.Close()
 
