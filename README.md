@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.1.5-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](docs/README.md#-更新日志)
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
@@ -95,7 +95,7 @@ Engine (调度引擎)
 ├── Scheduler (请求调度 + 去重 + 优先级队列)
 │   └── [可选] contrib/redisqueue (Redis 分布式队列)
 ├── Downloader (HTTP 下载 + Slot 并发控制)
-│   ├── HTTP/1.1 & HTTP/2 下载处理器
+│   ├── HTTP/1.1 & HTTP/2 下载处理器 (ALPN 自动协商 + h2c 可选)
 │   └── Middleware Chain (11 个内置中间件)
 └── Scraper (响应处理 + Spider 回调)
     ├── Spider Middleware (5 个内置中间件)

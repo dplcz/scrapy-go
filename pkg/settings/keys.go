@@ -341,8 +341,14 @@ var (
 // --- HTTP/2 与连接池 ---
 
 var (
-	// KeyHTTP2Enabled 是否启用 HTTP/2 优化下载处理器。
+	// KeyHTTP2Enabled 是否启用 HTTP/2 协议支持。
+	// 启用后默认 Handler 的 ManagedTransport 会设置 ForceAttemptHTTP2=true，
+	// 使 HTTPS 请求通过 ALPN 自动协商 HTTP/2。
 	KeyHTTP2Enabled = Key[bool]{Name: "HTTP2_ENABLED", Default: false}
+	// KeyHTTP2AllowH2C 是否启用 HTTP/2 over cleartext（h2c）支持。
+	// 启用后注册 http2.Transport 作为 http:// scheme 的 handler，
+	// 允许在不使用 TLS 的情况下使用 HTTP/2 协议（适用于内网/测试场景）。
+	KeyHTTP2AllowH2C = Key[bool]{Name: "HTTP2_ALLOW_H2C", Default: false}
 	// KeyDownloadProgressEnabled 是否启用下载进度回调。
 	KeyDownloadProgressEnabled = Key[bool]{Name: "DOWNLOAD_PROGRESS_ENABLED", Default: false}
 	// KeyDownloadProgressMinInterval 进度报告最小间隔（毫秒）。

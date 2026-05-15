@@ -25,13 +25,19 @@ type DownloadHandler interface {
 }
 
 // HTTPDownloadHandler 是基于 net/http 的 HTTP 下载处理器。
-// 支持 HTTP/1.1 和 HTTP/2。
+// 支持 HTTP/1.1 和 HTTP/2（通过 ALPN 自动协商）。
+//
+// 当通过 NewHTTPDownloadHandlerWithConfig 创建时，支持连接池精细化配置和运行时统计。
+// 当通过 NewHTTPDownloadHandler 创建时，使用默认配置，行为与重构前完全一致。
 type HTTPDownloadHandler struct {
-	client    *http.Client
-	transport *http.Transport
+	client           *http.Client
+	transport        *http.Transport
+	managedTransport *ManagedTransport // 可选，仅在使用 WithConfig 构造时非 nil
+	config           *ConnPoolConfig   // 可选，仅在使用 WithConfig 构造时非 nil
 }
 
 // NewHTTPDownloadHandler 创建一个新的 HTTP 下载处理器。
+// 使用默认的连接池配置，不启用连接池统计。
 func NewHTTPDownloadHandler(timeout time.Duration) *HTTPDownloadHandler {
 	transport := &http.Transport{
 		MaxIdleConns:        100,
@@ -55,6 +61,41 @@ func NewHTTPDownloadHandler(timeout time.Duration) *HTTPDownloadHandler {
 	return &HTTPDownloadHandler{
 		client:    client,
 		transport: transport,
+	}
+}
+
+// NewHTTPDownloadHandlerWithConfig 创建一个带精细化配置的 HTTP 下载处理器。
+//
+// 相比 NewHTTPDownloadHandler，此构造函数支持：
+//   - ConnPoolConfig 配置注入（连接池参数、HTTP/2 控制、h2c 支持等）
+//   - ConnPoolStats 连接池运行时统计
+//   - ForceHTTP2=true 时设置 ForceAttemptHTTP2（用于自定义 DialContext 场景）
+//   - AllowH2C=true 时注册 http2.Transport 作为 http:// scheme 的 handler
+//
+// 参数：
+//   - timeout: 全局下载超时时间
+//   - config: 连接池配置（传 nil 使用默认配置）
+func NewHTTPDownloadHandlerWithConfig(timeout time.Duration, config *ConnPoolConfig) *HTTPDownloadHandler {
+	if config == nil {
+		config = DefaultConnPoolConfig()
+	}
+
+	mt := NewManagedTransport(config)
+
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: mt.Transport,
+		// 禁用自动重定向
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	return &HTTPDownloadHandler{
+		client:           client,
+		transport:        mt.Transport,
+		managedTransport: mt,
+		config:           config,
 	}
 }
 
@@ -189,6 +230,21 @@ func (h *HTTPDownloadHandler) clientWithProxy(proxyURL *url.URL) *http.Client {
 func (h *HTTPDownloadHandler) Close() error {
 	h.client.CloseIdleConnections()
 	return nil
+}
+
+// ConnPoolStats 返回连接池统计信息。
+// 仅在通过 NewHTTPDownloadHandlerWithConfig 创建时可用，否则返回 nil。
+func (h *HTTPDownloadHandler) ConnPoolStats() *ConnPoolStats {
+	if h.managedTransport != nil {
+		return h.managedTransport.Stats()
+	}
+	return nil
+}
+
+// Config 返回当前连接池配置。
+// 仅在通过 NewHTTPDownloadHandlerWithConfig 创建时可用，否则返回 nil。
+func (h *HTTPDownloadHandler) Config() *ConnPoolConfig {
+	return h.config
 }
 
 // bytesReader 是一个简单的 bytes.Reader 包装。

@@ -1123,8 +1123,8 @@ scrapy-go/
 │   ├── engine/                     # Engine 调度引擎
 │   ├── scheduler/                  # Scheduler 调度器 + 去重过滤器
 │   ├── downloader/                 # Downloader 下载器 + Slot 机制 + 中间件管理器
-│   │   ├── handler_h2.go          # HTTP/2 优化下载处理器
-│   │   ├── connpool.go            # 连接池精细化管理
+│   │   ├── handler.go             # HTTP/1.1 & HTTP/2 下载处理器（ALPN 自动协商 + h2c 可选）
+│   │   ├── connpool.go            # 连接池精细化管理（含 h2c 支持）
 │   │   ├── progress.go            # 下载进度回调支持
 │   │   └── middleware/             # 下载器中间件接口与实现（11 个内置）
 │   ├── scraper/                    # Scraper 响应处理器
@@ -1249,7 +1249,7 @@ scrapy-go/
 
 > **Post-v1.0 Sprint 12 — P5-001 高级下载器特性**
 
-- 🚀 **HTTP/2 优化下载处理器** — 新增 `HTTP2DownloadHandler`，使用 `x/net/http2` 直接建立 HTTP/2 连接，支持多路复用、ALPN 自动协商、透明降级到 HTTP/1.1
+- 🚀 **HTTP/2 优化下载处理器** — ~~新增 `HTTP2DownloadHandler`~~ （v1.2.0 已重构：HTTP/2 支持通过默认 `HTTPDownloadHandler` + `ConnPoolConfig.ForceHTTP2` 实现，`HTTP2DownloadHandler` 已删除）
 - 🔧 **连接池精细化管理** — 新增 `ConnPoolConfig`（14 项参数）+ `ConnPoolStats`（atomic 无锁统计）+ `ManagedTransport`，通过 `CONNPOOL_*` 配置项集成
 - 📈 **下载进度回调** — 新增 `ProgressHTTPDownloadHandler`，通过 `Request.Meta["download_progress_callback"]` 设置进度回调，支持已知/未知大小响应，可配置最小报告间隔
 - ⚙️ **新增 14 项配置** — `HTTP2_ENABLED` / `DOWNLOAD_PROGRESS_ENABLED` / `CONNPOOL_*` 系列连接池参数

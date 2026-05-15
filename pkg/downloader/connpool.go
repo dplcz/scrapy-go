@@ -1,11 +1,14 @@
 package downloader
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/net/http2"
 )
 
 // ConnPoolConfig 定义连接池的精细化配置。
@@ -69,6 +72,11 @@ type ConnPoolConfig struct {
 	// TLSInsecureSkipVerify 跳过 TLS 证书验证。
 	// 默认值：false。仅用于测试或信任的内网环境。
 	TLSInsecureSkipVerify bool
+
+	// AllowH2C 启用 HTTP/2 over cleartext（h2c）支持。
+	// 默认值：false。启用后将注册 http2.Transport 作为 http:// scheme 的 handler，
+	// 允许在不使用 TLS 的情况下使用 HTTP/2 协议（适用于内网/测试场景）。
+	AllowH2C bool
 }
 
 // DefaultConnPoolConfig 返回默认的连接池配置。
@@ -164,6 +172,26 @@ func NewManagedTransport(config *ConnPoolConfig) *ManagedTransport {
 		},
 	}
 
+	// 如果启用 h2c，注册 http2.Transport 作为 http:// scheme 的 handler
+	if config.AllowH2C {
+		h2cTransport := &http2.Transport{
+			AllowHTTP:       true,
+			ReadIdleTimeout: config.IdleConnTimeout,
+			PingTimeout:     15 * time.Second,
+			// h2c 需要自定义 DialTLSContext 来建立纯 TCP 连接（而非 TLS 连接）。
+			// 当 AllowHTTP=true 时，http2.Transport 会对 http:// URL 调用 DialTLSContext，
+			// 我们需要返回一个普通的 TCP 连接而非 TLS 连接。
+			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+				return (&net.Dialer{
+					Timeout:   config.DialTimeout,
+					KeepAlive: config.DialKeepAlive,
+				}).DialContext(ctx, network, addr)
+			},
+		}
+		// 注册 http2.Transport 处理 https:// 以外的 http:// 请求
+		transport.RegisterProtocol("http", h2cTransportWrapper{h2cTransport})
+	}
+
 	mt := &ManagedTransport{
 		Transport: transport,
 		stats:     stats,
@@ -213,6 +241,7 @@ func ConnPoolConfigFromSettings(getInt func(string, int) int, getDuration func(s
 	}
 	config.DisableKeepAlives = getBool("CONNPOOL_DISABLE_KEEPALIVES", false)
 	config.ForceHTTP2 = getBool("HTTP2_ENABLED", false)
+	config.AllowH2C = getBool("HTTP2_ALLOW_H2C", false)
 
 	if v := getInt("CONNPOOL_WRITE_BUFFER_SIZE", 0); v > 0 {
 		config.WriteBufferSize = v
@@ -222,4 +251,16 @@ func ConnPoolConfigFromSettings(getInt func(string, int) int, getDuration func(s
 	}
 
 	return config
+}
+
+// h2cTransportWrapper 包装 http2.Transport 以实现 http.RoundTripper 接口，
+// 用于通过 Transport.RegisterProtocol 注册为 http:// scheme 的处理器。
+// 这使得 HTTP/2 over cleartext（h2c）可以在不使用 TLS 的情况下工作。
+type h2cTransportWrapper struct {
+	*http2.Transport
+}
+
+// RoundTrip 实现 http.RoundTripper 接口。
+func (w h2cTransportWrapper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return w.Transport.RoundTrip(req)
 }
