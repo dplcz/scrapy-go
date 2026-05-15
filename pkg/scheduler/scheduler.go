@@ -45,22 +45,15 @@ type Scheduler interface {
 }
 
 // ============================================================================
-// DefaultScheduler 实现（双锁分离：入队/出队解耦）
+// DefaultScheduler 实现（单队列 + 单锁：保证全局优先级排序正确性）
 // ============================================================================
 
 // DefaultScheduler 是默认的调度器实现。
 //
-// 使用双锁分离设计（类似 Java LinkedBlockingQueue）：
-//   - enqueueMu 保护入队路径（EnqueueRequest）
-//   - dequeueMu 保护出队路径（NextRequest）
+// 使用单锁设计保证全局优先级排序的绝对正确性：
+//   - mu 保护内存优先级队列的入队和出队操作
+//   - DupeFilter 使用 sync.Map 实现无锁并发去重，在锁外执行以减少临界区
 //   - pendingCount 使用 atomic 提供无锁的 HasPendingRequests/Len
-//
-// 入队/出队可并行执行，消除调度循环与 Spider 回调之间的锁竞争。
-//
-// 内部使用双队列设计：
-//   - inBuffer：入队缓冲区，由 enqueueMu 保护
-//   - outQueue：出队队列，由 dequeueMu 保护
-//   - 当 outQueue 为空时，获取 enqueueMu 将 inBuffer 内容转移到 outQueue
 //
 // 当配置了 JOBDIR 或外部队列时，同时使用持久化队列实现断点续爬：
 //   - 可序列化的请求优先存入持久化队列
@@ -73,26 +66,23 @@ type Scheduler interface {
 //
 // 内存队列溢出保护：
 //   - 通过 WithMemoryQueueThreshold 设置内存队列最大容量阈值
-//   - 当内存队列（inBuffer + outQueue）中的请求数超过阈值时，
-//     新入队的请求自动溢出到磁盘队列
+//   - 当内存队列中的请求数超过阈值时，新入队的请求自动溢出到磁盘队列
 //   - 未配置 jobDir 时自动创建临时磁盘队列目录，爬虫结束后清理
 //   - 出队时内存队列仍然优先于磁盘队列，确保低延迟
 //
 // 对应 Scrapy 的 Scheduler 类。
 type DefaultScheduler struct {
-	// 双锁分离：入队锁和出队锁独立，消除入队/出队的锁竞争
-	enqueueMu sync.Mutex // 保护入队路径（inBuffer + dupeFilter 写入）
-	dequeueMu sync.Mutex // 保护出队路径（outQueue + 磁盘队列出队）
+	// 单锁保护内存优先级队列和磁盘队列操作
+	mu sync.Mutex
 
 	// pendingCount 使用 atomic 提供无锁的 HasPendingRequests/Len
 	pendingCount atomic.Int64
 
-	// memoryCount 追踪内存队列中的请求数（inBuffer + outQueue），由 enqueueMu 保护写入
+	// memoryCount 追踪内存队列中的请求数，由 mu 保护写入
 	memoryCount atomic.Int64
 
 	dupeFilter DupeFilter
-	inBuffer   *PriorityQueue     // 入队缓冲区，由 enqueueMu 保护
-	outQueue   *PriorityQueue     // 出队队列，由 dequeueMu 保护
+	pq         *PriorityQueue     // 内存优先级队列，由 mu 保护
 	dq         PriorityAwareQueue // 持久化队列（可选，JOBDIR 或外部队列启用时使用）
 	serializer *RequestSerializer
 	stats      stats.Collector
@@ -199,8 +189,7 @@ func WithExternalQueue(q PriorityAwareQueue) DefaultSchedulerOption {
 // NewDefaultScheduler 创建一个新的默认调度器。
 func NewDefaultScheduler(opts ...DefaultSchedulerOption) *DefaultScheduler {
 	s := &DefaultScheduler{
-		inBuffer: NewPriorityQueue(),
-		outQueue: NewPriorityQueue(),
+		pq: NewPriorityQueue(),
 	}
 
 	for _, opt := range opts {
@@ -232,11 +221,8 @@ func NewDefaultScheduler(opts ...DefaultSchedulerOption) *DefaultScheduler {
 //  3. 如果设置了 memoryQueueThreshold 但无磁盘队列，自动创建临时磁盘队列
 //  4. 否则仅使用内存队列
 func (s *DefaultScheduler) Open(ctx context.Context) error {
-	// Open 在启动阶段调用，无并发，获取两把锁确保安全
-	s.enqueueMu.Lock()
-	s.dequeueMu.Lock()
-	defer s.dequeueMu.Unlock()
-	defer s.enqueueMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// 如果已通过 WithExternalQueue 注入了外部队列，跳过磁盘队列初始化
 	if s.dq != nil {
@@ -296,11 +282,8 @@ func (s *DefaultScheduler) Open(ctx context.Context) error {
 // 如果启用了磁盘队列，会持久化队列状态和 DupeFilter 状态。
 // 如果使用了自动创建的临时磁盘队列目录，会在关闭后清理。
 func (s *DefaultScheduler) Close(ctx context.Context, reason string) error {
-	// Close 在关闭阶段调用，获取两把锁确保安全
-	s.enqueueMu.Lock()
-	s.dequeueMu.Lock()
-	defer s.dequeueMu.Unlock()
-	defer s.enqueueMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	var firstErr error
 
@@ -344,22 +327,20 @@ func (s *DefaultScheduler) Close(ctx context.Context, reason string) error {
 // EnqueueRequest 将请求入队。
 //
 // 处理流程：
-//  1. 如果请求未设置 DontFilter，通过 DupeFilter 检查是否重复
+//  1. 如果请求未设置 DontFilter，通过 DupeFilter 检查是否重复（锁外执行，sync.Map 无锁）
 //  2. 如果是重复请求，记录统计并返回 false
-//  3. 如果启用了磁盘队列：
+//  3. 获取队列锁
+//  4. 如果启用了磁盘队列：
 //     a. 未设置内存阈值：所有可序列化请求优先存入磁盘队列（原有行为）
 //     b. 设置了内存阈值且未超阈值：存入内存队列
 //     c. 设置了内存阈值且已超阈值：溢出到磁盘队列
-//  4. 如果序列化失败或未启用磁盘队列，存入入队缓冲区（inBuffer）
-//  5. 记录统计并返回 true
+//  5. 如果序列化失败或未启用磁盘队列，存入内存优先级队列
+//  6. 记录统计并返回 true
 //
-// 仅获取 enqueueMu，不阻塞出队路径。
-// 对齐 Scrapy 的 Scheduler.enqueue_request：磁盘队列优先，序列化失败回退内存队列。
+// DupeFilter 检查在锁外执行（RFPDupeFilter 内部使用 sync.Map，本身并发安全），
+// 最小化临界区长度，减少锁竞争。
 func (s *DefaultScheduler) EnqueueRequest(request *shttp.Request) bool {
-	s.enqueueMu.Lock()
-	defer s.enqueueMu.Unlock()
-
-	// 去重检查（DupeFilter 由 enqueueMu 保护，仅入队路径写入）
+	// 去重检查在锁外执行（RFPDupeFilter 使用 sync.Map，本身并发安全）
 	if !request.DontFilter && s.dupeFilter.RequestSeen(request) {
 		s.stats.IncValue("dupefilter/filtered", 1, 0)
 		if s.debug {
@@ -369,6 +350,9 @@ func (s *DefaultScheduler) EnqueueRequest(request *shttp.Request) bool {
 		}
 		return false
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	// 判断是否需要溢出到磁盘队列
 	if s.dq != nil {
@@ -385,8 +369,8 @@ func (s *DefaultScheduler) EnqueueRequest(request *shttp.Request) bool {
 		}
 	}
 
-	// 存入入队缓冲区
-	s.inBuffer.Push(request)
+	// 存入内存优先级队列
+	s.pq.Push(request)
 	s.pendingCount.Add(1)
 	s.memoryCount.Add(1)
 	s.stats.IncValue("scheduler/enqueued", 1, 0)
@@ -397,36 +381,18 @@ func (s *DefaultScheduler) EnqueueRequest(request *shttp.Request) bool {
 
 // NextRequest 返回下一个待处理的请求。
 //
-// 出队优先级：内存队列（outQueue + inBuffer 转移） > 磁盘队列。
+// 出队优先级：内存队列 > 磁盘队列。
 // 这与 Scrapy 的行为一致：内存中的请求优先处理，
 // 因为它们可能是不可序列化的请求或新入队的高优先级请求。
 //
-// 仅获取 dequeueMu，不阻塞入队路径。
-// 当 outQueue 为空时，短暂获取 enqueueMu 将 inBuffer 转移到 outQueue。
+// 单队列设计保证全局优先级排序正确：所有内存中的请求共享同一个优先级堆，
+// 新入队的高优先级请求能立即参与全局排序，不会被低优先级请求阻塞。
 func (s *DefaultScheduler) NextRequest() *shttp.Request {
-	s.dequeueMu.Lock()
-	defer s.dequeueMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// 优先从出队队列出队
-	request := s.outQueue.Pop()
-	if request != nil {
-		s.pendingCount.Add(-1)
-		s.memoryCount.Add(-1)
-		s.stats.IncValue("scheduler/dequeued", 1, 0)
-		s.stats.IncValue("scheduler/dequeued/memory", 1, 0)
-		return request
-	}
-
-	// outQueue 为空，尝试从 inBuffer 转移
-	s.enqueueMu.Lock()
-	if s.inBuffer.Len() > 0 {
-		// 交换 inBuffer 和 outQueue（O(1) 操作）
-		s.inBuffer, s.outQueue = s.outQueue, s.inBuffer
-	}
-	s.enqueueMu.Unlock()
-
-	// 再次尝试从 outQueue 出队（此时 outQueue 已是原 inBuffer 的内容）
-	request = s.outQueue.Pop()
+	// 优先从内存优先级队列出队
+	request := s.pq.Pop()
 	if request != nil {
 		s.pendingCount.Add(-1)
 		s.memoryCount.Add(-1)
@@ -470,8 +436,8 @@ func (s *DefaultScheduler) HasDiskQueue() bool {
 
 // HasExternalQueue 返回是否启用了持久化队列（磁盘队列或外部队列）。
 func (s *DefaultScheduler) HasExternalQueue() bool {
-	s.enqueueMu.Lock()
-	defer s.enqueueMu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.dq != nil
 }
 
@@ -497,7 +463,7 @@ func (s *DefaultScheduler) MemoryQueueThreshold() int {
 //   - 如果未设置内存队列阈值（memoryQueueThreshold == 0），始终溢出（保持原有行为）
 //   - 如果设置了阈值，仅当内存队列请求数超过阈值时才溢出
 //
-// 调用方必须持有 enqueueMu。
+// 调用方必须持有 mu。
 func (s *DefaultScheduler) shouldOverflowToDisk() bool {
 	if s.memoryQueueThreshold == 0 {
 		// 未设置阈值，保持原有行为：所有可序列化请求优先存入磁盘队列
@@ -509,7 +475,7 @@ func (s *DefaultScheduler) shouldOverflowToDisk() bool {
 
 // enqueueToDisk 尝试将请求序列化并存入磁盘队列。
 // 返回 true 表示成功，false 表示序列化失败。
-// 调用方必须持有 enqueueMu。
+// 调用方必须持有 mu。
 func (s *DefaultScheduler) enqueueToDisk(request *shttp.Request) bool {
 	data, err := s.serializer.Serialize(request)
 	if err != nil {
@@ -535,7 +501,7 @@ func (s *DefaultScheduler) enqueueToDisk(request *shttp.Request) bool {
 }
 
 // dequeueFromDisk 从磁盘队列出队并反序列化请求。
-// 调用方必须持有 dequeueMu。
+// 调用方必须持有 mu。
 func (s *DefaultScheduler) dequeueFromDisk() *shttp.Request {
 	data, _, err := s.dq.PopWithPriority()
 	if err != nil {
