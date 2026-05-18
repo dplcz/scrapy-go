@@ -38,6 +38,7 @@ Thumbs.db
 # 示例输出文件
 *.json
 !examples/**/*.json
+!contrib/telemetry/grafana/*.json
 
 # 编译的二进制文件
 examples/quotes/quotes

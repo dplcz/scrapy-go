@@ -12,8 +12,10 @@
 |------|------|---------|
 | `otel.Tracer` | OpenTelemetry Tracer 适配器 | `telemetry.Tracer` |
 | `prometheus.Registry` | Prometheus MetricsRegistry 适配器 | `telemetry.MetricsRegistry` |
+| `prometheus.LabeledRegistry` | 支持标签维度的 Prometheus 适配器 | `telemetry.LabeledMetricsRegistry` |
 | `TraceExtension` | 信号驱动的分布式追踪扩展 | `extension.Extension` |
 | `MetricsExtension` | 信号驱动的指标收集扩展（含 HTTP `/metrics` 端点） | `extension.Extension` |
+| `grafana/` | 开箱即用的 Grafana Dashboard JSON 模板 | — |
 
 ## 安装
 
@@ -114,6 +116,52 @@ c.AddExtension(
 )
 ```
 
+### 使用带标签维度的指标（按 Spider/域名分组）
+
+```go
+package main
+
+import (
+    "github.com/dplcz/scrapy-go/contrib/telemetry/prometheus"
+    "github.com/dplcz/scrapy-go/pkg/telemetry"
+)
+
+func main() {
+    // 创建支持标签维度的 Prometheus 注册中心
+    registry := prometheus.NewLabeledRegistry()
+
+    // 创建带标签的计数器（按 Spider 名称和域名分组）
+    requestCounter := registry.LabeledCounter(
+        "scrapy_requests_total",
+        "总请求数",
+        "spider", "domain",
+    )
+
+    // 按标签值记录指标
+    requestCounter.With("my_spider", "example.com").Inc()
+    requestCounter.With("my_spider", "test.org").Add(5.0)
+
+    // 带标签的仪表盘
+    activeGauge := registry.LabeledGauge(
+        "scrapy_active_requests",
+        "活跃请求数",
+        "spider",
+    )
+    activeGauge.With("my_spider").Inc()
+
+    // 带标签的直方图
+    durationHisto := registry.LabeledHistogram(
+        "scrapy_request_duration_seconds",
+        "请求延迟分布",
+        telemetry.DefaultHistogramBuckets,
+        "spider", "domain",
+    )
+    durationHisto.With("my_spider", "example.com").Observe(0.5)
+}
+```
+
+> `LabeledRegistry` 完全兼容 `MetricsRegistry` 接口，可直接传入 `MetricsExtension`。
+
 ## 采集的指标
 
 ### Prometheus 指标
@@ -146,6 +194,20 @@ MetricsExtension 内置 HTTP 服务器，提供以下端点：
 | `/metrics` | Prometheus 格式指标输出 |
 | `/health` | 健康检查（返回 `ok`） |
 
+## Grafana Dashboard
+
+`grafana/` 目录提供开箱即用的 Grafana Dashboard JSON 模板，包含以下面板：
+
+- 🕷️ **Spider 概览** — 状态、运行时长、请求/响应/Item/错误总数
+- ⚡ **请求延迟** — P50/P90/P99 分位数曲线、QPS 吞吐量
+- 🚨 **错误率** — 错误占比、错误与 Item 丢弃速率
+- 📊 **队列深度** — 活跃请求数、调度器队列深度
+- 🌐 **按域名维度** — 分域名 QPS 和延迟
+
+导入方式：Grafana → Dashboards → Import → 上传 `grafana/scrapy-go-dashboard.json`
+
+详见 [grafana/README.md](grafana/README.md)。
+
 ## 设计决策
 
 - **适配器模式** — 将 OTel/Prometheus 的具体实现适配为 `pkg/telemetry` 定义的轻量级接口
@@ -153,6 +215,7 @@ MetricsExtension 内置 HTTP 服务器，提供以下端点：
 - **独立子模块** — 避免主模块引入重量级依赖，用户按需安装
 - **零侵入** — 未启用时使用 `NoopTracer`/`NoopMetricsRegistry`，零运行时开销
 - **线程安全** — 所有组件保证并发安全，支持多 goroutine 同时访问
+- **标签维度** — `LabeledRegistry` 支持按 Spider 名称/域名等维度分组指标，与 Grafana 模板变量联动
 
 ## 测试
 
@@ -168,6 +231,6 @@ go tool cover -func=cover.out
 
 测试覆盖率：
 - `otel` 包：100%
-- `prometheus` 包：94.6%
+- `prometheus` 包：98.2%
 - `extension` 包：91.5%
-- **总体：93.4%**
+- **总体：95.0%+**
