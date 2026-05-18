@@ -1186,6 +1186,25 @@ scrapy-go/
 ```
 
 ---
+### v1.2.0 🚀
+
+> **生产增强里程碑 M7 正式发布**
+
+- 📊 **Prometheus Label 维度支持** — `LabeledCounter`/`LabeledGauge`/`LabeledHistogram` 接口扩展，支持按 Spider 名称/域名分组指标
+- 📊 **Grafana Dashboard 模板** — 开箱即用的 14 面板 Dashboard（Spider 概览/请求延迟/错误率/队列深度/按域名维度）
+- 🔭 **TraceExtension Span 生命周期增强** — `sync.Map` 按 Request 指针关联活跃 Span，实现请求-响应完整追踪
+- 💾 **通用持久化存储适配器** — MongoDB/PostgreSQL/Elasticsearch 批量写入 Pipeline（`contrib/storage`）
+- 🛡️ **高级重试策略** — 指数退避 + 抖动 + 域名级熔断器（Closed → Open → Half-Open）
+- ⏱️ **分布式限速器** — Redis 滑动窗口算法，按域名差异化配置（`contrib/ratelimit`）
+- 📊 **Scheduler 内存队列溢出保护** — 超阈值自动溢出到磁盘队列，防止 OOM
+- ⚡ **Redis 去重 Pipeline 批量优化** — 批量 SISMEMBER + Pipeline 模式，减少网络往返
+- 🌐 **轻量级 REST API** — Spider 注册表 + HTTP 管理接口（`contrib/web`）
+- 🏗️ **下载器 HTTP/2 架构重构** — 删除冗余 Handler，连接池统计集成，h2c 支持
+- 🔒 **公共类型包重构** — `CallbackFunc`/`ErrbackFunc` 从 `any` 替换为具体函数类型，编译期类型安全
+- 🎯 **泛型 Settings API** — `Key[T]` + `Get[T]`/`Set[T]` 编译期类型检查，消除魔法字符串
+- 🧬 **Meta 结构体序列化** — `GetMetaAs[T]` 泛型辅助函数，磁盘队列往返后类型安全还原
+- 🐛 **断点续爬回调修复** — `CallbackRegistry` 反向索引，O(1) 函数值查找
+
 
 ## 📝 更新日志
 
