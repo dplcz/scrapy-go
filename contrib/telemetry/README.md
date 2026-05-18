@@ -135,7 +135,7 @@ c.AddExtension(
 | Span 名称 | Kind | 触发信号 | 说明 |
 |-----------|------|---------|------|
 | `spider.crawl` | Internal | SpiderOpened/Closed | Spider 生命周期根 Span |
-| `http.request` | Client | RequestReachedDownloader | HTTP 请求子 Span |
+| `http.request` | Client | RequestReachedDownloader/RequestLeftDownloader | HTTP 请求子 Span（按 Request 指针关联，完整追踪请求-响应生命周期） |
 
 ## HTTP 端点
 
@@ -169,5 +169,5 @@ go tool cover -func=cover.out
 测试覆盖率：
 - `otel` 包：100%
 - `prometheus` 包：94.6%
-- `extension` 包：89.2%
-- **总体：92.2%**
+- `extension` 包：91.5%
+- **总体：93.4%**

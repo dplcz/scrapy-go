@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
+	scrapyhttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/telemetry"
 )
@@ -15,13 +17,13 @@ import (
 // 通过监听框架信号系统，自动为 Spider 生命周期和 HTTP 请求创建追踪 Span：
 //   - SpiderOpened → 创建根 Span "spider.crawl"
 //   - SpiderClosed → 结束根 Span
-//   - RequestReachedDownloader → 创建子 Span "http.request"
-//   - RequestLeftDownloader → 结束子 Span，记录状态码
+//   - RequestReachedDownloader → 创建子 Span "http.request"，按 Request 指针关联
+//   - RequestLeftDownloader → 结束对应子 Span，记录状态码和延迟
 //   - ResponseReceived → 记录响应属性
 //   - SpiderError → 记录错误事件
 //   - ItemScraped → 记录 Item 事件
 //
-// 线程安全：所有共享状态通过 Tracer 接口保证线程安全。
+// 线程安全：活跃 Span 通过 sync.Map 管理，保证并发安全。
 type TraceExtension struct {
 	tracer  telemetry.Tracer
 	signals *signal.Manager
@@ -30,6 +32,11 @@ type TraceExtension struct {
 	// rootCtx 和 rootSpan 存储 Spider 级别的根 Span
 	rootCtx  context.Context
 	rootSpan telemetry.Span
+
+	// activeSpans 按 Request 指针关联活跃 Span，实现请求-响应完整追踪。
+	// key: *scrapyhttp.Request（指针作为唯一标识）
+	// value: telemetry.Span
+	activeSpans sync.Map
 
 	// handlerIDs 存储注册的信号处理器 ID，用于 Close 时注销
 	handlerIDs []handlerRegistration
@@ -77,12 +84,22 @@ func (e *TraceExtension) Open(ctx context.Context) error {
 	return nil
 }
 
-// Close 注销所有信号处理器，关闭追踪器。
+// Close 注销所有信号处理器，结束所有活跃 Span，关闭追踪器。
 func (e *TraceExtension) Close(ctx context.Context) error {
 	for _, reg := range e.handlerIDs {
 		e.signals.Disconnect(reg.id, reg.sig)
 	}
 	e.handlerIDs = nil
+
+	// 结束所有未完成的活跃请求 Span
+	e.activeSpans.Range(func(key, value any) bool {
+		if span, ok := value.(telemetry.Span); ok {
+			span.SetStatus(telemetry.SpanStatusError, "spider closed before request completed")
+			span.End()
+		}
+		e.activeSpans.Delete(key)
+		return true
+	})
 
 	// 结束根 Span（如果存在）
 	if e.rootSpan != nil {
@@ -141,30 +158,81 @@ func (e *TraceExtension) onSpiderClosed(params map[string]any) error {
 	return nil
 }
 
-// onRequestReachedDownloader 创建 HTTP 请求 Span。
+// onRequestReachedDownloader 创建 HTTP 请求 Span 并按 Request 指针关联。
 func (e *TraceExtension) onRequestReachedDownloader(params map[string]any) error {
 	if e.rootCtx == nil {
 		return nil
 	}
 
-	attrs := map[string]string{}
-	if url, ok := params["url"].(string); ok {
-		attrs["http.url"] = url
+	req, _ := params["request"].(*scrapyhttp.Request)
+	if req == nil {
+		return nil
 	}
-	if method, ok := params["method"].(string); ok {
-		attrs["http.method"] = method
+
+	attrs := map[string]string{}
+	if req.URL != nil {
+		attrs["http.url"] = req.URL.String()
+	}
+	if req.Method != "" {
+		attrs["http.method"] = req.Method
 	}
 
 	_, span := e.tracer.Start(e.rootCtx, "http.request", telemetry.SpanOption{
 		Kind:       telemetry.SpanKindClient,
 		Attributes: attrs,
 	})
-	span.End()
+
+	// 按 Request 指针存储活跃 Span
+	e.activeSpans.Store(req, span)
 	return nil
 }
 
-// onRequestLeftDownloader 记录请求完成。
+// onRequestLeftDownloader 结束对应的请求 Span，记录状态码和延迟。
 func (e *TraceExtension) onRequestLeftDownloader(params map[string]any) error {
+	req, _ := params["request"].(*scrapyhttp.Request)
+	if req == nil {
+		return nil
+	}
+
+	// 从 activeSpans 中取出并删除对应的 Span
+	value, ok := e.activeSpans.LoadAndDelete(req)
+	if !ok {
+		return nil
+	}
+
+	span, ok := value.(telemetry.Span)
+	if !ok {
+		return nil
+	}
+
+	// 记录下载延迟
+	if latency, ok := params["download_latency"].(time.Duration); ok {
+		span.SetAttributes(map[string]string{
+			"http.duration_ms": fmt.Sprintf("%d", latency.Milliseconds()),
+		})
+	}
+
+	// 记录状态码（如果有）
+	if status, ok := params["status"].(int); ok {
+		span.SetAttributes(map[string]string{
+			"http.status_code": fmt.Sprintf("%d", status),
+		})
+		if status >= 400 {
+			span.SetStatus(telemetry.SpanStatusError, fmt.Sprintf("HTTP %d", status))
+		} else {
+			span.SetStatus(telemetry.SpanStatusOK, "")
+		}
+	} else {
+		span.SetStatus(telemetry.SpanStatusOK, "")
+	}
+
+	// 记录错误（如果有）
+	if err, ok := params["error"].(error); ok {
+		span.RecordError(err)
+		span.SetStatus(telemetry.SpanStatusError, err.Error())
+	}
+
+	span.End()
 	return nil
 }
 

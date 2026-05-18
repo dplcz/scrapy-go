@@ -365,7 +365,7 @@ req4.SetMeta("cookiejar", "session-user-1")
 - **信号钩子预留** — 接口设计兼容框架信号系统，Extension 可通过信号监听自动创建 Span 和更新指标
 - **OpenTelemetry 适配器** — `contrib/telemetry/otel` 包提供 OTel Tracer 适配器，支持导出到 Jaeger/Zipkin/OTLP 等后端
 - **Prometheus 适配器** — `contrib/telemetry/prometheus` 包提供 Prometheus MetricsRegistry 适配器，内置 HTTP `/metrics` 端点
-- **信号驱动扩展** — `TraceExtension` 自动为 Spider 生命周期和 HTTP 请求创建追踪 Span；`MetricsExtension` 自动收集 9 个核心指标
+- **信号驱动扩展** — `TraceExtension` 自动为 Spider 生命周期和 HTTP 请求创建追踪 Span（按 Request 指针关联活跃 Span，实现请求-响应完整追踪）；`MetricsExtension` 自动收集 9 个核心指标
 - **独立子模块** — `contrib/telemetry` 独立 `go.mod`，主模块不引入 OTel/Prometheus 依赖，按需安装
 
 ### 🛡️ Panic Recovery
