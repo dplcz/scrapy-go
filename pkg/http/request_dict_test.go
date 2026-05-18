@@ -1127,7 +1127,7 @@ func TestIsJSONSerializable(t *testing.T) {
 		{"map[string]any", map[string]any{"k": "v"}, true},
 		{"func", func() {}, false},
 		{"chan", make(chan int), false},
-		{"struct", struct{ Name string }{"test"}, false},
+		{"struct", struct{ Name string }{"test"}, true},
 	}
 
 	for _, tt := range tests {

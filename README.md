@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.1.6-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](docs/README.md#-更新日志)
 
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
@@ -18,6 +18,7 @@
 - 🌐 **分布式支持** — Redis 队列 + 布隆过滤器 + 滑动窗口限速 + Web 管理 API
 - 📊 **可观测性** — OpenTelemetry 追踪 + Prometheus 指标
 - 🛡️ **类型安全配置** — 泛型 `Key[T]` + `Get[T]` API，编译期类型检查，消除魔法字符串
+- 🧬 **Meta 泛型还原** — `GetMetaAs[T]` 泛型辅助函数，断点续爬后结构体自动恢复，零侵入
 
 ## 📊 性能数据
 

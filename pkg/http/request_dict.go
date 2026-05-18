@@ -2,10 +2,14 @@ package http
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"github.com/dplcz/scrapy-go/pkg/item"
 	"net/http"
 	"net/url"
+	"reflect"
+	"sync"
+
+	"github.com/dplcz/scrapy-go/pkg/item"
 )
 
 // ============================================================================
@@ -449,12 +453,31 @@ func (r *Request) ToCURL() string {
 // 内部辅助函数
 // ============================================================================
 
+// serializableCache 缓存已判定过的类型的序列化结果，避免重复反射。
+// key 为 reflect.Type，value 为 bool。
+var serializableCache sync.Map
+
 // isJSONSerializable 检查值是否可以被 JSON 序列化。
-// 排除函数、channel、复杂指针等不可序列化的类型。
+//
+// 判断策略（按优先级）：
+//  1. nil → true
+//  2. 基础类型（bool/int*/uint*/float*/string）→ true（快路径，零反射）
+//  3. 常见复合类型（[]any/[]string/map[string]any 等）→ true（快路径）
+//  4. 实现 ItemAdapter 接口 → true
+//  5. reflect.Kind 判断：
+//     - Func/Chan/UnsafePointer → false（不可序列化）
+//     - Struct → true（带导出字段的结构体允许通过）
+//     - Ptr → 递归检查指向的元素类型
+//     - Slice/Array → 递归检查元素类型
+//     - Map（key 为 string）→ true
+//     - Interface → false（空接口嵌套，无法确定实际类型）
+//  6. 最终 fallback：尝试 json.Marshal，结果缓存
 func isJSONSerializable(v any) bool {
 	if v == nil {
 		return true
 	}
+
+	// 快路径：基础类型和常见复合类型，零反射开销
 	switch v.(type) {
 	case bool, int, int8, int16, int32, int64,
 		uint, uint8, uint16, uint32, uint64,
@@ -464,16 +487,93 @@ func isJSONSerializable(v any) bool {
 		return true
 	case map[string]any, map[string]string, map[string]int, map[string]float64:
 		return true
-	default:
-		// 对于其他类型，保守地认为不可序列化
-		// 这包括函数、channel、复杂结构体等
-		// 对于实现了adapter接口的对象结构体放行
-		if _, ok := v.(item.ItemAdapter); ok {
-			return true
-		}
+	}
 
+	// ItemAdapter 接口放行
+	if _, ok := v.(item.ItemAdapter); ok {
+		return true
+	}
+
+	// 反射路径：基于 Kind 判断
+	return isTypeSerializable(reflect.TypeOf(v))
+}
+
+// isTypeSerializable 基于 reflect.Type 判断类型是否可 JSON 序列化。
+// 结果会被缓存到 serializableCache 中，避免重复反射。
+func isTypeSerializable(t reflect.Type) bool {
+	if t == nil {
 		return false
 	}
+
+	// 查缓存
+	if cached, ok := serializableCache.Load(t); ok {
+		return cached.(bool)
+	}
+
+	result := checkTypeSerializable(t)
+	serializableCache.Store(t, result)
+	return result
+}
+
+// checkTypeSerializable 执行实际的类型序列化检查。
+func checkTypeSerializable(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		// 不可序列化的类型
+		return false
+
+	case reflect.Struct:
+		// 结构体：检查是否有至少一个导出字段
+		return hasExportedFields(t)
+
+	case reflect.Ptr:
+		// 指针：递归检查指向的元素类型
+		return isTypeSerializable(t.Elem())
+
+	case reflect.Slice, reflect.Array:
+		// 切片/数组：递归检查元素类型
+		return isTypeSerializable(t.Elem())
+
+	case reflect.Map:
+		// Map：key 必须为 string 类型（JSON 要求）
+		if t.Key().Kind() == reflect.String {
+			return true
+		}
+		return false
+
+	case reflect.Interface:
+		// 空接口嵌套，无法在编译期确定实际类型，保守拒绝
+		return false
+
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+
+	default:
+		// 未知类型：尝试 json.Marshal 作为最终 fallback
+		return tryMarshal(t)
+	}
+}
+
+// hasExportedFields 检查结构体是否有至少一个导出字段。
+func hasExportedFields(t reflect.Type) bool {
+	for i := range t.NumField() {
+		if t.Field(i).IsExported() {
+			return true
+		}
+	}
+	return false
+}
+
+// tryMarshal 尝试对给定类型的零值进行 JSON 序列化，作为最终 fallback。
+// 结果通过 serializableCache 缓存，避免重复尝试。
+func tryMarshal(t reflect.Type) bool {
+	v := reflect.New(t).Elem().Interface()
+	_, err := json.Marshal(v)
+	return err == nil
 }
 
 // shellQuote 对字符串进行 shell 引用，使用单引号包裹。
