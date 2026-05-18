@@ -6,6 +6,53 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.0-alpha.1] — 2026-05-18
+
+> **📊 P5-007g Prometheus Label 维度支持 + P5-007h Grafana Dashboard 模板**
+
+### 新增
+
+#### P5-007g：Prometheus Label 维度支持
+
+> **引入 `LabeledCounter`/`LabeledGauge`/`LabeledHistogram` 接口扩展，支持按域名/Spider 名称分组指标**
+
+- 🚀 **核心接口定义** — 在 `pkg/telemetry/labeled.go` 中新增 `LabeledCounter`/`LabeledGauge`/`LabeledHistogram` 接口，支持通过 `With(labelValues...)` 获取指定标签值的指标实例
+- 🚀 **`LabeledMetricsRegistry` 接口** — 扩展 `MetricsRegistry`，增加 `LabeledCounter()`/`LabeledGauge()`/`LabeledHistogram()` 方法，支持创建带标签维度的指标
+- 🚀 **Prometheus 实现** — 在 `contrib/telemetry/prometheus/labeled.go` 中实现：
+  - `LabeledCounter`：基于 `prometheus.CounterVec` 实现按标签值分组的计数器
+  - `LabeledGauge`：基于 `prometheus.GaugeVec` 实现按标签值分组的仪表盘
+  - `LabeledHistogram`：基于 `prometheus.HistogramVec` 实现按标签值分组的直方图
+  - `LabeledRegistry`：扩展 `Registry`，支持创建带标签维度的指标，完全兼容 `MetricsRegistry` 接口
+- 🛡️ **Noop 实现** — `NoopLabeledCounter`/`NoopLabeledGauge`/`NoopLabeledHistogram`/`NoopLabeledMetricsRegistry` 零开销空操作实现
+- 🔒 **线程安全** — `LabeledRegistry` 使用 `sync.RWMutex` + 双重检查锁保护指标注册表；底层 `prometheus.*Vec` 保证并发安全
+- ✅ **测试覆盖** — 15 个新测试用例覆盖：
+  - 基本操作（Inc/Add/Set/Dec/Observe/ObserveDuration）
+  - 幂等创建（同名指标返回同一实例）
+  - 并发安全（100 goroutine 并发操作）
+  - 接口可赋值性验证
+  - 覆盖率 98.2%
+
+#### P5-007h：Grafana Dashboard 模板
+
+> **提供开箱即用的 Grafana JSON 模板（Spider 概览/请求延迟/错误率/队列深度）**
+
+- 🚀 **Dashboard JSON 模板** — `contrib/telemetry/grafana/scrapy-go-dashboard.json`，包含 14 个面板：
+  - 🕷️ Spider 概览：状态指示、运行时长、总请求/响应/Item/错误数
+  - ⚡ 请求延迟：P50/P90/P99 分位数曲线、请求/响应 QPS 吞吐量
+  - 🚨 错误率：错误占比曲线、错误与 Item 丢弃速率
+  - 📊 队列深度：活跃请求数、调度器队列深度
+  - 🌐 按域名维度：分域名 QPS、分域名延迟 P90
+- 🚀 **模板变量** — 支持 `$spider`（Spider 名称过滤）和 `$domain`（域名过滤）动态变量
+- 📖 **使用文档** — `contrib/telemetry/grafana/README.md` 包含面板说明、导入方式、Prometheus 抓取配置示例
+
+### 技术细节
+
+- **接口设计** — `LabeledMetricsRegistry` 嵌入 `MetricsRegistry`，保证向后兼容；`LabeledRegistry` 嵌入 `*Registry`，复用基础指标创建能力
+- **标签维度** — 支持任意数量的标签名称（`labelNames ...string`），通过 `With(labelValues ...string)` 传入对应值
+- **Grafana 兼容性** — Dashboard 使用 `__inputs` 机制，导入时自动提示选择数据源；兼容 Grafana 9.0+
+
+---
+
 ## [v1.1.7] — 2026-05-18
 
 > **🔭 P5-007f TraceExtension Span 生命周期增强**
