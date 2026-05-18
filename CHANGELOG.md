@@ -6,6 +6,55 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.0] — 2026-05-18
+
+> **🧬 P5-025 Meta 结构体序列化支持 + 泛型类型还原辅助函数（`GetMetaAs[T]`）**
+
+### 新增
+
+#### P5-025：Meta 结构体序列化 + `GetMetaAs[T]` 泛型辅助函数
+
+> **增强 `isJSONSerializable` 支持结构体序列化，新增 `GetMetaAs[T]` / `GetRequestMetaAs[T]` 泛型辅助函数实现 Meta 值的类型安全还原**
+
+##### P5-025a：`isJSONSerializable` 增强
+
+- 🚀 **基于 `reflect.Kind` 的智能判断** — 使用反射判断值是否可 JSON 序列化（`pkg/http/request_dict.go`）
+  - 允许带导出字段的 `Struct`、`*Struct`（指针）、`[]Struct`（切片）通过序列化检查
+  - 对 `Func`/`Chan`/`UnsafePointer` 保持拒绝
+  - 新增 `json.Marshal` 试探作为最终 fallback（仅对未知类型触发）
+  - 结果通过 `sync.Map` 缓存，避免重复反射开销
+- ⚡ **快路径零反射** — 基础类型和常见复合类型仍走 type switch 快路径，零反射零分配
+
+##### P5-025b：`GetMetaAs[T]` 泛型辅助函数（Response）
+
+- 🧬 **`GetMetaAs[T any](resp *Response, key string) (T, error)`** — 新增泛型辅助函数（`pkg/http/meta_helper.go`）
+  - 快路径：直接类型断言成功时零分配零开销（未经过磁盘序列化的内存请求）
+  - 慢路径：`json.Marshal` + `json.Unmarshal` 将 `map[string]any` 转换为目标结构体（兼容磁盘队列反序列化后的 map 形态）
+  - 完善的错误处理：`ErrMetaNil`（nil meta）、`ErrMetaKeyNotFound`（key 不存在）、`ErrMetaConversion`（类型转换失败）
+
+##### P5-025c：`GetRequestMetaAs[T]` 泛型辅助函数（Request）
+
+- 🧬 **`GetRequestMetaAs[T any](req *Request, key string) (T, error)`** — Request 端对称 API
+  - 与 `GetMetaAs[T]` 共享核心逻辑（内部 `metaConvert[T]` 私有泛型函数）
+  - 适用于中间件中需要从 Request.Meta 恢复结构体的场景
+
+##### P5-025d：单元测试
+
+- ✅ **新增 `pkg/http/meta_helper_test.go`** — 30+ 测试用例覆盖：
+  - 结构体序列化往返（`SetMeta` → 磁盘队列 → `GetMetaAs[T]` 正确还原）
+  - 嵌套结构体、结构体切片、指针字段结构体
+  - 直接类型断言快路径
+  - 非 JSON 类型拒绝（func/chan/chan slice）
+  - key 不存在容错、nil meta 容错、nil response/request 容错
+  - `isJSONSerializable` 增强验证（struct/ptr/slice/map/array/cache）
+  - 磁盘队列完整往返测试（ToDict → JSON → FromDict → GetMetaAs）
+
+### 变更
+
+- ♻️ **`isJSONSerializable` 行为放宽** — 原本被拒绝的结构体值现在能被保留到 Meta 序列化中，属于向后兼容的行为放宽（不影响已有代码）
+
+---
+
 ## [v1.1.6] — 2026-05-15
 
 > **🏗️ P5-023 下载器 HTTP/2 架构重构 + ⚡ Scheduler 单队列优先级修复**

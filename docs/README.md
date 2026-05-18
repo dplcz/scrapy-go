@@ -232,6 +232,43 @@ req4.SetMeta("cookiejar", "session-user-1")
 > `SetMeta` 内置 nil 保护且不会覆盖已有的 Meta 键；`WithMeta` 会整体替换 Meta map，
 > 丢弃 `NewRequest` 预分配的 map 和其他中间件已写入的值。
 
+#### 🧬 Meta 泛型类型还原（`GetMetaAs[T]`）
+
+当在 Meta 中传递自定义结构体时（特别是开启 JOBDIR 断点续爬场景），使用 `GetMetaAs[T]` 泛型辅助函数可以类型安全地还原结构体：
+
+```go
+type DetailItem struct {
+    Title string  `json:"title"`
+    Price float64 `json:"price"`
+}
+
+// Spider.Parse 中设置结构体到 Meta
+func (s *MySpider) Parse(ctx context.Context, resp *shttp.Response) ([]spider.Output, error) {
+    item := DetailItem{Title: "Go Book", Price: 49.99}
+    req, _ := resp.Follow("/detail",
+        shttp.WithCallback(s.ParseDetail),
+    )
+    req.SetMeta("item", item)
+    return []spider.Output{{Request: req}}, nil
+}
+
+// Spider.ParseDetail 中使用 GetMetaAs[T] 恢复结构体
+func (s *MySpider) ParseDetail(ctx context.Context, resp *shttp.Response) ([]spider.Output, error) {
+    // 快路径：内存中直接类型断言（零分配）
+    // 慢路径：磁盘队列反序列化后自动 JSON 往返转换
+    item, err := shttp.GetMetaAs[DetailItem](resp, "item")
+    if err != nil {
+        return nil, err
+    }
+    fmt.Printf("Title: %s, Price: %.2f\n", item.Title, item.Price)
+    return nil, nil
+}
+```
+
+> **💡 提示**：`GetMetaAs[T]` 在未经过磁盘序列化时（内存请求）走快路径直接类型断言，零分配零开销；
+> 仅在断点续爬恢复时（Meta 值已变为 `map[string]any`）才触发 JSON 往返转换（~2μs）。
+> Request 端可使用对称的 `GetRequestMetaAs[T](req, key)` 函数。
+
 ### 🔁 去重与调度
 
 - **RFPDupeFilter** — 基于请求指纹（URL + Method + Body SHA1）去重
@@ -1149,6 +1186,15 @@ scrapy-go/
 ---
 
 ## 📝 更新日志
+
+### v1.2.0 🧬
+
+> **P5-025 Meta 结构体序列化支持 + 泛型类型还原辅助函数（`GetMetaAs[T]`）**
+
+- 🧬 **`GetMetaAs[T]` 泛型辅助函数** — 从 Response/Request 的 Meta 中类型安全地还原结构体，快路径零分配，慢路径兼容磁盘队列反序列化
+- 🧬 **`GetRequestMetaAs[T]` 对称 API** — Request 端泛型辅助函数，与 Response 版本共享核心逻辑
+- 🚀 **`isJSONSerializable` 增强** — 基于 `reflect.Kind` 智能判断，允许结构体/指针/切片通过序列化检查，结果缓存避免重复反射
+- 🔧 **磁盘队列结构体往返** — `SetMeta(struct)` → ToDict → JSON → 磁盘 → FromDict → `GetMetaAs[T]` 完整链路正确恢复
 
 ### v1.1.6 ⚡
 

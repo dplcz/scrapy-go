@@ -768,6 +768,8 @@ func (s *Spider) Parse(ctx context.Context, resp *shttp.Response) ([]spider.Outp
 
 func (s *Spider) ParseDetail(ctx context.Context, resp *shttp.Response) ([]spider.Output, error) {
     page := resp.Request.Meta["page"].(int)
+    // 或使用泛型辅助函数（推荐，兼容断点续爬场景）：
+    // page, _ := shttp.GetMetaAs[int](resp, "page")
     // ...
 }
 ```
