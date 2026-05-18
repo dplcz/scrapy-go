@@ -2,13 +2,35 @@
 //
 // 在此处定义爬取的数据结构。
 // 使用 Go struct 定义 Item，通过 struct tag 指定字段元数据。
+//
+// ## item tag 语法
+//
+// 格式: item:"<字段名>[,required][,omitempty][,default=<值>]"
+//
+// 支持的选项：
+//   - 字段名:    指定该字段在 ItemAdapter 中的逻辑名称（用于 GetField/SetField 的 key）
+//   - required:  标记字段为必填，可用于 Pipeline 中的数据校验
+//   - omitempty: 序列化/导出时忽略零值
+//   - default=X: 指定字段的默认值
+//
+// ## 生成 ItemAdapter
+//
+// 定义完 Item 后，可运行以下命令生成高性能的 ItemAdapter 实现（消除运行时反射开销）：
+//
+//   scrapy-go generate-adapter -type=ExampleItem -input=items.go
+//
+// 或直接执行 go generate：
+//
+//   go generate ./...
 package project
+
+//go:generate scrapy-go generate-adapter -type=ExampleItem
 
 // ExampleItem 是一个示例 Item 定义。
 // 使用 `json` tag 指定 JSON 序列化字段名。
 // 使用 `item` tag 指定 scrapy-go 字段元数据（可选）。
 type ExampleItem struct {
-	Title       string `json:"title" item:"title"`
-	URL         string `json:"url" item:"url"`
-	Description string `json:"description,omitempty" item:"description"`
+	Title       string `json:"title" item:"title,required"`
+	URL         string `json:"url" item:"url,required"`
+	Description string `json:"description,omitempty" item:"description,omitempty"`
 }
