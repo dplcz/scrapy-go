@@ -6,9 +6,39 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
-## [v1.2.0] — 2026-05-18
+## [v1.1.7] — 2026-05-18
 
-> **🧬 P5-025 Meta 结构体序列化支持 + 泛型类型还原辅助函数（`GetMetaAs[T]`）**
+> **🔭 P5-007f TraceExtension Span 生命周期增强**
+
+### 增强
+
+#### P5-007f：TraceExtension Span 生命周期增强
+
+> **引入 `sync.Map` 按 Request 指针关联活跃 Span，实现请求-响应完整追踪**
+
+- 🚀 **请求-响应完整追踪** — `onRequestReachedDownloader` 创建子 Span 后按 `*http.Request` 指针存入 `sync.Map`，`onRequestLeftDownloader` 取出并结束对应 Span（`contrib/telemetry/extension.go`）
+  - 支持乱序完成：多个并发请求各自独立追踪，不受完成顺序影响
+  - 自动记录 HTTP 状态码（`http.status_code`）和下载延迟（`http.duration_ms`）
+  - 错误状态码（>= 400）自动设置 `SpanStatusError`
+  - 下载错误自动通过 `RecordError` 记录到 Span
+- 🛡️ **Close 时清理未完成 Span** — Spider 关闭时自动结束所有活跃请求 Span，设置错误状态 "spider closed before request completed"
+- 🔒 **并发安全** — 使用 `sync.Map` 替代普通 map，保证多 goroutine 并发访问安全
+- ✅ **新增测试用例** — 4 个新测试覆盖 Span 生命周期增强场景：
+  - `TestTraceExtension_SpanLifecycle`：多请求乱序完成、错误状态码、下载错误
+  - `TestTraceExtension_SpanCleanupOnClose`：Close 时清理未完成 Span
+  - `TestTraceExtension_DuplicateRequestLeft`：重复离开不 panic
+  - `TestTraceExtension_RequestLeftWithoutReached`：孤立离开不 panic
+- ✅ **更新并发测试** — `TestTraceExtension_ConcurrentSignals` 使用 Request 对象验证并发安全
+
+### 变更
+
+- ♻️ **`onRequestReachedDownloader` 重构** — 从 `params["url"]`/`params["method"]` 字符串参数改为直接使用 `params["request"].(*http.Request)` 对象，与信号系统实际传参对齐
+- ♻️ **`onRequestLeftDownloader` 实现** — 从空操作改为完整的 Span 结束逻辑
+>>>>>>> feature/p5-007f-trace-span-lifecycle
+=======
+## [v1.1.7] — 2026-05-18
+
+> **🧬 P5-025 Meta 结构体序列化 + GetMetaAs 泛型辅助函数 | 🔭 P5-007f TraceExtension Span 生命周期增强**
 
 ### 新增
 
@@ -49,9 +79,61 @@
   - `isJSONSerializable` 增强验证（struct/ptr/slice/map/array/cache）
   - 磁盘队列完整往返测试（ToDict → JSON → FromDict → GetMetaAs）
 
+### 增强
+
+#### P5-007f：TraceExtension Span 生命周期增强
+
+> **引入 `sync.Map` 按 Request 指针关联活跃 Span，实现请求-响应完整追踪**
+
+- 🚀 **请求-响应完整追踪** — `onRequestReachedDownloader` 创建子 Span 后按 `*http.Request` 指针存入 `sync.Map`，`onRequestLeftDownloader` 取出并结束对应 Span（`contrib/telemetry/extension.go`）
+  - 支持乱序完成：多个并发请求各自独立追踪，不受完成顺序影响
+  - 自动记录 HTTP 状态码（`http.status_code`）和下载延迟（`http.duration_ms`）
+  - 错误状态码（>= 400）自动设置 `SpanStatusError`
+  - 下载错误自动通过 `RecordError` 记录到 Span
+- 🛡️ **Close 时清理未完成 Span** — Spider 关闭时自动结束所有活跃请求 Span，设置错误状态 "spider closed before request completed"
+- 🔒 **并发安全** — 使用 `sync.Map` 替代普通 map，保证多 goroutine 并发访问安全
+- ✅ **新增测试用例** — 4 个新测试覆盖 Span 生命周期增强场景：
+  - `TestTraceExtension_SpanLifecycle`：多请求乱序完成、错误状态码、下载错误
+  - `TestTraceExtension_SpanCleanupOnClose`：Close 时清理未完成 Span
+  - `TestTraceExtension_DuplicateRequestLeft`：重复离开不 panic
+  - `TestTraceExtension_RequestLeftWithoutReached`：孤立离开不 panic
+- ✅ **更新并发测试** — `TestTraceExtension_ConcurrentSignals` 使用 Request 对象验证并发安全
+
 ### 变更
 
 - ♻️ **`isJSONSerializable` 行为放宽** — 原本被拒绝的结构体值现在能被保留到 Meta 序列化中，属于向后兼容的行为放宽（不影响已有代码）
+- ♻️ **`onRequestReachedDownloader` 重构** — 从 `params["url"]`/`params["method"]` 字符串参数改为直接使用 `params["request"].(*http.Request)` 对象，与信号系统实际传参对齐
+- ♻️ **`onRequestLeftDownloader` 实现** — 从空操作改为完整的 Span 结束逻辑
+=======
+## [v1.1.7] — 2026-05-18
+
+> **🔭 P5-007f TraceExtension Span 生命周期增强**
+
+### 增强
+
+#### P5-007f：TraceExtension Span 生命周期增强
+
+> **引入 `sync.Map` 按 Request 指针关联活跃 Span，实现请求-响应完整追踪**
+
+- 🚀 **请求-响应完整追踪** — `onRequestReachedDownloader` 创建子 Span 后按 `*http.Request` 指针存入 `sync.Map`，`onRequestLeftDownloader` 取出并结束对应 Span（`contrib/telemetry/extension.go`）
+  - 支持乱序完成：多个并发请求各自独立追踪，不受完成顺序影响
+  - 自动记录 HTTP 状态码（`http.status_code`）和下载延迟（`http.duration_ms`）
+  - 错误状态码（>= 400）自动设置 `SpanStatusError`
+  - 下载错误自动通过 `RecordError` 记录到 Span
+- 🛡️ **Close 时清理未完成 Span** — Spider 关闭时自动结束所有活跃请求 Span，设置错误状态 "spider closed before request completed"
+- 🔒 **并发安全** — 使用 `sync.Map` 替代普通 map，保证多 goroutine 并发访问安全
+- ✅ **新增测试用例** — 4 个新测试覆盖 Span 生命周期增强场景：
+  - `TestTraceExtension_SpanLifecycle`：多请求乱序完成、错误状态码、下载错误
+  - `TestTraceExtension_SpanCleanupOnClose`：Close 时清理未完成 Span
+  - `TestTraceExtension_DuplicateRequestLeft`：重复离开不 panic
+  - `TestTraceExtension_RequestLeftWithoutReached`：孤立离开不 panic
+- ✅ **更新并发测试** — `TestTraceExtension_ConcurrentSignals` 使用 Request 对象验证并发安全
+
+### 变更
+
+- ♻️ **`onRequestReachedDownloader` 重构** — 从 `params["url"]`/`params["method"]` 字符串参数改为直接使用 `params["request"].(*http.Request)` 对象，与信号系统实际传参对齐
+- ♻️ **`onRequestLeftDownloader` 实现** — 从空操作改为完整的 Span 结束逻辑
+>>>>>>> feature/p5-007f-trace-span-lifecycle
 
 ---
 

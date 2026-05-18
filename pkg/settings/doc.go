@@ -98,7 +98,7 @@
 //
 // # 泛型类型安全 API（推荐）
 //
-// 自 v1.2.0 起，settings 包提供基于泛型的编译期类型安全 API（TD-004 偿还）：
+// 自 v1.1.7 起，settings 包提供基于泛型的编译期类型安全 API（TD-004 偿还）：
 //
 //	// 使用类型化键常量，编译期确定返回类型
 //	concurrency := settings.Get(s, settings.KeyConcurrentRequests) // 返回 int

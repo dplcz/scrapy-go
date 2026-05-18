@@ -12,6 +12,7 @@ import (
 	"time"
 
 	promreg "github.com/dplcz/scrapy-go/contrib/telemetry/prometheus"
+	scrapyhttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/telemetry"
 )
@@ -85,12 +86,15 @@ func TestTraceExtension_SpiderLifecycle(t *testing.T) {
 		"spider": "test_spider",
 	})
 
+	req, _ := scrapyhttp.NewRequest("http://example.com")
+
 	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
-		"url":    "http://example.com",
-		"method": "GET",
+		"request": req,
 	})
 
-	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{})
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request": req,
+	})
 
 	signals.SendCatchLog(signal.ResponseReceived, map[string]any{
 		"status": 200,
@@ -144,10 +148,202 @@ func TestTraceExtension_NilParams(t *testing.T) {
 	// nil params 不应 panic
 	signals.SendCatchLog(signal.SpiderOpened, nil)
 	signals.SendCatchLog(signal.RequestReachedDownloader, nil)
+	signals.SendCatchLog(signal.RequestLeftDownloader, nil)
 	signals.SendCatchLog(signal.ResponseReceived, nil)
 	signals.SendCatchLog(signal.SpiderError, nil)
 	signals.SendCatchLog(signal.ItemScraped, nil)
 	signals.SendCatchLog(signal.SpiderClosed, nil)
+
+	if err := ext.Close(context.Background()); err != nil {
+		t.Fatalf("Close 失败: %v", err)
+	}
+}
+
+// TestTraceExtension_SpanLifecycle 验证 Span 生命周期增强：
+// 请求到达下载器时创建 Span，离开时结束 Span。
+func TestTraceExtension_SpanLifecycle(t *testing.T) {
+	tracer := telemetry.NewNoopTracer()
+	signals := signal.NewManager(nil)
+	ext := NewTraceExtension(tracer, signals, nil)
+
+	if err := ext.Open(context.Background()); err != nil {
+		t.Fatalf("Open 失败: %v", err)
+	}
+
+	signals.SendCatchLog(signal.SpiderOpened, map[string]any{
+		"spider": "lifecycle_test",
+	})
+
+	// 创建多个请求，验证每个请求都有独立的 Span
+	req1, _ := scrapyhttp.NewRequest("http://example.com/page1")
+	req2, _ := scrapyhttp.NewRequest("http://example.com/page2")
+	req3, _ := scrapyhttp.NewRequest("http://example.com/page3")
+
+	// 请求 1 到达下载器
+	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+		"request": req1,
+	})
+	// 请求 2 到达下载器
+	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+		"request": req2,
+	})
+	// 请求 3 到达下载器
+	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+		"request": req3,
+	})
+
+	// 验证 activeSpans 中有 3 个活跃 Span
+	count := 0
+	ext.activeSpans.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	if count != 3 {
+		t.Errorf("期望 3 个活跃 Span，实际: %d", count)
+	}
+
+	// 请求 2 先完成（乱序完成）
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request":          req2,
+		"download_latency": 100 * time.Millisecond,
+		"status":           200,
+	})
+
+	// 验证 activeSpans 中剩 2 个
+	count = 0
+	ext.activeSpans.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	if count != 2 {
+		t.Errorf("期望 2 个活跃 Span，实际: %d", count)
+	}
+
+	// 请求 1 完成（带错误状态码）
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request":          req1,
+		"download_latency": 200 * time.Millisecond,
+		"status":           500,
+	})
+
+	// 请求 3 完成（带错误）
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request": req3,
+		"error":   fmt.Errorf("connection timeout"),
+	})
+
+	// 验证所有 Span 已结束
+	count = 0
+	ext.activeSpans.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	if count != 0 {
+		t.Errorf("期望 0 个活跃 Span，实际: %d", count)
+	}
+
+	signals.SendCatchLog(signal.SpiderClosed, map[string]any{
+		"reason": "finished",
+	})
+
+	if err := ext.Close(context.Background()); err != nil {
+		t.Fatalf("Close 失败: %v", err)
+	}
+}
+
+// TestTraceExtension_SpanCleanupOnClose 验证 Close 时清理未完成的活跃 Span。
+func TestTraceExtension_SpanCleanupOnClose(t *testing.T) {
+	tracer := telemetry.NewNoopTracer()
+	signals := signal.NewManager(nil)
+	ext := NewTraceExtension(tracer, signals, nil)
+
+	if err := ext.Open(context.Background()); err != nil {
+		t.Fatalf("Open 失败: %v", err)
+	}
+
+	signals.SendCatchLog(signal.SpiderOpened, map[string]any{})
+
+	// 创建请求但不完成
+	req1, _ := scrapyhttp.NewRequest("http://example.com/pending1")
+	req2, _ := scrapyhttp.NewRequest("http://example.com/pending2")
+
+	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+		"request": req1,
+	})
+	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+		"request": req2,
+	})
+
+	// 不发送 RequestLeftDownloader，直接关闭
+	if err := ext.Close(context.Background()); err != nil {
+		t.Fatalf("Close 失败: %v", err)
+	}
+
+	// 验证 activeSpans 已清空
+	count := 0
+	ext.activeSpans.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	if count != 0 {
+		t.Errorf("Close 后期望 0 个活跃 Span，实际: %d", count)
+	}
+}
+
+// TestTraceExtension_DuplicateRequestLeft 验证重复的 RequestLeftDownloader 不会 panic。
+func TestTraceExtension_DuplicateRequestLeft(t *testing.T) {
+	tracer := telemetry.NewNoopTracer()
+	signals := signal.NewManager(nil)
+	ext := NewTraceExtension(tracer, signals, nil)
+
+	if err := ext.Open(context.Background()); err != nil {
+		t.Fatalf("Open 失败: %v", err)
+	}
+
+	signals.SendCatchLog(signal.SpiderOpened, map[string]any{})
+
+	req, _ := scrapyhttp.NewRequest("http://example.com")
+
+	signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
+		"request": req,
+	})
+
+	// 第一次离开（正常）
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request": req,
+	})
+
+	// 第二次离开（重复，不应 panic）
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request": req,
+	})
+
+	signals.SendCatchLog(signal.SpiderClosed, map[string]any{})
+
+	if err := ext.Close(context.Background()); err != nil {
+		t.Fatalf("Close 失败: %v", err)
+	}
+}
+
+// TestTraceExtension_RequestLeftWithoutReached 验证未到达的请求离开不会 panic。
+func TestTraceExtension_RequestLeftWithoutReached(t *testing.T) {
+	tracer := telemetry.NewNoopTracer()
+	signals := signal.NewManager(nil)
+	ext := NewTraceExtension(tracer, signals, nil)
+
+	if err := ext.Open(context.Background()); err != nil {
+		t.Fatalf("Open 失败: %v", err)
+	}
+
+	signals.SendCatchLog(signal.SpiderOpened, map[string]any{})
+
+	// 直接发送 RequestLeftDownloader，没有对应的 Reached
+	req, _ := scrapyhttp.NewRequest("http://example.com/orphan")
+	signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+		"request": req,
+	})
+
+	signals.SendCatchLog(signal.SpiderClosed, map[string]any{})
 
 	if err := ext.Close(context.Background()); err != nil {
 		t.Fatalf("Close 失败: %v", err)
@@ -438,9 +634,14 @@ func TestTraceExtension_ConcurrentSignals(t *testing.T) {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
+			req, _ := scrapyhttp.NewRequest(fmt.Sprintf("http://example.com/page/%d", idx))
 			signals.SendCatchLog(signal.RequestReachedDownloader, map[string]any{
-				"url":    fmt.Sprintf("http://example.com/page/%d", idx),
-				"method": "GET",
+				"request": req,
+			})
+			signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
+				"request":          req,
+				"download_latency": time.Duration(idx) * time.Millisecond,
+				"status":           200,
 			})
 			signals.SendCatchLog(signal.ResponseReceived, map[string]any{
 				"status": 200,
@@ -449,6 +650,16 @@ func TestTraceExtension_ConcurrentSignals(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+
+	// 验证所有 Span 已结束
+	count := 0
+	ext.activeSpans.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	if count != 0 {
+		t.Errorf("并发完成后期望 0 个活跃 Span，实际: %d", count)
+	}
 
 	signals.SendCatchLog(signal.SpiderClosed, map[string]any{})
 

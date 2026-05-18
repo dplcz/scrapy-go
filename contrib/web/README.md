@@ -227,7 +227,7 @@ srv := web.NewServer(":8080")
 
 | 版本 | 功能 | 状态 |
 |------|------|------|
-| v1.2.0 | Phase 1：REST API（当前） | ✅ |
+| v1.1.7 | Phase 1：REST API（当前） | ✅ |
 | v1.3.0 | Phase 2：WebSocket 实时事件推送 | 📋 计划中 |
 | v1.3.0 | Phase 2：前端 Dashboard UI | 📋 计划中 |
 | v1.3.0 | Phase 2：爬取历史持久化 | 📋 计划中 |

@@ -402,7 +402,7 @@ func (s *MySpider) ParseDetail(ctx context.Context, resp *shttp.Response) ([]spi
 - **信号钩子预留** — 接口设计兼容框架信号系统，Extension 可通过信号监听自动创建 Span 和更新指标
 - **OpenTelemetry 适配器** — `contrib/telemetry/otel` 包提供 OTel Tracer 适配器，支持导出到 Jaeger/Zipkin/OTLP 等后端
 - **Prometheus 适配器** — `contrib/telemetry/prometheus` 包提供 Prometheus MetricsRegistry 适配器，内置 HTTP `/metrics` 端点
-- **信号驱动扩展** — `TraceExtension` 自动为 Spider 生命周期和 HTTP 请求创建追踪 Span；`MetricsExtension` 自动收集 9 个核心指标
+- **信号驱动扩展** — `TraceExtension` 自动为 Spider 生命周期和 HTTP 请求创建追踪 Span（按 Request 指针关联活跃 Span，实现请求-响应完整追踪）；`MetricsExtension` 自动收集 9 个核心指标
 - **独立子模块** — `contrib/telemetry` 独立 `go.mod`，主模块不引入 OTel/Prometheus 依赖，按需安装
 
 ### 🛡️ Panic Recovery
@@ -1187,7 +1187,7 @@ scrapy-go/
 
 ## 📝 更新日志
 
-### v1.2.0 🧬
+### v1.1.7 🧬
 
 > **P5-025 Meta 结构体序列化支持 + 泛型类型还原辅助函数（`GetMetaAs[T]`）**
 
@@ -1309,7 +1309,7 @@ scrapy-go/
 
 > **Post-v1.0 Sprint 12 — P5-001 高级下载器特性**
 
-- 🚀 **HTTP/2 优化下载处理器** — ~~新增 `HTTP2DownloadHandler`~~ （v1.2.0 已重构：HTTP/2 支持通过默认 `HTTPDownloadHandler` + `ConnPoolConfig.ForceHTTP2` 实现，`HTTP2DownloadHandler` 已删除）
+- 🚀 **HTTP/2 优化下载处理器** — ~~新增 `HTTP2DownloadHandler`~~ （v1.1.7 已重构：HTTP/2 支持通过默认 `HTTPDownloadHandler` + `ConnPoolConfig.ForceHTTP2` 实现，`HTTP2DownloadHandler` 已删除）
 - 🔧 **连接池精细化管理** — 新增 `ConnPoolConfig`（14 项参数）+ `ConnPoolStats`（atomic 无锁统计）+ `ManagedTransport`，通过 `CONNPOOL_*` 配置项集成
 - 📈 **下载进度回调** — 新增 `ProgressHTTPDownloadHandler`，通过 `Request.Meta["download_progress_callback"]` 设置进度回调，支持已知/未知大小响应，可配置最小报告间隔
 - ⚙️ **新增 14 项配置** — `HTTP2_ENABLED` / `DOWNLOAD_PROGRESS_ENABLED` / `CONNPOOL_*` 系列连接池参数
