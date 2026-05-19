@@ -6,6 +6,43 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.1] — 2026-05-19
+
+> **🐛 Bug 修复 — 扩展/中间件组件引用失效问题**
+>
+> 修复了 `crawl()` 中因 Spider `CustomSettings` 重建 Logger/Signals/Stats 时，
+> 导致之前注入的扩展（如 `TraceExtension`/`MetricsExtension`）内部持有的旧引用失效的问题。
+> 同时引入 `CrawlerAwareExtension` 接口，让扩展在 `Open` 之前自动获取最新的框架组件引用。
+
+### 修复
+
+#### 修复 Signals/Stats 重建导致扩展引用失效
+
+- 🐛 **问题描述** — 用户在 `Run` 之前通过 `NewMetricsExtension(registry, addr, c.Signals, c.Logger)` 构造扩展时，扩展保存了当时的 `c.Signals` 引用。但 `crawl()` 内部会因 Spider `CustomSettings` 可能覆盖 `LOG_LEVEL` 而重建 `c.Signals`，导致扩展内部的 Signals 引用指向已废弃的旧实例，信号处理器注册到旧实例上永远不会被触发
+- 🐛 **修复方案** — 新增 `CrawlerAwareExtension` 可选接口，Extension Manager 在调用 `Open()` 之前自动调用 `FromCrawler(c)`，让扩展获取最新的 Signals/Logger/Stats 引用
+
+#### 修复 `WithStats`/`WithSignals` 注入被覆盖
+
+- 🐛 **问题描述** — 用户通过 `WithStats()`/`WithSignals()` Option 注入的自定义 Stats/Signals，在 `crawl()` 中被无条件覆盖（只要 `!c.customLogger` 为 true）
+- 🐛 **修复方案** — 新增 `customSignals`/`customStats` 标记字段，`WithSignals()`/`WithStats()` 设置标记，`crawl()` 中按组件独立判断是否需要重建
+
+### 新增
+
+#### `CrawlerAwareExtension` 接口（`pkg/extension`）
+
+- 🚀 **`extension.Crawler` 接口** — 定义 Extension 可访问的 Crawler 能力子集（`GetSettings()`/`GetStats()`/`GetSignals()`/`GetLogger()`），避免循环依赖
+- 🚀 **`CrawlerAwareExtension` 接口** — 扩展可实现 `FromCrawler(c Crawler) error` 方法，在 `Open` 之前由 Manager 自动调用，获取最新的框架组件引用
+- 🚀 **`Manager.SetCrawler(c)`** — Extension Manager 新增 `SetCrawler` 方法，由 `buildExtensions` 调用传入 Crawler 引用
+- 🚀 **telemetry 扩展适配** — `TraceExtension` 和 `MetricsExtension` 实现 `CrawlerAwareExtension` 接口
+
+### 变更
+
+- ♻️ **`WithStats` Option** — 设置 `customStats = true` 标记，防止 `crawl()` 覆盖用户注入的 Stats
+- ♻️ **`WithSignals` Option** — 设置 `customSignals = true` 标记，防止 `crawl()` 覆盖用户注入的 Signals
+- ♻️ **`crawl()` 重建逻辑** — 从单一 `if !c.customLogger` 块拆分为三个独立判断（Logger/Signals/Stats），各自尊重对应的 custom 标记
+
+---
+
 ## [v1.2.0] — 2026-05-18
 
 > **🚀 v1.2.0 正式发布 — 生产增强里程碑 M7**

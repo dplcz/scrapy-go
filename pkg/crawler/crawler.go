@@ -51,6 +51,10 @@ type Crawler struct {
 
 	// customLogger 标记用户是否通过 WithLogger 自定义 Logger
 	customLogger bool
+	// customSignals 标记用户是否通过 WithSignals 自定义 Signals
+	customSignals bool
+	// customStats 标记用户是否通过 WithStats 自定义 Stats
+	customStats bool
 
 	// userPipelines 存储用户注册的自定义 Pipeline
 	userPipelines []pipeline.Entry
@@ -119,10 +123,10 @@ func (c *Crawler) initDefaults() {
 	if c.Logger == nil || !c.customLogger {
 		c.Logger = newDefaultLogger(c.Settings)
 	}
-	if c.Signals == nil {
+	if c.Signals == nil && !c.customSignals {
 		c.Signals = sig.NewManager(c.Logger)
 	}
-	if c.Stats == nil {
+	if c.Stats == nil && !c.customStats {
 		c.Stats = stats.NewMemoryCollector(
 			settings.Get(c.Settings, settings.KeyStatsDump),
 			c.Logger,
@@ -298,10 +302,14 @@ func (c *Crawler) crawl(ctx context.Context, sp spider.Spider) error {
 		}
 	}
 
-	// Spider 配置可能覆盖了 LOG_LEVEL，重建受影响的组件
+	// Spider 配置可能覆盖了 LOG_LEVEL，重建受影响的组件（仅重建未被用户自定义注入的组件）
 	if !c.customLogger {
 		c.Logger = newDefaultLogger(c.Settings)
+	}
+	if !c.customSignals {
 		c.Signals = sig.NewManager(c.Logger)
+	}
+	if !c.customStats {
 		c.Stats = stats.NewMemoryCollector(
 			settings.Get(c.Settings, settings.KeyStatsDump),
 			c.Logger,
@@ -1016,6 +1024,7 @@ var builtinExtensionFactories = map[string]ExtensionFactory{
 // 决定启用哪些内置扩展及其优先级。
 func (c *Crawler) buildExtensions() *extension.Manager {
 	m := extension.NewManager(c.Logger)
+	m.SetCrawler(c) // 传入 Crawler 引用，供 CrawlerAwareExtension 使用
 
 	var allEntries []componentEntry
 
@@ -1154,16 +1163,20 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithStats 设置统计收集器。
+// 使用自定义 Stats 后，Spider 的 CustomSettings 不会覆盖该 Stats。
 func WithStats(sc stats.Collector) Option {
 	return func(c *Crawler) {
 		c.Stats = sc
+		c.customStats = true
 	}
 }
 
 // WithSignals 设置信号管理器。
+// 使用自定义 Signals 后，Spider 的 CustomSettings 不会覆盖该 Signals。
 func WithSignals(sm *sig.Manager) Option {
 	return func(c *Crawler) {
 		c.Signals = sm
+		c.customSignals = true
 	}
 }
 

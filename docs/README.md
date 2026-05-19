@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.1.5** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.2.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1186,6 +1186,16 @@ scrapy-go/
 ```
 
 ---
+### v1.2.1 🐛
+
+> **Bug 修复 — 扩展/中间件组件引用失效问题**
+
+- 🐛 **修复 Signals/Stats 重建导致扩展引用失效** — `crawl()` 中因 Spider `CustomSettings` 重建 Logger/Signals/Stats 时，会导致之前注入的扩展（如 `TraceExtension`/`MetricsExtension`）内部持有的旧引用失效
+- 🐛 **修复 `WithStats`/`WithSignals` 注入被覆盖** — 用户通过 `WithStats()`/`WithSignals()` 注入的自定义组件在 `Run` 时被无条件覆盖
+- 🚀 **新增 `CrawlerAwareExtension` 接口** — 扩展可实现 `FromCrawler(c Crawler) error` 方法，在 `Open` 之前自动获取最新的 Signals/Logger/Stats 引用
+- 🚀 **新增 `customSignals`/`customStats` 标记** — 与已有的 `customLogger` 对齐，确保用户注入的自定义组件不会被重建逻辑覆盖
+- ✅ **telemetry 扩展适配** — `TraceExtension` 和 `MetricsExtension` 实现 `CrawlerAwareExtension` 接口，自动获取最新引用
+
 ### v1.2.0 🚀
 
 > **生产增强里程碑 M7 正式发布**

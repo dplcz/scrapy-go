@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dplcz/scrapy-go/pkg/extension"
 	scrapyhttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/telemetry"
@@ -63,6 +64,15 @@ func NewTraceExtension(tracer telemetry.Tracer, signals *signal.Manager, logger 
 		signals: signals,
 		logger:  logger,
 	}
+}
+
+// FromCrawler 实现 CrawlerAwareExtension 接口。
+// 在 Open 之前调用，获取最新的 Signals 和 Logger 引用，
+// 避免因 Crawler 重建组件导致引用失效。
+func (e *TraceExtension) FromCrawler(c extension.Crawler) error {
+	e.signals = c.GetSignals()
+	e.logger = c.GetLogger()
+	return nil
 }
 
 // Open 注册信号处理器，开始追踪。
@@ -340,6 +350,15 @@ func NewMetricsExtension(registry telemetry.MetricsRegistry, addr string, signal
 		signals:  signals,
 		logger:   logger,
 	}
+}
+
+// FromCrawler 实现 CrawlerAwareExtension 接口。
+// 在 Open 之前调用，获取最新的 Signals 和 Logger 引用，
+// 避免因 Crawler 重建组件导致引用失效。
+func (e *MetricsExtension) FromCrawler(c extension.Crawler) error {
+	e.signals = c.GetSignals()
+	e.logger = c.GetLogger()
+	return nil
 }
 
 // Open 注册指标和信号处理器。

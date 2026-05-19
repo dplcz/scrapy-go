@@ -24,9 +24,17 @@ type Entry struct {
 //   - 在 Spider 打开时初始化所有扩展
 //   - 在 Spider 关闭时清理所有扩展
 //   - 处理 ErrNotConfigured 错误（跳过未配置的扩展）
+//   - 对实现了 CrawlerAwareExtension 的扩展，在 Open 前调用 FromCrawler
 type Manager struct {
 	extensions []Entry
 	logger     *slog.Logger
+	crawler    Crawler // 可选的 Crawler 引用，供 CrawlerAwareExtension 使用
+}
+
+// SetCrawler 设置 Crawler 引用，供 CrawlerAwareExtension 在 Open 时使用。
+// 应在 Open 之前调用。
+func (m *Manager) SetCrawler(c Crawler) {
+	m.crawler = c
 }
 
 // NewManager 创建一个新的扩展管理器。
@@ -59,12 +67,31 @@ func (m *Manager) Count() int {
 }
 
 // Open 按优先级顺序打开所有扩展。
+// 若扩展实现了 CrawlerAwareExtension 且 Crawler 引用已设置，
+// 会在 Open 之前调用 FromCrawler，让扩展获取最新的框架组件引用。
 // 如果扩展返回 ErrNotConfigured，则跳过该扩展并记录调试日志。
 // 其他错误将导致初始化失败。
 func (m *Manager) Open(ctx context.Context) error {
 	var active []Entry
 
 	for _, entry := range m.extensions {
+		// 若扩展实现了 CrawlerAwareExtension，先调用 FromCrawler
+		if cae, ok := entry.Extension.(CrawlerAwareExtension); ok && m.crawler != nil {
+			if err := cae.FromCrawler(m.crawler); err != nil {
+				if errors.Is(err, serrors.ErrNotConfigured) {
+					m.logger.Debug("extension disabled (not configured)",
+						"extension", entry.Name,
+					)
+					continue
+				}
+				m.logger.Error("failed to initialize extension from crawler",
+					"extension", entry.Name,
+					"error", err,
+				)
+				return err
+			}
+		}
+
 		if err := entry.Extension.Open(ctx); err != nil {
 			if errors.Is(err, serrors.ErrNotConfigured) {
 				m.logger.Debug("extension disabled (not configured)",

@@ -216,6 +216,7 @@ MetricsExtension 内置 HTTP 服务器，提供以下端点：
 - **零侵入** — 未启用时使用 `NoopTracer`/`NoopMetricsRegistry`，零运行时开销
 - **线程安全** — 所有组件保证并发安全，支持多 goroutine 同时访问
 - **标签维度** — `LabeledRegistry` 支持按 Spider 名称/域名等维度分组指标，与 Grafana 模板变量联动
+- **CrawlerAwareExtension** — `TraceExtension` 和 `MetricsExtension` 实现 `CrawlerAwareExtension` 接口，在 `Open` 之前自动从 Crawler 获取最新的 Signals/Logger 引用，避免因 Spider `CustomSettings` 重建组件导致引用失效（v1.2.1+）
 
 ## 测试
 
