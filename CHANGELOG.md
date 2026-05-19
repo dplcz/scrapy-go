@@ -6,6 +6,35 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.2] — 2026-05-19
+
+> **🚀 新增 Response JSON 选择器（gjson 集成）— P5-024**
+>
+> 基于 `github.com/tidwall/gjson` 为 Response 新增高性能 JSON 路径查询能力。
+> 直接在 `[]byte` 上做路径查询，零中间分配，性能远优于先 Unmarshal 再取值。
+> 与现有 `JSON(v any) error` 整体反序列化方法互补共存，不破坏旧 API。
+
+### 新增
+
+#### P5-024：Response JSON 选择器（gjson 集成）
+
+- 🚀 **`Response.JSONGet(path string) gjson.Result`** — 使用 gjson 路径语法查询响应体中的 JSON 值，返回类型自带 `String/Int/Float/Bool/Array/Map/Time/Exists` 等访问器，避免 `map[string]any` 深层断言
+- 🚀 **`Response.JSONGetMany(paths ...string) []gjson.Result`** — 一次扫描多路径提取，性能优于多次 `JSONGet`
+- 🚀 **`Response.JSONExists(path string) bool`** — 检查指定路径是否存在，语义清晰的条件判断
+- 🚀 **`Response.JSONForEach(path string, iter func(key, value gjson.Result) bool)`** — 流式遍历数组/对象，避免大数组一次性分配，支持提前终止
+- 📦 **新增依赖** — `github.com/tidwall/gjson` v1.19.0（传递依赖：`tidwall/match` v1.1.1 + `tidwall/pretty` v1.2.0，体积极小）
+- 📖 **示例爬虫** — `examples/json_api/` 演示从 JSON API 提取深层嵌套字段的完整开发体验
+
+### 技术细节
+
+- **选型理由** — gjson 直接在 `[]byte` 上做路径查询、零中间分配，对爬虫高频解析 JSON API 场景更友好；语法直观（点路径 + `#` 投影 + `#(cond)` 过滤 + `|` 修饰符管道）
+- **API 命名规范** — 所有新方法以 `JSON` 前缀开头（`JSONGet`/`JSONGetMany`/`JSONExists`/`JSONForEach`），与现有 `JSON(v any) error` 形成清晰族群
+- **向后兼容** — 现有 `JSON(v any) error` 方法行为零变更
+- **测试覆盖** — 新增 30+ 测试用例，覆盖率 100%（路径不存在、空 body、非 JSON body、嵌套数组投影、条件过滤、ForEach 提前终止等）
+- **竞态安全** — `go test -race` 通过，gjson 本身为无状态纯函数调用
+
+---
+
 ## [v1.2.1] — 2026-05-19
 
 > **🐛 Bug 修复 — 扩展/中间件组件引用失效问题**

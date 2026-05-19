@@ -121,7 +121,7 @@ go test -run "TestQPSAcceptance|TestMemoryAcceptance|TestComparisonOverheadAccep
 - **FromCURL** — 从 curl 命令字符串创建 Request（对齐 Scrapy `Request.from_curl()`），自实现 shell 词法分析器
 - **ToCURL** — 将 Request 转换为 curl 命令字符串（对齐 Scrapy `request_to_curl()`）
 - **便捷 Option** — `WithRawBody` / `WithBasicAuth` / `WithUserAgent` / `WithFormData`
-- **Response** — 支持 Text/JSON 解析、URLJoin 相对路径解析、Follow 链接跟踪、CSS/XPath 选择器
+- **Response** — 支持 Text/JSON 解析、URLJoin 相对路径解析、Follow 链接跟踪、CSS/XPath 选择器、JSON 路径查询（gjson）
 - **Functional Options** — 类型安全的构建模式
 
 ### 🏷️ Request Meta 参考
@@ -314,6 +314,16 @@ func (s *MySpider) ParseDetail(ctx context.Context, resp *shttp.Response) ([]spi
 - 链式调用和批量操作（`GetAll()` / `Get()` / `First()`）
 - Response 快捷方法：`CSS()` / `CSSAttr()` / `XPath()` / `Selector()`
 
+### 🔗 JSON 路径查询（gjson）
+
+- 基于 `github.com/tidwall/gjson`，直接在 `[]byte` 上做路径查询，零中间分配
+- `JSONGet(path)` — 点路径查询，返回 `gjson.Result`（自带类型访问器）
+- `JSONGetMany(paths...)` — 一次扫描多路径，性能优于多次 `JSONGet`
+- `JSONExists(path)` — 检查路径是否存在
+- `JSONForEach(path, iter)` — 流式遍历数组/对象，避免大数组一次性分配
+- 支持数组投影（`#.field`）、条件过滤（`#(cond)#`）、修饰符管道（`|@reverse`）
+- 与 `JSON(v any) error` 整体反序列化互补共存，不破坏旧 API
+
 ### 🕷️ CrawlSpider 基于规则的自动爬取
 
 - **CrawlSpider** — 基于 Rule 规则的自动链接提取和跟踪（对齐 Scrapy `CrawlSpider`）
@@ -442,6 +452,7 @@ scrapy-go genspider -t crawl articles blog.example.com
 |------|------|------|
 | `github.com/PuerkitoBio/goquery` | v1.12.0 | CSS 选择器引擎 |
 | `github.com/antchfx/htmlquery` | v1.3.6 | XPath 查询引擎 |
+| `github.com/tidwall/gjson` | v1.19.0 | JSON 路径查询引擎 |
 | `golang.org/x/net` | v0.53.0 | HTML 解析 |
 
 ---
@@ -509,6 +520,7 @@ func main() {
 | 🔧 **custom_middleware** | 认证/日志/缓存中间件 | `go run examples/custom_middleware/main.go` |
 | 📤 **feedexport** | Feed Export 全部核心 API 演示（格式/存储/序列化器/FeedSlot/Crawler 集成） | `go run examples/feedexport/main.go` |
 | 📦 **itemadapter** | ItemAdapter 全部核心 API 演示（MapAdapter/StructAdapter/FieldMeta/自定义工厂） | `go run examples/itemadapter/main.go` |
+| 🔗 **json_api** | JSON 路径查询（gjson）— JSONGet/JSONGetMany/JSONExists/JSONForEach | `go run examples/json_api/main.go` |
 
 此外，`examples/template/` 目录提供了对齐 Scrapy CLI 模板的 Go 代码模板，可直接复制到项目中使用：
 
