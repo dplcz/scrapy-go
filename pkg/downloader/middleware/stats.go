@@ -56,9 +56,6 @@ func (m *DownloaderStatsMiddleware) ProcessRequest(ctx context.Context, request 
 	reqBytes := estimateRequestSize(request)
 	m.stats.IncValue("downloader/request_bytes", reqBytes, 0)
 
-	// 记录请求开始时间到 Meta，用于计算响应耗时
-	request.SetMeta("_download_start_time", time.Now())
-
 	return nil, nil
 }
 
@@ -71,13 +68,11 @@ func (m *DownloaderStatsMiddleware) ProcessResponse(ctx context.Context, request
 	respBytes := estimateResponseSize(response)
 	m.stats.IncValue("downloader/response_bytes", respBytes, 0)
 
-	// 统计下载耗时
-	if startTime, ok := request.GetMeta("_download_start_time"); ok {
-		if t, ok := startTime.(time.Time); ok {
-			elapsed := time.Since(t)
+	// 统计下载耗时（download_latency 已由 DownloadHandler 在 handler 层面设置到 request.Meta，
+	// 对齐 Scrapy 原版语义：确保 RequestLeftDownloader 信号发出前 download_latency 已可用）
+	if v, ok := request.GetMeta("download_latency"); ok {
+		if elapsed, ok := v.(time.Duration); ok {
 			m.stats.MaxValue("downloader/max_download_time", elapsed.Seconds())
-			// 设置 download_latency 到 Request Meta（只读语义，供下游扩展消费）
-			request.SetMeta("download_latency", elapsed)
 		}
 	}
 

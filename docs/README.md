@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.2.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.2.4** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1229,6 +1229,14 @@ scrapy-go/
 
 
 ## 📝 更新日志
+
+### v1.2.4 🐛
+
+> **修复 download_latency 设置时机（对齐 Scrapy 原版 handler 层面设置）**
+
+- 🐛 **修复 `download_latency` 在 `RequestLeftDownloader` 信号发出时不可用** — 将 `download_latency` 的设置从 `DownloaderStatsMiddleware.ProcessResponse`（中间件层）移至 `HTTPDownloadHandler.Download()`（handler 层），对齐 Scrapy 原版在 handler 内部设置的语义，确保 `RequestLeftDownloader` 信号发出时 `download_latency` 已可用
+- ♻️ **移除 `_download_start_time` 内部 Meta key** — 该 key 为 scrapy-go 自创（Scrapy 原版不存在），现由 handler 内部局部变量替代
+- ♻️ **`DownloaderStatsMiddleware` 简化** — `ProcessRequest` 不再设置内部时间戳，`ProcessResponse` 改为从 Meta 读取 handler 已设置的 `download_latency`
 
 ### v1.2.3 🐛
 

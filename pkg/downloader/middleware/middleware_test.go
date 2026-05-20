@@ -1446,13 +1446,10 @@ func TestDownloaderStatsMiddleware_ProcessRequest(t *testing.T) {
 		t.Error("expected request_bytes > 0")
 	}
 
-	// 验证下载开始时间被设置到 Meta
-	startTime, ok := req.GetMeta("_download_start_time")
-	if !ok {
-		t.Error("expected _download_start_time in meta")
-	}
-	if _, ok := startTime.(time.Time); !ok {
-		t.Error("expected _download_start_time to be time.Time")
+	// ProcessRequest 不再设置 _download_start_time（download_latency 由 handler 层面设置）
+	_, ok := req.GetMeta("_download_start_time")
+	if ok {
+		t.Error("expected _download_start_time NOT in meta (moved to handler)")
 	}
 }
 
@@ -1461,7 +1458,8 @@ func TestDownloaderStatsMiddleware_ProcessResponse(t *testing.T) {
 	mw := NewDownloaderStatsMiddleware(sc, nil)
 
 	req := shttp.MustNewRequest("https://example.com")
-	req.SetMeta("_download_start_time", time.Now().Add(-100*time.Millisecond))
+	// download_latency 现在由 handler 层面设置（模拟 handler 已设置 100ms 延迟）
+	req.SetMeta("download_latency", 100*time.Millisecond)
 
 	resp := shttp.MustNewResponse("https://example.com", 200,
 		shttp.WithResponseBody([]byte("response body")),
@@ -1490,7 +1488,7 @@ func TestDownloaderStatsMiddleware_ProcessResponse(t *testing.T) {
 		t.Error("expected response_bytes > 0")
 	}
 
-	// 验证最大下载时间
+	// 验证最大下载时间（从 request.Meta["download_latency"] 读取）
 	maxTime := sc.GetValue("downloader/max_download_time", nil)
 	if maxTime == nil {
 		t.Error("expected max_download_time to be set")

@@ -77,7 +77,13 @@ func NewProgressHTTPDownloadHandler(timeout time.Duration, config *ConnPoolConfi
 //
 // 如果请求 Meta 中设置了 download_progress_callback，则在读取响应体时
 // 定期调用回调函数报告进度。否则行为与标准 HTTPDownloadHandler 完全一致。
+//
+// 下载完成后会将 download_latency（time.Duration）设置到 request.Meta 中，
+// 供 AutoThrottle、Telemetry 等扩展在 RequestLeftDownloader 信号中消费。
 func (h *ProgressHTTPDownloadHandler) Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
+	// 记录下载开始时间，用于计算 download_latency
+	startTime := time.Now()
+
 	// 构造 net/http.Request
 	httpReq := &http.Request{
 		Method:     request.Method,
@@ -139,6 +145,9 @@ func (h *ProgressHTTPDownloadHandler) Download(ctx context.Context, request *sht
 	if err != nil {
 		return nil, err
 	}
+
+	// 设置 download_latency 到 Request Meta（对齐 Scrapy 原版：在 handler 层面设置）
+	request.SetMeta("download_latency", time.Since(startTime))
 
 	// 构建 scrapy Response
 	resp := &shttp.Response{

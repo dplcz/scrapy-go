@@ -6,6 +6,37 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.4] — 2026-05-20
+
+> **🐛 Bug 修复 — download_latency 设置时机修正（对齐 Scrapy 原版 handler 层面设置）**
+>
+> 修复 `download_latency` 在 `RequestLeftDownloader` 信号发出时尚未写入 `request.Meta` 的问题。
+> 将 `download_latency` 的设置从 `DownloaderStatsMiddleware.ProcessResponse`（中间件层）
+> 移至 `HTTPDownloadHandler.Download`（handler 层），对齐 Scrapy 原版语义。
+
+### 修复
+
+#### 修复 download_latency 在 RequestLeftDownloader 信号发出时不可用
+
+- 🐛 **问题描述** — v1.2.3 中 `download_latency` 由 `DownloaderStatsMiddleware.ProcessResponse` 设置，但 `ProcessResponse` 在 `downloadFunc` 返回之后才执行，而 `RequestLeftDownloader` 信号在 `downloadFunc` 内部发出。导致 AutoThrottle、Telemetry 等扩展监听 `RequestLeftDownloader` 信号时无法读取 `download_latency`
+- 🐛 **根因分析** — Scrapy 原版中 `download_latency` 是在各 download handler 内部设置的（`http11.py`/`http2.py`/`_httpx.py`），早于 `request_left_downloader` 信号发出。scrapy-go 之前错误地将此职责放在了中间件层，导致时序不对
+- 🐛 **修复方案** — 在 `HTTPDownloadHandler.Download()` 和 `ProgressHTTPDownloadHandler.Download()` 中记录 `startTime`，下载完成后直接设置 `request.SetMeta("download_latency", time.Since(startTime))`；`DownloaderStatsMiddleware` 改为从 Meta 中读取已有值来统计 `downloader/max_download_time`
+
+### 变更
+
+- ♻️ **移除 `_download_start_time` 内部 Meta key** — 该 key 是 scrapy-go 自创的（Scrapy 原版不存在），现已不再需要
+- ♻️ **`DownloaderStatsMiddleware.ProcessRequest`** — 不再设置 `_download_start_time` 到 Meta
+- ♻️ **`DownloaderStatsMiddleware.ProcessResponse`** — 不再自行计算耗时，改为从 `request.GetMeta("download_latency")` 读取 handler 已设置的值
+
+### 影响的文件
+
+- `pkg/downloader/handler.go` — `HTTPDownloadHandler.Download()` 新增 `download_latency` 设置
+- `pkg/downloader/progress.go` — `ProgressHTTPDownloadHandler.Download()` 新增 `download_latency` 设置
+- `pkg/downloader/middleware/stats.go` — 移除 `_download_start_time` 设置，改为从 Meta 读取 `download_latency`
+- `pkg/downloader/middleware/middleware_test.go` — 更新相关测试用例
+
+---
+
 ## [v1.2.3] — 2026-05-20
 
 > **🐛 Bug 修复 — ResponseDownloaded 信号发送顺序修正 + download_latency 设置**

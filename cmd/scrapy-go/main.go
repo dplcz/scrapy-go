@@ -20,7 +20,7 @@ import (
 )
 
 // Version 是当前 scrapy-go 框架版本号。
-const Version = "1.2.3"
+const Version = "1.2.4"
 
 func main() {
 	if len(os.Args) < 2 {

@@ -103,6 +103,9 @@ func NewHTTPDownloadHandlerWithConfig(timeout time.Duration, config *ConnPoolCon
 // Download 执行 HTTP 下载。
 // 如果 request.Meta["proxy"] 设置了代理 URL，则通过该代理发送请求。
 func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Request) (*shttp.Response, error) {
+	// 记录下载开始时间，用于计算 download_latency
+	startTime := time.Now()
+
 	// 直接构造 net/http.Request，避免 URL 重复解析。
 	// 原实现使用 http.NewRequestWithContext(ctx, method, url.String(), nil)，
 	// 会将已解析的 *url.URL 序列化为字符串后再次解析，造成不必要的 CPU 和内存开销。
@@ -177,6 +180,10 @@ func (h *HTTPDownloadHandler) Download(ctx context.Context, request *shttp.Reque
 			return nil, err
 		}
 	}
+
+	// 设置 download_latency 到 Request Meta（对齐 Scrapy 原版：在 handler 层面设置）
+
+	request.SetMeta("download_latency", time.Since(startTime))
 
 	// 构建 scrapy Response
 	resp := &shttp.Response{
