@@ -76,6 +76,8 @@ func (m *DownloaderStatsMiddleware) ProcessResponse(ctx context.Context, request
 		if t, ok := startTime.(time.Time); ok {
 			elapsed := time.Since(t)
 			m.stats.MaxValue("downloader/max_download_time", elapsed.Seconds())
+			// 设置 download_latency 到 Request Meta（只读语义，供下游扩展消费）
+			request.SetMeta("download_latency", elapsed)
 		}
 	}
 

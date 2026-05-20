@@ -6,6 +6,38 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.3] — 2026-05-20
+
+> **🐛 Bug 修复 — ResponseDownloaded 信号发送顺序修正 + download_latency 设置**
+>
+> 修复下载器中 `ResponseDownloaded` 和 `RequestLeftDownloader` 信号的发送顺序，
+> 对齐 Scrapy 原版语义。同时在 `DownloaderStatsMiddleware` 中将 `download_latency`
+> 写入 `request.Meta`，供 AutoThrottle、Telemetry 等扩展消费。
+
+### 修复
+
+#### 修复 ResponseDownloaded 信号发送顺序
+
+- 🐛 **问题描述** — `ResponseDownloaded` 信号原本在 `err != nil` 判断之后发送，但位于 `RequestLeftDownloader` 之后，不符合 Scrapy 原版语义（原版中 `response_downloaded` 在 `request_left_downloader` 之前发送）
+- 🐛 **修复方案** — 将 `ResponseDownloaded` 信号移至 `err == nil` 判断后、`RequestLeftDownloader` 之前发送，确保顺序与 Scrapy 原版一致
+
+#### 修复 download_latency 未写入 Request Meta
+
+- 🐛 **问题描述** — `DownloaderStatsMiddleware` 计算了下载耗时但未将 `download_latency` 设置到 `request.Meta`，导致 AutoThrottle 和 Telemetry 扩展无法读取下载延迟
+- 🐛 **修复方案** — 在 `ProcessResponse` 中计算 `elapsed` 后同时调用 `request.SetMeta("download_latency", elapsed)`
+
+#### 清理 Telemetry 扩展中的无效参数读取
+
+- 🐛 **问题描述** — `TraceExtension.onRequestLeftDownloader` 尝试从 `params["status"]` 和 `params["download_latency"]` 读取数据，但发送信号时从未传入这些参数
+- 🐛 **修复方案** — 改为从 `request.GetMeta("download_latency")` 读取延迟；移除对 `params["status"]` 的无效读取；`onResponseReceived` 改为从 `params["response"]` 获取状态码
+
+### 变更
+
+- ♻️ **`RequestLeftDownloader` 信号参数** — 新增 `"error": err` 参数，供 Telemetry 扩展记录失败请求的错误信息
+- ♻️ **子模块依赖更新** — `contrib/telemetry`、`contrib/web`、`contrib/redisqueue` 的 `go.sum` 更新以修复 `gjson` 依赖缺失
+
+---
+
 ## [v1.2.2] — 2026-05-19
 
 > **🚀 新增 Response JSON 选择器（gjson 集成）— P5-024**

@@ -216,24 +216,10 @@ func (e *TraceExtension) onRequestLeftDownloader(params map[string]any) error {
 	}
 
 	// 记录下载延迟
-	if latency, ok := params["download_latency"].(time.Duration); ok {
+	if latency, ok := req.GetMeta("download_latency"); ok {
 		span.SetAttributes(map[string]string{
-			"http.duration_ms": fmt.Sprintf("%d", latency.Milliseconds()),
+			"http.duration_ms": fmt.Sprintf("%d", latency.(time.Duration).Milliseconds()),
 		})
-	}
-
-	// 记录状态码（如果有）
-	if status, ok := params["status"].(int); ok {
-		span.SetAttributes(map[string]string{
-			"http.status_code": fmt.Sprintf("%d", status),
-		})
-		if status >= 400 {
-			span.SetStatus(telemetry.SpanStatusError, fmt.Sprintf("HTTP %d", status))
-		} else {
-			span.SetStatus(telemetry.SpanStatusOK, "")
-		}
-	} else {
-		span.SetStatus(telemetry.SpanStatusOK, "")
 	}
 
 	// 记录错误（如果有）
@@ -251,10 +237,13 @@ func (e *TraceExtension) onResponseReceived(params map[string]any) error {
 	if e.rootSpan == nil {
 		return nil
 	}
-
+	resp, _ := params["response"].(*scrapyhttp.Response)
+	if resp == nil {
+		return nil
+	}
 	e.rootSpan.AddEvent("response.received", map[string]string{
-		"http.status_code": fmt.Sprintf("%v", params["status"]),
-		"http.url":         fmt.Sprintf("%v", params["url"]),
+		"http.status_code": fmt.Sprintf("%d", resp.Status),
+		"http.url":         fmt.Sprintf("%s", resp.URL.String()),
 	})
 	return nil
 }

@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.2.1** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.2.3** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1229,6 +1229,26 @@ scrapy-go/
 
 
 ## 📝 更新日志
+
+### v1.2.3 🐛
+
+> **修复 ResponseDownloaded 信号发送顺序 + download_latency 设置**
+
+- 🐛 **修复 `ResponseDownloaded` 信号发送顺序** — 对齐 Scrapy 原版语义，先发送 `ResponseDownloaded`（仅成功时），再发送 `RequestLeftDownloader`（无论成功失败）
+- 🐛 **修复 `download_latency` 未写入 Request Meta** — `DownloaderStatsMiddleware.ProcessResponse` 中将 `download_latency`（`time.Duration`）设置到 `request.Meta`，供 AutoThrottle、Telemetry 等扩展消费
+- 🐛 **清理 Telemetry 扩展无效参数读取** — `TraceExtension` 改为从 `request.GetMeta("download_latency")` 读取延迟，移除对 `params["status"]` 的死代码
+- ♻️ **`RequestLeftDownloader` 信号新增 `error` 参数** — 供 Telemetry 扩展记录失败请求的错误信息
+
+### v1.2.2 🚀
+
+> **P5-024 Response JSON 选择器（gjson 集成）**
+
+- 🚀 **`Response.JSONGet(path string) gjson.Result`** — gjson 路径查询，零中间分配
+- 🚀 **`Response.JSONGetMany(paths ...string) []gjson.Result`** — 一次扫描多路径提取
+- 🚀 **`Response.JSONExists(path string) bool`** — 路径存在性检查
+- 🚀 **`Response.JSONForEach(path string, iter func(key, value gjson.Result) bool)`** — 流式遍历
+- 📦 **新增依赖** — `github.com/tidwall/gjson` v1.19.0
+- 📖 **示例爬虫** — `examples/json_api/` 演示 JSON API 深层字段提取
 
 ### v1.1.7 🧬
 
