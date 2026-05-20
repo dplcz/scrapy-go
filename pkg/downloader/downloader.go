@@ -127,10 +127,11 @@ func (d *Downloader) Download(ctx context.Context, request *shttp.Request) (*sht
 
 	// 发送 request_left_downloader 信号（热路径快速跳过：无处理器时避免 map 分配）
 	if d.signals.HasHandlers(signal.RequestLeftDownloader) {
-		d.signals.SendCatchLog(signal.RequestLeftDownloader, map[string]any{
-			"request": request,
-			"error":   err,
-		})
+		paramsMap := map[string]any{"request": request, "error": err}
+		if response != nil {
+			paramsMap["status"] = response.Status
+		}
+		d.signals.SendCatchLog(signal.RequestLeftDownloader, paramsMap)
 	}
 
 	if err != nil {

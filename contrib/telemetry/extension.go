@@ -222,6 +222,20 @@ func (e *TraceExtension) onRequestLeftDownloader(params map[string]any) error {
 		})
 	}
 
+	// 记录状态码（如果有）
+	if status, ok := params["status"].(int); ok {
+		span.SetAttributes(map[string]string{
+			"http.status_code": fmt.Sprintf("%d", status),
+		})
+		if status >= 400 {
+			span.SetStatus(telemetry.SpanStatusError, fmt.Sprintf("HTTP %d", status))
+		} else {
+			span.SetStatus(telemetry.SpanStatusOK, "")
+		}
+	} else {
+		span.SetStatus(telemetry.SpanStatusOK, "")
+	}
+
 	// 记录错误（如果有）
 	if err, ok := params["error"].(error); ok {
 		span.RecordError(err)
