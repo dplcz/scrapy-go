@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,9 +13,13 @@ import (
 	"github.com/dplcz/scrapy-go/pkg/crawler"
 	sslog "github.com/dplcz/scrapy-go/pkg/log"
 	"github.com/dplcz/scrapy-go/pkg/settings"
+	"github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 	"github.com/dplcz/scrapy-go/pkg/stats"
 )
+
+//go:embed static/*
+var staticFS embed.FS
 
 // runningSpider 跟踪一个正在运行的 Spider 实例。
 type runningSpider struct {
@@ -46,6 +51,7 @@ type runningSpider struct {
 //
 // 通过 REST API 提供 Spider 的注册、启动、停止和统计查询功能。
 // 内部使用 crawler.Runner 管理多爬虫并发执行。
+// Phase 2 新增：SSE 实时事件推送、Dashboard UI、爬取历史持久化、声明式爬虫创建。
 //
 // 线程安全：所有公共方法均可被多个 goroutine 安全调用。
 type Server struct {
@@ -61,6 +67,12 @@ type Server struct {
 
 	// srv 是底层 HTTP 服务器
 	srv *http.Server
+
+	// hub 是 SSE 事件中心（Phase 2）
+	hub *EventHub
+
+	// store 是爬取历史持久化存储（Phase 2）
+	store *Store
 }
 
 // ServerOption 是 Server 的可选配置函数。
@@ -95,6 +107,16 @@ func WithRunner(r *crawler.Runner) ServerOption {
 	}
 }
 
+// WithStore 设置自定义的历史记录存储。
+// 若未设置，Server 会创建一个默认的内存存储。
+func WithStore(store *Store) ServerOption {
+	return func(s *Server) {
+		if store != nil {
+			s.store = store
+		}
+	}
+}
+
 // NewServer 创建一个新的 Web 管理服务器。
 //
 // addr 是 HTTP 监听地址（如 ":8080"）。
@@ -118,6 +140,17 @@ func NewServer(addr string, opts ...ServerOption) *Server {
 			crawler.WithRunnerLogger(s.logger),
 		)
 	}
+	if s.store == nil {
+		s.store = NewStore()
+	}
+
+	// 初始化 SSE 事件中心
+	s.hub = NewEventHub(s.logger)
+
+	// 通过 Runner 注册全局信号处理器，安全地桥接 Signal → SSE
+	// 这些处理器会在每个 Crawler 的 onBeforeStart 钩子中被注册到其 Signals 上
+	s.registerGlobalSignalHandlers()
+
 	return s
 }
 
@@ -150,10 +183,16 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 	s.srv = &http.Server{Handler: mux}
 
+	// 启动定时统计广播
+	go s.startStatsBroadcast(ctx)
+
 	// 监听 context 取消，优雅关闭
 	go func() {
 		<-ctx.Done()
 		s.logger.Info("web server shutting down...")
+
+		// 关闭 SSE 事件中心
+		s.hub.Close()
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -177,6 +216,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 // Close 优雅关闭 Server，停止所有 Spider 并关闭 HTTP 服务器。
 func (s *Server) Close() error {
+	s.hub.Close()
 	if s.srv != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -186,6 +226,16 @@ func (s *Server) Close() error {
 	}
 	s.runner.Close()
 	return nil
+}
+
+// Store 返回 Server 的历史记录存储。
+func (s *Server) Store() *Store {
+	return s.store
+}
+
+// Hub 返回 Server 的 SSE 事件中心。
+func (s *Server) Hub() *EventHub {
+	return s.hub
 }
 
 // ============================================================================
@@ -246,12 +296,50 @@ func (s *Server) startSpider(ctx context.Context, name string, args map[string]a
 	s.running[id] = rs
 	s.mu.Unlock()
 
+	// 记录启动历史
+	s.store.RecordStart(id, name, args)
+
+	// 广播启动事件
+	s.hub.Broadcast(&WSEvent{
+		Type:       "spider_started",
+		SpiderID:   id,
+		SpiderName: name,
+		Timestamp:  time.Now(),
+		Data: map[string]any{
+			"args": args,
+		},
+	})
+
 	// 后台清理：爬虫完成后从 running 中移除
 	go func() {
-		<-done
+		err := <-done
 		s.mu.Lock()
 		delete(s.running, id)
 		s.mu.Unlock()
+
+		// 记录结束历史
+		var statsSnapshot map[string]any
+		if c.Stats != nil {
+			statsSnapshot = c.Stats.GetStats()
+		}
+		var errMsg string
+		if err != nil {
+			errMsg = err.Error()
+		}
+		s.store.RecordFinish(id, statsSnapshot, errMsg)
+
+		// 广播结束事件
+		s.hub.Broadcast(&WSEvent{
+			Type:       "spider_finished",
+			SpiderID:   id,
+			SpiderName: name,
+			Timestamp:  time.Now(),
+			Data: map[string]any{
+				"stats": statsSnapshot,
+				"error": errMsg,
+			},
+		})
+
 		s.logger.Info("spider finished, removed from running list", "id", id, "name", name)
 	}()
 
@@ -432,3 +520,63 @@ func (s *Server) getAllStats() []SpiderStats {
 
 // 确保 stats.Collector 接口在编译期被引用（避免 unused import）。
 var _ stats.Collector = (*stats.MemoryCollector)(nil)
+
+// registerGlobalSignalHandlers 通过 Runner 注册全局信号处理器。
+// 这些处理器会在每个 Crawler 启动前被安全地注册到其 Signals 上（通过 onBeforeStart 钩子）。
+func (s *Server) registerGlobalSignalHandlers() {
+	signals := []signal.Signal{
+		signal.SpiderOpened,
+		signal.SpiderClosed,
+		signal.SpiderError,
+		signal.ItemScraped,
+		signal.ItemDropped,
+		signal.ItemError,
+		signal.RequestScheduled,
+		signal.ResponseReceived,
+		signal.EngineStarted,
+		signal.EngineStopped,
+	}
+
+	for _, sig := range signals {
+		sigCopy := sig
+		s.runner.ConnectSignal(sigCopy, func(params map[string]any) error {
+			// 从信号参数中提取 Spider 名称
+			spiderName := s.extractSpiderName(params)
+			spiderID := s.findRunningID(spiderName)
+
+			s.hub.Broadcast(&WSEvent{
+				Type:       sigCopy.String(),
+				SpiderID:   spiderID,
+				SpiderName: spiderName,
+				Timestamp:  time.Now(),
+				Data:       sanitizeParams(params),
+			})
+			return nil
+		})
+	}
+}
+
+// extractSpiderName 从信号参数中提取 Spider 名称。
+func (s *Server) extractSpiderName(params map[string]any) string {
+	if sp, ok := params["spider"]; ok {
+		if named, ok := sp.(interface{ Name() string }); ok {
+			return named.Name()
+		}
+	}
+	return ""
+}
+
+// findRunningID 根据 Spider 名称查找第一个运行中的实例 ID。
+func (s *Server) findRunningID(spiderName string) string {
+	if spiderName == "" {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, rs := range s.running {
+		if rs.name == spiderName {
+			return rs.id
+		}
+	}
+	return ""
+}

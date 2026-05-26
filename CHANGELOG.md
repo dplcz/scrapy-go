@@ -6,6 +6,88 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.5] — 2026-05-26
+
+> **🚀 P5-005 Phase 2：全栈 Web 平台 + 声明式爬虫创建（v1.2.5）**
+>
+> 在 Phase 1 REST API 基础上，新增 SSE 实时事件推送、Dashboard Web UI、
+> 爬取历史持久化和声明式爬虫创建功能，实现完整的 Web 可视化管理平台。
+
+### 新增
+
+#### P5-005d: SSE 实时事件推送
+
+- ✨ **EventHub** — SSE 事件中心，管理客户端连接和实时事件广播（`contrib/web/ws.go`）
+- ✨ **Signal → SSE 桥接** — 通过 `Runner.ConnectSignal` 安全地将框架 Signal 事件桥接到 SSE 客户端
+- ✨ **GET /api/events** — SSE 端点，浏览器通过 `EventSource` API 接收实时爬虫生命周期事件
+- ✨ **GET /api/events/stats** — SSE 连接统计端点
+- ✨ **定时统计广播** — 每 2 秒向连接的客户端推送运行中 Spider 的统计快照
+- ✨ **事件类型** — spider_started/finished/opened/closed/error, item_scraped/dropped, request_scheduled, response_received, engine_started/stopped, stats_update
+
+#### P5-005e: 前端 Dashboard
+
+- ✨ **Dashboard Web UI** — 基于 Vue.js 3 + Chart.js + Bootstrap 5 的单页应用（`contrib/web/static/index.html`）
+- ✨ **爬虫状态总览** — 统计卡片展示注册数、运行数、总运行次数、错误次数
+- ✨ **爬虫列表** — 表格展示所有注册的 Spider 及运行状态，支持启动/停止/查看统计操作
+- ✨ **实时事件日志** — 基于 SSE 的实时事件流展示
+- ✨ **运行历史** — 历史记录表格，展示 ID、爬虫名、开始时间、时长、状态
+- ✨ **统计图表** — Doughnut 图展示运行状态分布
+- ✨ **嵌入式部署** — 通过 `go:embed` 嵌入静态文件，无需额外部署
+
+#### P5-005f: 爬取历史持久化
+
+- ✨ **Store** — 爬取历史持久化存储（`contrib/web/store.go`）
+- ✨ **运行记录** — 记录每次爬虫运行的 ID、名称、开始/结束时间、时长、状态、参数、统计快照
+- ✨ **JSON 文件持久化** — 可选的 JSON 文件持久化（通过 `WithStorePath` 配置）
+- ✨ **GET /api/history** — 获取爬取历史记录（支持按 Spider 名称过滤和分页）
+- ✨ **GET /api/history/{id}** — 获取单条历史记录
+- ✨ **GET /api/history/stats** — 获取历史统计汇总
+
+#### P5-005h: SpiderSpec → CrawlSpider 转换引擎
+
+- ✨ **SpiderSpec.Validate()** — 声明式配置校验（名称、URL 格式、正则表达式、字段提取器互斥检查）
+- ✨ **SpiderSpec.ToFactory()** — 将 JSON 配置转换为 CrawlSpider 工厂函数
+- ✨ **LinkExtractorSpec → Option** — 自动将声明式配置转换为 `linkextractor.WithXxx()` 选项
+- ✨ **ItemSchema → CallbackFunc** — 基于 CSS/XPath/Value 规则自动生成数据提取回调
+- ✨ **特殊值支持** — `_response_url`（当前 URL）、`_timestamp`（当前时间）、字面量值
+- ✨ **正则后处理** — 对提取结果进行正则匹配和分组提取
+
+#### P5-005i: POST /api/spiders/register 完整实现
+
+- ✨ **声明式注册** — `POST /api/spiders/register` 从 501 Not Implemented 升级为完整实现
+- ✨ **校验 + 转换 + 注册** — 接收 SpiderSpec JSON → 校验 → 转换为 CrawlSpider → 注册到 Registry
+- ✨ **冲突检测** — 同名 Spider 已存在时返回 409 Conflict
+- ✨ **事件广播** — 注册成功后广播 `spider_registered` SSE 事件
+
+#### P5-005j: Dashboard 可视化爬虫创建器
+
+- ✨ **创建爬虫模态框** — 表单配置名称、起始 URL、允许域名、爬取规则、数据提取规则、配置覆盖
+- ✨ **JSON 编辑器** — 规则和 Schema 使用 JSON 文本域编辑
+- ✨ **实时反馈** — 注册成功/失败即时提示，自动刷新爬虫列表
+
+### 变更
+
+- ♻️ **Server 结构体** — 新增 `hub *EventHub`、`store *Store` 字段
+- ♻️ **startSpider** — 集成历史记录和 SSE 事件广播
+- ♻️ **registerRoutes** — 新增 SSE、历史记录、Dashboard 静态文件路由
+- ♻️ **WithStore Option** — 新增 Server 配置选项
+
+### 影响的文件
+
+- `contrib/web/ws.go` — 新增：SSE 事件中心 + Signal 桥接 + HTTP Handler
+- `contrib/web/store.go` — 新增：爬取历史持久化存储
+- `contrib/web/spec.go` — 新增：SpiderSpec → CrawlSpider 转换引擎
+- `contrib/web/static/index.html` — 新增：Dashboard 前端页面
+- `contrib/web/server.go` — 修改：集成 EventHub、Store、全局信号处理器
+- `contrib/web/handler.go` — 修改：新增路由、完善 register 实现、添加历史 API
+- `contrib/web/registry.go` — 无变更（SpiderSpec 类型定义已在 Phase 1 预留）
+- `contrib/web/doc.go` — 修改：更新包文档
+- `contrib/web/README.md` — 修改：完整文档更新
+- `contrib/web/phase2_test.go` — 新增：Phase 2 集成测试
+- `contrib/web/server_test.go` — 修改：更新 register 测试适配新行为
+
+---
+
 ## [v1.2.4] — 2026-05-20
 
 > **🐛 Bug 修复 — download_latency 设置时机修正（对齐 Scrapy 原版 handler 层面设置）**

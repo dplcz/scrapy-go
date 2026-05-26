@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrapy-Go Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --success: #16a34a;
+            --warning: #d97706;
+            --danger: #dc2626;
+            --bg-dark: #1e293b;
+            --bg-card: #ffffff;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+        }
+        body {
+            background: #f1f5f9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--text-primary);
+        }
+        .navbar {
+            background: var(--bg-dark) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.25rem;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .stat-card .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+        .stat-card .stat-icon {
+            font-size: 2.5rem;
+            opacity: 0.15;
+            position: absolute;
+            right: 1.5rem;
+            top: 1.5rem;
+        }
+        .card {
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .card-header {
+            background: transparent;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+        }
+        .badge-running { background: var(--success); }
+        .badge-finished { background: var(--primary); }
+        .badge-stopped { background: var(--warning); }
+        .badge-error { background: var(--danger); }
+        .event-log {
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+        }
+        .event-item {
+            padding: 0.4rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .event-item:last-child { border-bottom: none; }
+        .event-time { color: var(--text-secondary); white-space: nowrap; }
+        .event-type { font-weight: 600; min-width: 140px; }
+        .event-spider { color: var(--primary); }
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-size: 0.8rem;
+        }
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+        .connection-dot.connected { background: var(--success); }
+        .spider-table th { font-weight: 600; font-size: 0.875rem; }
+        .btn-action { padding: 0.25rem 0.75rem; font-size: 0.8rem; }
+        .modal-header { border-bottom: 1px solid var(--border); }
+        .form-label { font-weight: 500; font-size: 0.875rem; }
+        #app { min-height: 100vh; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-dark px-4 py-2">
+        <span class="navbar-brand">
+            <i class="bi bi-bug"></i> Scrapy-Go Dashboard
+        </span>
+        <div class="d-flex align-items-center gap-3">
+            <span class="connection-status text-white">
+                <span class="connection-dot" :class="{connected: sseConnected}"></span>
+                {{ sseConnected ? '实时连接' : '已断开' }}
+            </span>
+            <button class="btn btn-sm btn-outline-light" @click="showCreateModal = true">
+                <i class="bi bi-plus-lg"></i> 创建爬虫
+            </button>
+        </div>
+    </nav>
+
+    <div class="container-fluid px-4 py-4">
+        <!-- 统计卡片 -->
+        <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-lg-3">
+                <div class="stat-card position-relative">
+                    <i class="bi bi-collection stat-icon text-primary"></i>
+                    <div class="stat-value text-primary">{{ spiders.length }}</div>
+                    <div class="stat-label">已注册爬虫</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="stat-card position-relative">
+                    <i class="bi bi-play-circle stat-icon text-success"></i>
+                    <div class="stat-value text-success">{{ runningCount }}</div>
+                    <div class="stat-label">运行中</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="stat-card position-relative">
+                    <i class="bi bi-check-circle stat-icon text-info"></i>
+                    <div class="stat-value text-info">{{ historyStats.total_runs || 0 }}</div>
+                    <div class="stat-label">总运行次数</div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+                <div class="stat-card position-relative">
+                    <i class="bi bi-exclamation-triangle stat-icon text-danger"></i>
+                    <div class="stat-value text-danger">{{ historyStats.errors || 0 }}</div>
+                    <div class="stat-label">错误次数</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <!-- 爬虫列表 -->
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center py-3">
+                        <span><i class="bi bi-list-ul"></i> 爬虫列表</span>
+                        <button class="btn btn-sm btn-outline-primary" @click="refreshSpiders">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 spider-table">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-3">名称</th>
+                                        <th>运行实例</th>
+                                        <th>状态</th>
+                                        <th class="text-end pe-3">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="spider in spiders" :key="spider.name">
+                                        <td class="ps-3 fw-medium">{{ spider.name }}</td>
+                                        <td>{{ spider.running_instances }}</td>
+                                        <td>
+                                            <span class="badge" :class="spider.running_instances > 0 ? 'badge-running' : 'bg-secondary'">
+                                                {{ spider.running_instances > 0 ? '运行中' : '空闲' }}
+                                            </span>
+                                        </td>
+                                        <td class="text-end pe-3">
+                                            <button class="btn btn-success btn-action me-1" @click="startSpider(spider.name)">
+                                                <i class="bi bi-play-fill"></i> 启动
+                                            </button>
+                                            <button class="btn btn-danger btn-action me-1" @click="stopSpider(spider.name)"
+                                                    :disabled="spider.running_instances === 0">
+                                                <i class="bi bi-stop-fill"></i> 停止
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-action" @click="viewStats(spider.name)">
+                                                <i class="bi bi-bar-chart"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="spiders.length === 0">
+                                        <td colspan="4" class="text-center text-muted py-4">
+                                            暂无注册的爬虫，点击右上角"创建爬虫"开始
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 运行历史 -->
+                <div class="card mt-3">
+                    <div class="card-header d-flex justify-content-between align-items-center py-3">
+                        <span><i class="bi bi-clock-history"></i> 运行历史</span>
+                        <button class="btn btn-sm btn-outline-primary" @click="refreshHistory">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 spider-table">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-3">ID</th>
+                                        <th>爬虫</th>
+                                        <th>开始时间</th>
+                                        <th>时长</th>
+                                        <th>状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="record in history" :key="record.id">
+                                        <td class="ps-3"><code>{{ record.id }}</code></td>
+                                        <td>{{ record.spider_name }}</td>
+                                        <td>{{ formatTime(record.start_time) }}</td>
+                                        <td>{{ formatDuration(record.duration) }}</td>
+                                        <td>
+                                            <span class="badge" :class="'badge-' + record.status">
+                                                {{ statusText(record.status) }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="history.length === 0">
+                                        <td colspan="5" class="text-center text-muted py-4">暂无运行记录</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 实时事件日志 -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center py-3">
+                        <span><i class="bi bi-broadcast"></i> 实时事件</span>
+                        <span class="badge bg-secondary">{{ events.length }}</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="event-log">
+                            <div class="event-item" v-for="(event, idx) in events" :key="idx">
+                                <span class="event-time">{{ formatEventTime(event.timestamp) }}</span>
+                                <span class="event-type" :class="eventTypeClass(event.type)">{{ event.type }}</span>
+                                <span class="event-spider" v-if="event.spider_name">{{ event.spider_name }}</span>
+                            </div>
+                            <div v-if="events.length === 0" class="text-center text-muted py-4">
+                                等待事件...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 统计图表 -->
+                <div class="card mt-3">
+                    <div class="card-header py-3">
+                        <i class="bi bi-pie-chart"></i> 运行统计
+                    </div>
+                    <div class="card-body">
+                        <canvas id="statsChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建爬虫模态框 -->
+    <div class="modal fade" :class="{show: showCreateModal}" :style="{display: showCreateModal ? 'block' : 'none'}"
+         tabindex="-1" @click.self="showCreateModal = false">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> 声明式创建爬虫</h5>
+                    <button type="button" class="btn-close" @click="showCreateModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">爬虫名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" v-model="newSpider.name" placeholder="my_spider">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">起始 URL <span class="text-danger">*</span></label>
+                        <textarea class="form-control" v-model="newSpider.startUrls" rows="3"
+                                  placeholder="每行一个 URL&#10;https://example.com&#10;https://example.com/page/2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">允许的域名（可选，逗号分隔）</label>
+                        <input type="text" class="form-control" v-model="newSpider.allowedDomains"
+                               placeholder="example.com, sub.example.com">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">爬取规则（JSON）</label>
+                        <textarea class="form-control font-monospace" v-model="newSpider.rulesJson" rows="8"
+                                  placeholder='[{"link_extractor":{"allow":["/page/\\d+"]},"follow":true}]'></textarea>
+                        <small class="text-muted">JSON 数组格式，每个规则包含 link_extractor、callback、follow 字段</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">数据提取规则（JSON）</label>
+                        <textarea class="form-control font-monospace" v-model="newSpider.schemasJson" rows="6"
+                                  placeholder='{"parse_detail":{"title":{"css":"h1::text"},"url":{"value":"_response_url"}}}'></textarea>
+                        <small class="text-muted">key 为回调名称，value 为字段提取规则</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">配置覆盖（JSON，可选）</label>
+                        <textarea class="form-control font-monospace" v-model="newSpider.settingsJson" rows="3"
+                                  placeholder='{"CONCURRENT_REQUESTS":8,"DOWNLOAD_DELAY":"500ms"}'></textarea>
+                    </div>
+                    <div v-if="createError" class="alert alert-danger">{{ createError }}</div>
+                    <div v-if="createSuccess" class="alert alert-success">{{ createSuccess }}</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @click="showCreateModal = false">取消</button>
+                    <button type="button" class="btn btn-primary" @click="createSpider" :disabled="creating">
+                        <span v-if="creating" class="spinner-border spinner-border-sm me-1"></span>
+                        注册爬虫
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" v-if="showCreateModal"></div>
+
+    <!-- 统计详情模态框 -->
+    <div class="modal fade" :class="{show: showStatsModal}" :style="{display: showStatsModal ? 'block' : 'none'}"
+         tabindex="-1" @click.self="showStatsModal = false">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-bar-chart"></i> {{ statsSpiderName }} 统计</h5>
+                    <button type="button" class="btn-close" @click="showStatsModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div v-if="spiderStats.length === 0" class="text-muted text-center py-3">
+                        当前无运行中的实例
+                    </div>
+                    <div v-for="stat in spiderStats" :key="stat.id" class="mb-3 p-3 border rounded">
+                        <div class="d-flex justify-content-between mb-2">
+                            <strong>{{ stat.id }}</strong>
+                            <span class="badge" :class="stat.running ? 'badge-running' : 'bg-secondary'">
+                                {{ stat.running ? '运行中' : '已停止' }}
+                            </span>
+                        </div>
+                        <div class="small text-muted mb-2">启动时间: {{ formatTime(stat.start_time) }}</div>
+                        <div v-if="stat.stats" class="font-monospace small">
+                            <div v-for="(val, key) in stat.stats" :key="key" class="d-flex justify-content-between">
+                                <span>{{ key }}</span>
+                                <span class="fw-medium">{{ val }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show" v-if="showStatsModal"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue;
+
+createApp({
+    setup() {
+        const spiders = ref([]);
+        const history = ref([]);
+        const historyStats = ref({});
+        const events = ref([]);
+        const sseConnected = ref(false);
+        const showCreateModal = ref(false);
+        const showStatsModal = ref(false);
+        const statsSpiderName = ref('');
+        const spiderStats = ref([]);
+        const creating = ref(false);
+        const createError = ref('');
+        const createSuccess = ref('');
+        let eventSource = null;
+        let chart = null;
+
+        const newSpider = ref({
+            name: '',
+            startUrls: '',
+            allowedDomains: '',
+            rulesJson: '',
+            schemasJson: '',
+            settingsJson: ''
+        });
+
+        const runningCount = computed(() => {
+            return spiders.value.reduce((sum, s) => sum + s.running_instances, 0);
+        });
+
+        // API 调用
+        async function fetchJSON(url, options = {}) {
+            const resp = await fetch(url, options);
+            return resp.json();
+        }
+
+        async function refreshSpiders() {
+            const data = await fetchJSON('/api/spiders');
+            if (data.code === 200) spiders.value = data.data || [];
+        }
+
+        async function refreshHistory() {
+            const data = await fetchJSON('/api/history?limit=20');
+            if (data.code === 200) history.value = data.data || [];
+        }
+
+        async function refreshHistoryStats() {
+            const data = await fetchJSON('/api/history/stats');
+            if (data.code === 200) historyStats.value = data.data || {};
+            updateChart();
+        }
+
+        async function startSpider(name) {
+            await fetchJSON(`/api/spiders/${name}/start`, { method: 'POST' });
+            setTimeout(refreshSpiders, 500);
+        }
+
+        async function stopSpider(name) {
+            await fetchJSON(`/api/spiders/${name}/stop`, { method: 'POST' });
+            setTimeout(refreshSpiders, 500);
+        }
+
+        async function viewStats(name) {
+            statsSpiderName.value = name;
+            const data = await fetchJSON(`/api/spiders/${name}/stats`);
+            if (data.code === 200) spiderStats.value = data.data || [];
+            showStatsModal.value = true;
+        }
+
+        async function createSpider() {
+            creating.value = true;
+            createError.value = '';
+            createSuccess.value = '';
+
+            try {
+                const urls = newSpider.value.startUrls.split('\n').map(u => u.trim()).filter(u => u);
+                const domains = newSpider.value.allowedDomains
+                    ? newSpider.value.allowedDomains.split(',').map(d => d.trim()).filter(d => d)
+                    : [];
+
+                let rules = [];
+                if (newSpider.value.rulesJson.trim()) {
+                    rules = JSON.parse(newSpider.value.rulesJson);
+                }
+
+                let schemas = {};
+                if (newSpider.value.schemasJson.trim()) {
+                    schemas = JSON.parse(newSpider.value.schemasJson);
+                }
+
+                let settings = {};
+                if (newSpider.value.settingsJson.trim()) {
+                    settings = JSON.parse(newSpider.value.settingsJson);
+                }
+
+                const spec = {
+                    name: newSpider.value.name,
+                    start_urls: urls,
+                    allowed_domains: domains.length > 0 ? domains : undefined,
+                    rules: rules.length > 0 ? rules : undefined,
+                    item_schemas: Object.keys(schemas).length > 0 ? schemas : undefined,
+                    settings: Object.keys(settings).length > 0 ? settings : undefined
+                };
+
+                const data = await fetchJSON('/api/spiders/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(spec)
+                });
+
+                if (data.code === 200) {
+                    createSuccess.value = `爬虫 "${spec.name}" 注册成功！`;
+                    newSpider.value = { name: '', startUrls: '', allowedDomains: '', rulesJson: '', schemasJson: '', settingsJson: '' };
+                    refreshSpiders();
+                } else {
+                    createError.value = data.message || '注册失败';
+                    if (data.data && data.data.errors) {
+                        createError.value += ': ' + data.data.errors.join('; ');
+                    }
+                }
+            } catch (e) {
+                createError.value = '请求失败: ' + e.message;
+            } finally {
+                creating.value = false;
+            }
+        }
+
+        // SSE 连接
+        function connectSSE() {
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource('/api/events');
+
+            eventSource.onopen = () => { sseConnected.value = true; };
+            eventSource.onerror = () => {
+                sseConnected.value = false;
+                setTimeout(connectSSE, 3000);
+            };
+            eventSource.onmessage = (e) => {
+                try {
+                    const event = JSON.parse(e.data);
+                    events.value.unshift(event);
+                    if (events.value.length > 100) events.value.pop();
+
+                    // 自动刷新
+                    if (['spider_started', 'spider_finished', 'spider_registered'].includes(event.type)) {
+                        refreshSpiders();
+                        refreshHistory();
+                        refreshHistoryStats();
+                    }
+                } catch (err) { /* ignore parse errors */ }
+            };
+        }
+
+        // 图表
+        function updateChart() {
+            const ctx = document.getElementById('statsChart');
+            if (!ctx) return;
+
+            const stats = historyStats.value;
+            const chartData = {
+                labels: ['完成', '运行中', '已停止', '错误'],
+                datasets: [{
+                    data: [stats.finished || 0, stats.running || 0, stats.stopped || 0, stats.errors || 0],
+                    backgroundColor: ['#2563eb', '#16a34a', '#d97706', '#dc2626'],
+                    borderWidth: 0
+                }]
+            };
+
+            if (chart) {
+                chart.data = chartData;
+                chart.update();
+            } else {
+                chart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { padding: 16 } }
+                        },
+                        cutout: '60%'
+                    }
+                });
+            }
+        }
+
+        // 格式化函数
+        function formatTime(t) {
+            if (!t) return '-';
+            return new Date(t).toLocaleString('zh-CN', { hour12: false });
+        }
+
+        function formatEventTime(t) {
+            if (!t) return '';
+            return new Date(t).toLocaleTimeString('zh-CN', { hour12: false });
+        }
+
+        function formatDuration(d) {
+            if (!d) return '-';
+            if (d < 60) return d.toFixed(1) + 's';
+            return (d / 60).toFixed(1) + 'min';
+        }
+
+        function statusText(status) {
+            const map = { running: '运行中', finished: '已完成', stopped: '已停止', error: '错误' };
+            return map[status] || status;
+        }
+
+        function eventTypeClass(type) {
+            if (type.includes('error')) return 'text-danger';
+            if (type.includes('started') || type.includes('opened')) return 'text-success';
+            if (type.includes('stopped') || type.includes('closed')) return 'text-warning';
+            if (type.includes('item')) return 'text-info';
+            return 'text-secondary';
+        }
+
+        onMounted(() => {
+            refreshSpiders();
+            refreshHistory();
+            refreshHistoryStats();
+            connectSSE();
+
+            // 定时刷新
+            const interval = setInterval(() => {
+                refreshSpiders();
+                refreshHistoryStats();
+            }, 10000);
+
+            onUnmounted(() => {
+                clearInterval(interval);
+                if (eventSource) eventSource.close();
+            });
+        });
+
+        return {
+            spiders, history, historyStats, events, sseConnected,
+            showCreateModal, showStatsModal, statsSpiderName, spiderStats,
+            newSpider, creating, createError, createSuccess, runningCount,
+            refreshSpiders, refreshHistory, startSpider, stopSpider,
+            viewStats, createSpider, formatTime, formatEventTime,
+            formatDuration, statusText, eventTypeClass
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>

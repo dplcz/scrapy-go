@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"time"
 )
@@ -16,6 +17,7 @@ type apiResponse struct {
 
 // registerRoutes 注册所有 REST API 路由。
 func (s *Server) registerRoutes(mux *http.ServeMux) {
+	// Phase 1: REST API
 	mux.HandleFunc("GET /api/spiders", s.handleListSpiders)
 	mux.HandleFunc("POST /api/spiders/register", s.handleRegisterSpider)
 	mux.HandleFunc("DELETE /api/spiders/{name}", s.handleUnregisterSpider)
@@ -23,8 +25,24 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/spiders/{name}/stop", s.handleStopSpider)
 	mux.HandleFunc("GET /api/spiders/{name}/stats", s.handleGetStats)
 
+	// Phase 2: SSE 实时事件推送
+	mux.HandleFunc("GET /api/events", s.handleSSE)
+	mux.HandleFunc("GET /api/events/stats", s.handleSSEStats)
+
+	// Phase 2: 爬取历史
+	mux.HandleFunc("GET /api/history", s.handleGetHistory)
+	mux.HandleFunc("GET /api/history/{id}", s.handleGetHistoryRecord)
+	mux.HandleFunc("GET /api/history/stats", s.handleGetHistoryStats)
+
 	// 健康检查端点
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+
+	// Phase 2: Dashboard 静态文件服务
+	staticSub, err := fs.Sub(staticFS, "static")
+	if err == nil {
+		fileServer := http.FileServer(http.FS(staticSub))
+		mux.Handle("/", fileServer)
+	}
 }
 
 // handleListSpiders 处理 GET /api/spiders — 获取已注册的 Spider 列表及运行状态。
@@ -313,9 +331,6 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 //	  "message": "spider registered",
 //	  "data": {"name": "quotes", "type": "declarative"}
 //	}
-//
-// Phase 1.5 预留端点：当前返回 501 Not Implemented。
-// 完整实现将在声明式 Spider 配置功能（P5-005h~j）中交付。
 func (s *Server) handleRegisterSpider(w http.ResponseWriter, r *http.Request) {
 	// 解析请求体，验证 SpiderSpec 格式
 	var spec SpiderSpec
@@ -327,34 +342,52 @@ func (s *Server) handleRegisterSpider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 基本校验
-	if spec.Name == "" {
+	// 校验 SpiderSpec
+	if errs := spec.Validate(); len(errs) > 0 {
 		writeJSON(w, http.StatusBadRequest, apiResponse{
 			Code:    http.StatusBadRequest,
-			Message: "spider name is required",
-		})
-		return
-	}
-	if len(spec.StartURLs) == 0 {
-		writeJSON(w, http.StatusBadRequest, apiResponse{
-			Code:    http.StatusBadRequest,
-			Message: "at least one start_url is required",
+			Message: "validation failed",
+			Data:    map[string]any{"errors": errs},
 		})
 		return
 	}
 
-	// TODO(P5-005h): 将 SpiderSpec 转换为 CrawlSpider 工厂函数并注册
-	// factory := spec.ToFactory()
-	// s.registry.Register(spec.Name, factory)
+	// 检查是否已存在同名 Spider
+	if s.registry.Has(spec.Name) {
+		writeJSON(w, http.StatusConflict, apiResponse{
+			Code:    http.StatusConflict,
+			Message: "spider already registered: " + spec.Name,
+		})
+		return
+	}
 
-	writeJSON(w, http.StatusNotImplemented, apiResponse{
-		Code:    http.StatusNotImplemented,
-		Message: "declarative spider registration is not yet implemented (planned for P5-005h)",
+	// 将 SpiderSpec 转换为 CrawlSpider 工厂函数并注册
+	factory := spec.ToFactory()
+	s.registry.Register(spec.Name, factory)
+
+	s.logger.Info("declarative spider registered", "name", spec.Name,
+		"start_urls", len(spec.StartURLs),
+		"rules", len(spec.Rules),
+	)
+
+	// 广播注册事件
+	s.hub.Broadcast(&WSEvent{
+		Type:       "spider_registered",
+		SpiderName: spec.Name,
+		Timestamp:  time.Now(),
 		Data: map[string]any{
-			"name":          spec.Name,
-			"start_urls":    spec.StartURLs,
-			"rules_count":   len(spec.Rules),
-			"schemas_count": len(spec.ItemSchemas),
+			"type":       "declarative",
+			"start_urls": spec.StartURLs,
+			"rules":      len(spec.Rules),
+		},
+	})
+
+	writeJSON(w, http.StatusOK, apiResponse{
+		Code:    http.StatusOK,
+		Message: "spider registered",
+		Data: map[string]any{
+			"name": spec.Name,
+			"type": "declarative",
 		},
 	})
 }
@@ -410,6 +443,101 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"registered_spiders": s.registry.Len(),
 			"running_spiders":    len(s.getAllStats()),
 		},
+	})
+}
+
+// ============================================================================
+// 爬取历史 API（Phase 2）
+// ============================================================================
+
+// handleGetHistory 处理 GET /api/history — 获取爬取历史记录。
+//
+// 查询参数：
+//   - spider: 按 Spider 名称过滤（可选）
+//   - limit: 返回记录数量上限（默认 50，最大 200）
+//
+// 响应示例：
+//
+//	{
+//	  "code": 200,
+//	  "message": "ok",
+//	  "data": [
+//	    {
+//	      "id": "quotes-1",
+//	      "spider_name": "quotes",
+//	      "start_time": "2026-05-20T12:00:00Z",
+//	      "end_time": "2026-05-20T12:05:00Z",
+//	      "duration": 300.5,
+//	      "status": "finished",
+//	      "stats": {"item_scraped_count": 42}
+//	    }
+//	  ]
+//	}
+func (s *Server) handleGetHistory(w http.ResponseWriter, r *http.Request) {
+	spiderName := r.URL.Query().Get("spider")
+	limit := 50
+
+	if l := r.URL.Query().Get("limit"); l != "" {
+		var n int
+		if _, err := fmt.Sscanf(l, "%d", &n); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	var records []*RunRecord
+	if spiderName != "" {
+		records = s.store.GetRecordsBySpider(spiderName, limit)
+	} else {
+		records = s.store.GetRecentRecords(limit)
+	}
+
+	if records == nil {
+		records = []*RunRecord{}
+	}
+
+	writeJSON(w, http.StatusOK, apiResponse{
+		Code:    http.StatusOK,
+		Message: "ok",
+		Data:    records,
+	})
+}
+
+// handleGetHistoryRecord 处理 GET /api/history/{id} — 获取单条历史记录。
+func (s *Server) handleGetHistoryRecord(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, apiResponse{
+			Code:    http.StatusBadRequest,
+			Message: "record id is required",
+		})
+		return
+	}
+
+	record, ok := s.store.GetRecord(id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, apiResponse{
+			Code:    http.StatusNotFound,
+			Message: "record not found: " + id,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, apiResponse{
+		Code:    http.StatusOK,
+		Message: "ok",
+		Data:    record,
+	})
+}
+
+// handleGetHistoryStats 处理 GET /api/history/stats — 获取历史统计汇总。
+func (s *Server) handleGetHistoryStats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, apiResponse{
+		Code:    http.StatusOK,
+		Message: "ok",
+		Data:    s.store.GetStats(),
 	})
 }
 

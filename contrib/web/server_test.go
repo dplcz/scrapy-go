@@ -569,7 +569,7 @@ func TestHandleHealth_WithRunning(t *testing.T) {
 // 声明式注册端点测试（预留接口）
 // ============================================================================
 
-func TestHandleRegisterSpider_NotImplemented(t *testing.T) {
+func TestHandleRegisterSpider_Success(t *testing.T) {
 	_, ts := newTestServer(t)
 
 	body := `{
@@ -595,14 +595,14 @@ func TestHandleRegisterSpider_NotImplemented(t *testing.T) {
 
 	resp, result := doRequest(t, "POST", ts.URL+"/api/spiders/register", body)
 
-	if resp.StatusCode != http.StatusNotImplemented {
-		t.Fatalf("expected status 501, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200, got %d (message: %s)", resp.StatusCode, result.Message)
 	}
-	if !strings.Contains(result.Message, "not yet implemented") {
-		t.Fatalf("expected 'not yet implemented' in message, got %q", result.Message)
+	if !strings.Contains(result.Message, "spider registered") {
+		t.Fatalf("expected 'spider registered' in message, got %q", result.Message)
 	}
 
-	// 验证返回了解析后的摘要信息
+	// 验证返回了注册信息
 	data, ok := result.Data.(map[string]any)
 	if !ok {
 		t.Fatalf("expected data to be object, got %T", result.Data)
@@ -610,11 +610,8 @@ func TestHandleRegisterSpider_NotImplemented(t *testing.T) {
 	if data["name"] != "quotes" {
 		t.Fatalf("expected name 'quotes', got %v", data["name"])
 	}
-	if data["rules_count"].(float64) != 1 {
-		t.Fatalf("expected 1 rule, got %v", data["rules_count"])
-	}
-	if data["schemas_count"].(float64) != 1 {
-		t.Fatalf("expected 1 schema, got %v", data["schemas_count"])
+	if data["type"] != "declarative" {
+		t.Fatalf("expected type 'declarative', got %v", data["type"])
 	}
 }
 
@@ -627,8 +624,8 @@ func TestHandleRegisterSpider_MissingName(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(result.Message, "name is required") {
-		t.Fatalf("expected 'name is required' in message, got %q", result.Message)
+	if !strings.Contains(result.Message, "validation failed") {
+		t.Fatalf("expected 'validation failed' in message, got %q", result.Message)
 	}
 }
 
@@ -641,8 +638,8 @@ func TestHandleRegisterSpider_MissingStartURLs(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", resp.StatusCode)
 	}
-	if !strings.Contains(result.Message, "start_url is required") {
-		t.Fatalf("expected 'start_url is required' in message, got %q", result.Message)
+	if !strings.Contains(result.Message, "validation failed") {
+		t.Fatalf("expected 'validation failed' in message, got %q", result.Message)
 	}
 }
 
