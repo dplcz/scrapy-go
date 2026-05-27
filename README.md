@@ -16,7 +16,6 @@
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重 + 内存溢出保护，中断后自动恢复
 - 📤 **数据导出** — Feed Export（JSON/CSV/XML）+ MongoDB/PostgreSQL/ES 批量写入
 - 🌐 **分布式支持** — Redis 队列 + 布隆过滤器 + 滑动窗口限速 + Web 管理平台（Dashboard + SSE 实时推送）
-- 🖥️ **Web 管理平台** — REST API + SSE 实时事件 + Dashboard UI + 声明式爬虫创建（无需编码）
 - 📊 **可观测性** — OpenTelemetry 追踪 + Prometheus 指标
 - 🛡️ **类型安全配置** — 泛型 `Key[T]` + `Get[T]` API，编译期类型检查，消除魔法字符串
 
@@ -114,19 +113,17 @@ Engine (调度引擎)
 
 ## 📚 文档
 
-| 文档 | 说明 |
-|------|------|
-| [📖 完整参考文档](docs/README.md) | 功能特性、配置项、更新日志的完整说明 |
-| [🚀 快速入门指南](docs/guide/getting-started.md) | 从零开始的详细教程 |
-| [🏗️ 架构设计](docs/architecture/architecture.md) | 核心组件内部结构与数据流 |
-| [🔄 从 Python Scrapy 迁移](docs/migration/migration-from-python.md) | 概念映射 + 代码对比 + 迁移检查清单 |
-| [📊 Telemetry](contrib/telemetry/README.md) | OpenTelemetry 追踪扩展 |
-| [🌐 Redis 队列](contrib/redisqueue/README.md) | 分布式 Redis 请求队列 |
-| [💾 Storage](contrib/storage/README.md) | MongoDB/PostgreSQL/ES 持久化 Pipeline |
-| [⏱️ Rate Limit](contrib/ratelimit/README.md) | 滑动窗口分布式限速 |
-| [🖥️ Web API](contrib/web/README.md) | REST 管理接口 |
-| [🤖 Agent Daemon 设计](docs/architecture/agent-daemon-design.md) | 独立 Agent Daemon 架构设计 |
-| [📡 Agent 通信协议](docs/architecture/agent-protocol-spec.md) | Agent ↔ 管理平台通信协议规范 |
+| 文档                                                               | 说明                                 |
+|------------------------------------------------------------------|------------------------------------|
+| [📖 完整参考文档](docs/README.md)                                      | 功能特性、配置项、更新日志的完整说明                 |
+| [🚀 快速入门指南](docs/guide/getting-started.md)                       | 从零开始的详细教程                          |
+| [🏗️ 架构设计](docs/architecture/architecture.md)                    | 核心组件内部结构与数据流                       |
+| [🔄 从 Python Scrapy 迁移](docs/migration/migration-from-python.md) | 概念映射 + 代码对比 + 迁移检查清单               |
+| [📊 Telemetry](contrib/telemetry/README.md)                      | OpenTelemetry 追踪扩展                 |
+| [🌐 Redis 队列](contrib/redisqueue/README.md)                      | 分布式 Redis 请求队列                     |
+| [💾 Storage](contrib/storage/README.md)                          | MongoDB/PostgreSQL/ES 持久化 Pipeline |
+| [⏱️ Rate Limit](contrib/ratelimit/README.md)                     | 滑动窗口分布式限速                          |
+| [🖥️ Web API](contrib/web/README.md)                             | REST 管理接口                          |
 
 ## 📄 License
 
