@@ -48,3 +48,4 @@ examples/feedexport/feedexport
 examples/itemadapter/itemadapter
 examples/template/spiders/json_api/json_api
 typed_settings
+*.prof

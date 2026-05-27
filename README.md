@@ -125,6 +125,8 @@ Engine (调度引擎)
 | [💾 Storage](contrib/storage/README.md) | MongoDB/PostgreSQL/ES 持久化 Pipeline |
 | [⏱️ Rate Limit](contrib/ratelimit/README.md) | 滑动窗口分布式限速 |
 | [🖥️ Web API](contrib/web/README.md) | REST 管理接口 |
+| [🤖 Agent Daemon 设计](docs/architecture/agent-daemon-design.md) | 独立 Agent Daemon 架构设计 |
+| [📡 Agent 通信协议](docs/architecture/agent-protocol-spec.md) | Agent ↔ 管理平台通信协议规范 |
 
 ## 📄 License
 
