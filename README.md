@@ -2,7 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.1+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-v1.2.5-blue)](docs/README.md#-更新日志)
+[![Version](https://img.shields.io/badge/version-v1.2.6-blue)](docs/README.md#-更新日志)
 
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
@@ -14,6 +14,7 @@
 - 🧩 **可扩展中间件** — 11 个下载器中间件 + 5 个 Spider 中间件，支持 AutoThrottle、高级重试等
 - 🔍 **内置选择器** — goquery（CSS）+ htmlquery（XPath）链式 API + gjson（JSON 路径查询），CrawlSpider 规则化爬取
 - 💾 **断点续爬** — 磁盘队列 + 持久化去重 + 内存溢出保护，中断后自动恢复
+- 🧬 **高级去重** — URL 规范化去重 + SimHash 内容近似去重 + 组合策略（`contrib/dedup`）
 - 📤 **数据导出** — Feed Export（JSON/CSV/XML）+ MongoDB/PostgreSQL/ES 批量写入
 - 🌐 **分布式支持** — Redis 队列 + 布隆过滤器 + 滑动窗口限速 + Web 管理平台（Dashboard + SSE 实时推送）
 - 📊 **可观测性** — OpenTelemetry 追踪 + Prometheus 指标
@@ -94,7 +95,8 @@ func main() {
 ```
 Engine (调度引擎)
 ├── Scheduler (请求调度 + 去重 + 优先级队列)
-│   └── [可选] contrib/redisqueue (Redis 分布式队列)
+│   ├── [可选] contrib/redisqueue (Redis 分布式队列)
+│   └── [可选] contrib/dedup (URL 规范化 + SimHash 高级去重)
 ├── Downloader (HTTP 下载 + Slot 并发控制)
 │   ├── HTTP/1.1 & HTTP/2 下载处理器 (ALPN 自动协商 + h2c 可选)
 │   └── Middleware Chain (11 个内置中间件)
@@ -121,6 +123,7 @@ Engine (调度引擎)
 | [🔄 从 Python Scrapy 迁移](docs/migration/migration-from-python.md) | 概念映射 + 代码对比 + 迁移检查清单               |
 | [📊 Telemetry](contrib/telemetry/README.md)                      | OpenTelemetry 追踪扩展                 |
 | [🌐 Redis 队列](contrib/redisqueue/README.md)                      | 分布式 Redis 请求队列                     |
+| [🧬 Dedup](contrib/dedup/README.md)                              | URL 规范化 + SimHash 高级去重             |
 | [💾 Storage](contrib/storage/README.md)                          | MongoDB/PostgreSQL/ES 持久化 Pipeline |
 | [⏱️ Rate Limit](contrib/ratelimit/README.md)                     | 滑动窗口分布式限速                          |
 | [🖥️ Web API](contrib/web/README.md)                             | REST 管理接口                          |

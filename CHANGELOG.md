@@ -6,6 +6,164 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.2.6] — 2026-05-28
+
+> **🚀 P5-014：代理池管理器 + P5-015：高级去重策略（独立模块）— v1.3.0 预发布版**
+>
+> 新增 `contrib/proxy` 独立子模块，提供生产级代理池管理能力：
+> 多种轮换策略、后台健康检查、失败自动重试、多种代理来源。
+> 新增 `contrib/dedup` 独立子模块，提供 URL 规范化去重、SimHash 内容近似去重和组合策略。
+> 主模块零侵入，未引入对应模块时编译产物不包含任何代理池或高级去重相关代码。
+
+### 新增
+
+#### P5-015a: URL 规范化去重
+
+- ✨ **`contrib/dedup` 独立子模块** — 高级去重策略独立模块，主模块零侵入
+- ✨ **`URLCanonicalDupeFilter`** — 实现 `scheduler.DupeFilter` 接口，基于 Method + 规范化 URL + Body 计算指纹
+- ✨ **追踪参数过滤** — 默认移除 `utm_*`、`fbclid`、`gclid`、`msclkid`、`dclid`、`yclid`、`igshid` 等统计参数
+- ✨ **稳定 URL 规范化** — scheme/host 小写、默认端口移除、query key/value 排序、fragment 默认移除、空 path 规范化为 `/`
+- ✨ **可配置规则** — `URLCanonicalizerOptions` 支持自定义追踪参数名称、前缀和 fragment 保留策略
+
+#### P5-015b: SimHash 内容近似去重
+
+- ✨ **`SimHashDupeFilter`** — 实现 `scheduler.DupeFilter` 接口，基于内容 SimHash 指纹识别相似页面
+- ✨ **可配置汉明距离阈值** — `SimHashOptions.HammingThreshold` 支持 0-15，默认 3；0 表示完全相同 SimHash 才过滤
+- ✨ **LSH 分桶索引** — 使用 band 索引缩小候选集合，再用汉明距离精确校验，避免大规模线性扫描
+- ✨ **显式内容提取** — 默认从 `Request.Meta[dedup.MetaContentKey]` 读取内容，也支持自定义 `ContentExtractor`
+- ✨ **非阻塞降级** — 未提供内容时 SimHash 策略自动跳过，不影响 URL 去重和调度链路
+
+#### P5-015c: 组合去重策略
+
+- ✨ **`CompositeDupeFilter`** — 组合多个 `scheduler.DupeFilter`，使用 OR 语义，任一策略命中即过滤请求
+- ✨ **生命周期管理** — `Open` 顺序初始化并在失败时回滚已打开过滤器；`Close` 逆序关闭并聚合错误
+- ✨ **`NewDupeFilter` 工厂** — 基于 `Options` 创建默认高级组合过滤器（URL 规范化 + SimHash）
+- ✨ **编译期接口断言** — 确保 `URLCanonicalDupeFilter` / `SimHashDupeFilter` / `CompositeDupeFilter` 均满足 `scheduler.DupeFilter`
+
+#### P5-014a: 代理池核心数据结构
+
+- ✨ **`Proxy`** — 代理实体，使用 `atomic` 字段存储 `failures`/`successes`/`totalUsed`/`state`，
+  支持高并发无锁读写（`contrib/proxy/proxy.go`）
+- ✨ **`State`** — 代理健康状态枚举：`StateHealthy` / `StateDegraded` / `StateUnhealthy`
+- ✨ **`Snapshot`** — 代理只读快照，便于监控展示
+- ✨ **`parseProxyEntry`** — 代理 URL 字符串解析器，支持 `host:port`、`scheme://user:pass@host:port`、
+  `url|weight` 多种格式
+
+#### P5-014b: 代理选择策略（Strategy）
+
+- ✨ **`StrategyRoundRobin`** — 轮询策略，使用 `atomic.Uint64` 自增取模实现无锁选择
+- ✨ **`StrategyRandom`** — 随机策略，基于 `math/rand/v2` 无锁实现
+- ✨ **`StrategyWeighted`** — 加权随机策略，小池子（≤8）线性扫描避免分配，大池子使用累积权重
+  + `sort.SearchInts` 二分查找 O(log n)（`contrib/proxy/strategy.go`）
+
+#### P5-014c: 代理池核心 Pool
+
+- ✨ **`Pool` 接口** — `Get` / `Mark` / `Refresh` / `Snapshots` / `Size` / `Healthy` / `Close`
+- ✨ **默认实现** — `sync.RWMutex` 保护代理切片（读多写少），单代理状态字段使用 `atomic`，
+  `Get` 路径通过 `sync.Pool` 复用候选切片，无堆分配
+- ✨ **增量合并刷新** — `Refresh` 时已存在的代理保留统计与状态，新增/移除按 URL 比对
+- ✨ **`ProviderRefreshInterval`** — 后台周期性 Provider 刷新（可禁用）
+- ✨ **`Mark` 状态机** — 失败次数过半时降为 `Degraded`，达到 `MaxFailures` 时置为 `Unhealthy`，
+  成功后从 `Degraded` 自动恢复
+
+#### P5-014d: 健康检查器（HealthChecker）
+
+- ✨ **后台 goroutine + `time.Ticker`** — 周期性探测代理可用性
+- ✨ **信号量限流** — 缓冲 channel 限制最大并发探测数为 8，避免大池时 socket 耗尽
+- ✨ **`RecoveryThreshold`** — 连续探测成功 N 次后将 `Unhealthy` 代理恢复为 `Healthy`
+- ✨ **`ProbeFunc` 接口** — 默认基于 `net/http` + `http.Transport.Proxy`，
+  禁用 keep-alive 避免单次探测污染
+- ✨ **`context.Context` 驱动** — 优雅退出，`Close` 时等待所有进行中的探测完成
+
+#### P5-014e: 代理来源（Provider）
+
+- ✨ **`StaticProvider`** — 静态代理列表（防御性拷贝输入切片）
+- ✨ **`FileProvider`** — 从本地文件加载，支持 `#` 开头的注释行和空行
+- ✨ **`HTTPAPIProvider`** — 从 HTTP API 拉取，支持三种响应格式：
+  `json_array` / `json_field`（点分路径）/ `lines`
+- ✨ **`CompositeProvider`** — 组合多个 Provider，自动合并去重，部分失败时仍保留成功代理
+
+#### P5-014f: 下载器中间件（ProxyMiddleware）
+
+- ✨ **`Middleware`** — 实现 `RequestProcessor` / `ResponseProcessor` / `ExceptionProcessor`
+  细粒度接口（`contrib/proxy/middleware.go`）
+- ✨ **`DefaultPriority = 740`** — 先于内置 `HttpProxyMiddleware`（750）执行，
+  实现自然的优先级覆盖
+- ✨ **状态码反馈** — 2xx/3xx 视为成功；407/5xx 视为代理失败；其他 4xx 视为业务错误（不影响代理评价）
+- ✨ **失败自动重试** — `ProcessException` 返回 `errors.NewRequestError`，
+  由 Engine 复用 `RetryMiddleware` 模式重新调度；受 `MaxProxyRetries` 限制
+- ✨ **降级直连** — 池为空或 `ErrNoProxy` 时不阻塞请求，仅记录指标
+- ✨ **统计指标** — `Stats()` 返回 `TotalAssigned` / `TotalSkipped` / `TotalNoProxy`
+- ✨ **用户优先** — 当 `Request.Meta["proxy"]` 已被显式设置时，跳过池分配
+
+### Go 风格替换决策
+
+| Python/Scrapy 原版 | Go 替换方案 | 原因 |
+|---|---|---|
+| 全局 lock 包住整个 pool | `sync.RWMutex` 读写分离 + `atomic` 统计字段 | 读多写少场景，避免读路径锁竞争 |
+| RoundRobin 计数加锁 | `atomic.Uint64` 自增取模 | 高并发下零锁开销 |
+| `random.choice` 全局 source | `math/rand/v2` | 无锁实现，无需用户初始化种子 |
+| Weighted 选择 O(n) 遍历 | 累积权重数组 + `sort.SearchInts` 二分 O(log n) | 大池时显著性能差异 |
+| 健康检查阻塞触发 | 后台 goroutine + `time.Ticker` + ctx 控制 | 避免泄漏，避免阻塞业务路径 |
+| `for { ... time.Sleep }` 重试循环 | `errors.NewRequestError` 由 Engine 复用 RetryMiddleware | 避免重复造轮子 |
+| 内容近似去重全量扫描 | SimHash + LSH 分桶候选集 + 汉明距离精确校验 | 避免指纹数量增长后 O(N) 扫描成为性能瓶颈 |
+| Scheduler 阶段隐式读取 Response 内容 | 通过 `Request.Meta` 或 `ContentExtractor` 显式传入待比较内容 | Scheduler 没有 Response，上下文显式传递更符合 Go 数据流 |
+
+### 测试与质量
+
+- ✅ **代理池单元测试**：`pool_test.go` / `strategy_test.go` / `provider_test.go` /
+  `health_test.go` / `middleware_test.go` / `integration_test.go`，覆盖率 **91.0%**（≥ 90% 核心包要求）
+- ✅ **高级去重单元测试**：`url_canonicalize_test.go` / `simhash_test.go` /
+  `composite_test.go` / `example_test.go`，覆盖率 **89.9%**（≥ 85% 独立模块要求）
+- ✅ **竞态检测**：`go test ./... -race -coverprofile=coverage.out`（`contrib/proxy` 与 `contrib/dedup`）全部通过
+- ✅ **静态检查**：`gofmt` 和 `go vet` 全部通过
+- ✅ **依赖控制**：`contrib/proxy` 仅依赖标准库 + scrapy-go 主模块；`contrib/dedup` 仅直接依赖 scrapy-go 主模块
+
+### 影响的文件
+
+- **新增**：
+  - `contrib/dedup/go.mod` — 独立子模块声明
+  - `contrib/dedup/doc.go` — 包文档
+  - `contrib/dedup/interface.go` — 编译期接口实现断言
+  - `contrib/dedup/options.go` — 高级去重组合配置与工厂函数
+  - `contrib/dedup/url_canonicalize.go` — URL 规范化去重实现
+  - `contrib/dedup/simhash.go` — SimHash 内容近似去重实现
+  - `contrib/dedup/composite.go` — 组合去重过滤器
+  - `contrib/dedup/README.md` — 模块文档
+  - `contrib/dedup/{*}_test.go` — 单元测试、示例测试与基准测试
+  - `contrib/proxy/go.mod` — 独立子模块声明
+  - `contrib/proxy/doc.go` — 包文档
+  - `contrib/proxy/proxy.go` — 代理实体与状态枚举
+  - `contrib/proxy/interface.go` — `Pool` / `Strategy` / `Provider` 接口定义
+  - `contrib/proxy/options.go` — 配置选项与默认值
+  - `contrib/proxy/strategy.go` — 三种代理选择策略实现
+  - `contrib/proxy/pool.go` — 默认 Pool 实现
+  - `contrib/proxy/health.go` — 后台健康检查器
+  - `contrib/proxy/provider.go` — 四种代理来源实现
+  - `contrib/proxy/middleware.go` — 下载器中间件
+  - `contrib/proxy/README.md` — 模块文档
+  - `contrib/proxy/{*}_test.go` — 完整测试套件
+- **修改**：
+  - `cmd/scrapy-go/main.go` — Version 保持 `1.2.6`
+  - `contrib/proxy/go.mod` — 主模块依赖同步到 `v1.2.6`
+  - `README.md` — 功能特性、架构概览和文档索引追加高级去重模块说明
+  - `docs/README.md` — 更新日志和功能描述章节追加代理池与高级去重模块说明
+  - `docs/architecture/architecture.md` — Scheduler 架构说明追加可插拔高级去重策略
+  - `scrapy-go-iteration-schedule/01-overall-planning.md` — 标注 P5-015 已在 v1.2.6 预发布完成
+  - `scrapy-go-iteration-schedule/03-wbs-post-v1.md` — 标注 P5-015 及子任务完成
+
+### 协作约定
+
+- 内置 `pkg/downloader/middleware.HttpProxyMiddleware` **保持不变**，提供环境变量代理基础能力
+- 当用户引入 `contrib/proxy` 后，本模块以更高优先级先执行，
+  内置中间件检测到 `Meta["proxy"]` 已存在时自然跳过覆盖逻辑
+- 失败自动重试通过 `errors.NewRequestError` 触发，与现有 `RetryMiddleware` 完全兼容
+- 内置 `pkg/scheduler.RFPDupeFilter` **保持不变**，继续作为默认通用请求指纹去重器
+- 当用户引入 `contrib/dedup` 后，可通过 `scheduler.WithDupeFilter` 注入高级组合过滤器；
+  SimHash 策略只消费显式传入的 `Request.Meta[dedup.MetaContentKey]` 或自定义 `ContentExtractor` 内容，未提供内容时自动跳过
+
+---
+
 ## [v1.2.5] — 2026-05-26
 
 > **🚀 P5-005 Phase 2：全栈 Web 平台 + 声明式爬虫创建（v1.2.5）**
