@@ -1,4 +1,4 @@
-module github.com/dplcz/scrapy-go/contrib/proxy
+module github.com/dplcz/scrapy-go/contrib/dedup
 
 go 1.25.1
 
@@ -6,7 +6,6 @@ require github.com/dplcz/scrapy-go v1.2.6
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0 // indirect
-	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/antchfx/htmlquery v1.3.6 // indirect
 	github.com/antchfx/xpath v1.3.6 // indirect

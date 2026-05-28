@@ -6,15 +6,39 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
-## [v1.2.6] — 2026-05-27
+## [v1.2.6] — 2026-05-28
 
-> **🚀 P5-014：代理池管理器（独立模块）— v1.3.0 预发布版**
+> **🚀 P5-014：代理池管理器 + P5-015：高级去重策略（独立模块）— v1.3.0 预发布版**
 >
 > 新增 `contrib/proxy` 独立子模块，提供生产级代理池管理能力：
 > 多种轮换策略、后台健康检查、失败自动重试、多种代理来源。
-> 主模块零侵入，未引入此模块时编译产物不包含任何代理池相关代码。
+> 新增 `contrib/dedup` 独立子模块，提供 URL 规范化去重、SimHash 内容近似去重和组合策略。
+> 主模块零侵入，未引入对应模块时编译产物不包含任何代理池或高级去重相关代码。
 
 ### 新增
+
+#### P5-015a: URL 规范化去重
+
+- ✨ **`contrib/dedup` 独立子模块** — 高级去重策略独立模块，主模块零侵入
+- ✨ **`URLCanonicalDupeFilter`** — 实现 `scheduler.DupeFilter` 接口，基于 Method + 规范化 URL + Body 计算指纹
+- ✨ **追踪参数过滤** — 默认移除 `utm_*`、`fbclid`、`gclid`、`msclkid`、`dclid`、`yclid`、`igshid` 等统计参数
+- ✨ **稳定 URL 规范化** — scheme/host 小写、默认端口移除、query key/value 排序、fragment 默认移除、空 path 规范化为 `/`
+- ✨ **可配置规则** — `URLCanonicalizerOptions` 支持自定义追踪参数名称、前缀和 fragment 保留策略
+
+#### P5-015b: SimHash 内容近似去重
+
+- ✨ **`SimHashDupeFilter`** — 实现 `scheduler.DupeFilter` 接口，基于内容 SimHash 指纹识别相似页面
+- ✨ **可配置汉明距离阈值** — `SimHashOptions.HammingThreshold` 支持 0-15，默认 3；0 表示完全相同 SimHash 才过滤
+- ✨ **LSH 分桶索引** — 使用 band 索引缩小候选集合，再用汉明距离精确校验，避免大规模线性扫描
+- ✨ **显式内容提取** — 默认从 `Request.Meta[dedup.MetaContentKey]` 读取内容，也支持自定义 `ContentExtractor`
+- ✨ **非阻塞降级** — 未提供内容时 SimHash 策略自动跳过，不影响 URL 去重和调度链路
+
+#### P5-015c: 组合去重策略
+
+- ✨ **`CompositeDupeFilter`** — 组合多个 `scheduler.DupeFilter`，使用 OR 语义，任一策略命中即过滤请求
+- ✨ **生命周期管理** — `Open` 顺序初始化并在失败时回滚已打开过滤器；`Close` 逆序关闭并聚合错误
+- ✨ **`NewDupeFilter` 工厂** — 基于 `Options` 创建默认高级组合过滤器（URL 规范化 + SimHash）
+- ✨ **编译期接口断言** — 确保 `URLCanonicalDupeFilter` / `SimHashDupeFilter` / `CompositeDupeFilter` 均满足 `scheduler.DupeFilter`
 
 #### P5-014a: 代理池核心数据结构
 
@@ -82,18 +106,31 @@
 | Weighted 选择 O(n) 遍历 | 累积权重数组 + `sort.SearchInts` 二分 O(log n) | 大池时显著性能差异 |
 | 健康检查阻塞触发 | 后台 goroutine + `time.Ticker` + ctx 控制 | 避免泄漏，避免阻塞业务路径 |
 | `for { ... time.Sleep }` 重试循环 | `errors.NewRequestError` 由 Engine 复用 RetryMiddleware | 避免重复造轮子 |
+| 内容近似去重全量扫描 | SimHash + LSH 分桶候选集 + 汉明距离精确校验 | 避免指纹数量增长后 O(N) 扫描成为性能瓶颈 |
+| Scheduler 阶段隐式读取 Response 内容 | 通过 `Request.Meta` 或 `ContentExtractor` 显式传入待比较内容 | Scheduler 没有 Response，上下文显式传递更符合 Go 数据流 |
 
 ### 测试与质量
 
-- ✅ **单元测试**：`pool_test.go` / `strategy_test.go` / `provider_test.go` /
+- ✅ **代理池单元测试**：`pool_test.go` / `strategy_test.go` / `provider_test.go` /
   `health_test.go` / `middleware_test.go` / `integration_test.go`，覆盖率 **91.0%**（≥ 90% 核心包要求）
-- ✅ **竞态检测**：`go test -race` 全部通过
-- ✅ **静态检查**：`gofmt -s` 和 `go vet` 全部通过
-- ✅ **零外部依赖**：仅依赖标准库 + scrapy-go 主模块（go.mod 中无第三方包）
+- ✅ **高级去重单元测试**：`url_canonicalize_test.go` / `simhash_test.go` /
+  `composite_test.go` / `example_test.go`，覆盖率 **89.9%**（≥ 85% 独立模块要求）
+- ✅ **竞态检测**：`go test ./... -race -coverprofile=coverage.out`（`contrib/proxy` 与 `contrib/dedup`）全部通过
+- ✅ **静态检查**：`gofmt` 和 `go vet` 全部通过
+- ✅ **依赖控制**：`contrib/proxy` 仅依赖标准库 + scrapy-go 主模块；`contrib/dedup` 仅直接依赖 scrapy-go 主模块
 
 ### 影响的文件
 
 - **新增**：
+  - `contrib/dedup/go.mod` — 独立子模块声明
+  - `contrib/dedup/doc.go` — 包文档
+  - `contrib/dedup/interface.go` — 编译期接口实现断言
+  - `contrib/dedup/options.go` — 高级去重组合配置与工厂函数
+  - `contrib/dedup/url_canonicalize.go` — URL 规范化去重实现
+  - `contrib/dedup/simhash.go` — SimHash 内容近似去重实现
+  - `contrib/dedup/composite.go` — 组合去重过滤器
+  - `contrib/dedup/README.md` — 模块文档
+  - `contrib/dedup/{*}_test.go` — 单元测试、示例测试与基准测试
   - `contrib/proxy/go.mod` — 独立子模块声明
   - `contrib/proxy/doc.go` — 包文档
   - `contrib/proxy/proxy.go` — 代理实体与状态枚举
@@ -107,9 +144,13 @@
   - `contrib/proxy/README.md` — 模块文档
   - `contrib/proxy/{*}_test.go` — 完整测试套件
 - **修改**：
-  - `cmd/scrapy-go/main.go` — Version 升级到 `1.2.6`
-  - `README.md` — 版本徽章更新到 v1.2.6
-  - `docs/README.md` — 更新日志和功能描述章节追加代理池模块说明
+  - `cmd/scrapy-go/main.go` — Version 保持 `1.2.6`
+  - `contrib/proxy/go.mod` — 主模块依赖同步到 `v1.2.6`
+  - `README.md` — 功能特性、架构概览和文档索引追加高级去重模块说明
+  - `docs/README.md` — 更新日志和功能描述章节追加代理池与高级去重模块说明
+  - `docs/architecture/architecture.md` — Scheduler 架构说明追加可插拔高级去重策略
+  - `scrapy-go-iteration-schedule/01-overall-planning.md` — 标注 P5-015 已在 v1.2.6 预发布完成
+  - `scrapy-go-iteration-schedule/03-wbs-post-v1.md` — 标注 P5-015 及子任务完成
 
 ### 协作约定
 
@@ -117,6 +158,9 @@
 - 当用户引入 `contrib/proxy` 后，本模块以更高优先级先执行，
   内置中间件检测到 `Meta["proxy"]` 已存在时自然跳过覆盖逻辑
 - 失败自动重试通过 `errors.NewRequestError` 触发，与现有 `RetryMiddleware` 完全兼容
+- 内置 `pkg/scheduler.RFPDupeFilter` **保持不变**，继续作为默认通用请求指纹去重器
+- 当用户引入 `contrib/dedup` 后，可通过 `scheduler.WithDupeFilter` 注入高级组合过滤器；
+  SimHash 策略只消费显式传入的 `Request.Meta[dedup.MetaContentKey]` 或自定义 `ContentExtractor` 内容，未提供内容时自动跳过
 
 ---
 

@@ -71,7 +71,7 @@ scrapy-go 采用经典的 Scrapy 五大组件架构，使用 Go 的 goroutine �
 
 ### 第四层：功能组件层
 
-- **Scheduler** — 请求队列管理（内存队列 + 磁盘队列 + 去重过滤）
+- **Scheduler** — 请求队列管理（内存队列 + 磁盘队列 + 去重过滤），可通过 `scheduler.WithDupeFilter` 注入 `contrib/dedup` 等高级去重策略
 - **Downloader** — HTTP 下载（Slot 机制、并发控制、延迟控制）
 - **Scraper** — 回调执行和结果分发
 - **Signal** — 事件总线
@@ -128,7 +128,7 @@ Engine 使用 `errgroup` 统一管理三个核心 goroutine：
 │  │ DupeFilter  │   │  Priority Queue │ │
 │  │ (去重过滤)  │   │  (优先级队列)   │ │
 │  │             │   │                 │ │
-│  │ Set-based   │   │ Memory Queue    │ │
+│  │ Set/SimHash │   │ Memory Queue    │ │
 │  │ Fingerprint │   │ Disk Queue      │ │
 │  └─────────────┘   └─────────────────┘ │
 │                                         │
@@ -137,7 +137,7 @@ Engine 使用 `errgroup` 统一管理三个核心 goroutine：
 └─────────────────────────────────────────┘
 ```
 
-- **DupeFilter** — 基于请求指纹的去重过滤器
+- **DupeFilter** — 基于请求指纹的去重过滤器；可替换为 `contrib/dedup.CompositeDupeFilter` 实现 URL 规范化 + SimHash 近似去重
 - **Memory Queue** — 内存优先级队列（有序切片，Pop O(1)，Push O(log N)）
 - **Disk Queue** — 磁盘持久化队列（支持断点续爬，`JOBDIR` 配置）
 
