@@ -4,7 +4,7 @@
 
 **scrapy-go** 是一个用 Go 语言实现的高性能异步爬虫框架，架构设计对齐 Python [Scrapy](https://scrapy.org/)，在保留 Scrapy 核心设计理念的同时，充分利用 Go 的并发模型和类型安全特性，提供更高的运行效率和更低的资源消耗。
 
-> 📌 当前版本：**v1.2.4** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
+> 📌 当前版本：**v1.2.6** &nbsp;|&nbsp; 📋 [更新日志](#-更新日志)
 
 ---
 
@@ -1218,6 +1218,7 @@ scrapy-go/
 - 💾 **通用持久化存储适配器** — MongoDB/PostgreSQL/Elasticsearch 批量写入 Pipeline（`contrib/storage`）
 - 🛡️ **高级重试策略** — 指数退避 + 抖动 + 域名级熔断器（Closed → Open → Half-Open）
 - ⏱️ **分布式限速器** — Redis 滑动窗口算法，按域名差异化配置（`contrib/ratelimit`）
+- 🌐 **代理池管理器** — 多种轮换策略（RoundRobin/Random/Weighted）+ 后台健康检查 + 失败自动重试（`contrib/proxy`）
 - 📊 **Scheduler 内存队列溢出保护** — 超阈值自动溢出到磁盘队列，防止 OOM
 - ⚡ **Redis 去重 Pipeline 批量优化** — 批量 SISMEMBER + Pipeline 模式，减少网络往返
 - 🌐 **轻量级 REST API** — Spider 注册表 + HTTP 管理接口（`contrib/web`）
@@ -1229,6 +1230,33 @@ scrapy-go/
 
 
 ## 📝 更新日志
+
+### v1.2.6 🚀
+
+> **P5-014 代理池管理器（独立模块）— v1.3.0 预发布版**
+
+- 🚀 **`contrib/proxy` 独立子模块** — 生产级代理池管理器，主模块零侵入（不引入此模块时编译产物不含任何代理池代码）
+- 🚀 **三种轮换策略** — `RoundRobin`（atomic 自增取模无锁）/ `Random`（基于 `math/rand/v2`）/ `Weighted`（累积权重 + 二分查找 O(log n)）
+- 🚀 **后台健康检查** — 周期性探测代理可用性，失败自动剔除，恢复后自动重新启用；信号量限流（最大 8 并发）；`context.Context` 优雅退出
+- 🚀 **失败自动重试** — `ProcessException` 返回 `errors.NewRequestError`，由 Engine 复用 `RetryMiddleware` 模式重新调度，受 `MaxProxyRetries` 限制
+- 🚀 **多种代理来源** — `StaticProvider`（静态列表）/ `FileProvider`（文件加载）/ `HTTPAPIProvider`（API 拉取，支持 json_array/json_field/lines 三种格式）/ `CompositeProvider`（组合去重）
+- 🚀 **`Pool` 接口** — `Get` / `Mark` / `Refresh` / `Snapshots` / `Size` / `Healthy` / `Close`，使用 `sync.RWMutex` + `atomic` 高并发友好；`Get` 路径通过 `sync.Pool` 复用候选切片避免堆分配
+- 🚀 **`Middleware` 协作** — 默认优先级 740 先于内置 `HttpProxyMiddleware`（750）执行；用户已设置 `Meta["proxy"]` 时跳过；池为空时降级直连不阻塞请求
+- 🚀 **增量合并刷新** — `Refresh` 时已存在的代理保留统计与状态，新增/移除按 URL 比对
+- 📊 **状态机** — `Healthy` ⇄ `Degraded`（失败过半）→ `Unhealthy`（达 `MaxFailures`）→ `Healthy`（健康检查恢复达 `RecoveryThreshold`）
+- ✅ **测试覆盖率 91.0%** — 单元测试 + 集成测试全部通过 race detector
+- 📖 **完整文档** — `contrib/proxy/README.md` 含架构图、配置项、使用示例
+
+### v1.2.5 🚀
+
+> **P5-005 Phase 2：全栈 Web 平台 + 声明式爬虫创建**
+
+- 🚀 **SSE 实时事件推送** — `EventHub` 事件中心 + Signal → SSE 桥接 + `GET /api/events` 端点
+- 🚀 **Dashboard Web UI** — 基于 Vue.js 3 + Chart.js + Bootstrap 5 的单页应用，通过 `go:embed` 嵌入静态文件
+- 🚀 **爬取历史持久化** — `Store` 记录运行 ID/时长/状态/统计，可选 JSON 文件持久化
+- 🚀 **声明式爬虫创建** — `POST /api/spiders/register` 完整实现：`SpiderSpec` JSON → 校验 → 转换为 `CrawlSpider` → 注册到 Registry
+- 🚀 **可视化创建器** — Dashboard 模态框表单配置爬虫，支持规则与 Schema JSON 编辑
+- 🚀 **事件类型丰富** — spider_started/finished/opened/closed/error, item_scraped/dropped, request_scheduled, response_received, engine_started/stopped, stats_update, spider_registered
 
 ### v1.2.4 🐛
 
