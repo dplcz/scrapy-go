@@ -83,6 +83,35 @@ func (t *Tracer) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// ContextWithRemoteSpanContext 将远程 SpanContext 注入到 context 中。
+//
+// 通过 OTel 的 trace.ContextWithRemoteSpanContext 实现，
+// 使后续通过 Start 创建的 Span 能够正确建立父子关系。
+func (t *Tracer) ContextWithRemoteSpanContext(ctx context.Context, sc telemetry.SpanContext) context.Context {
+	if !sc.IsValid() {
+		return ctx
+	}
+
+	// 将 scrapy-go SpanContext 转换为 OTel SpanContext
+	traceID, err := oteltrace.TraceIDFromHex(sc.TraceID)
+	if err != nil {
+		return ctx
+	}
+	spanID, err := oteltrace.SpanIDFromHex(sc.SpanID)
+	if err != nil {
+		return ctx
+	}
+
+	otelSC := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+		TraceID:    traceID,
+		SpanID:     spanID,
+		TraceFlags: oteltrace.TraceFlags(sc.TraceFlags),
+		Remote:     true,
+	})
+
+	return oteltrace.ContextWithRemoteSpanContext(ctx, otelSC)
+}
+
 // Span 是 telemetry.Span 接口的 OpenTelemetry 实现。
 //
 // 包装 OTel SDK 的 trace.Span，将 scrapy-go 的 Span 操作

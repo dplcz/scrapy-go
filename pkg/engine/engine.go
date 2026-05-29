@@ -25,6 +25,7 @@ import (
 	ssignal "github.com/dplcz/scrapy-go/pkg/signal"
 	"github.com/dplcz/scrapy-go/pkg/spider"
 	"github.com/dplcz/scrapy-go/pkg/stats"
+	"github.com/dplcz/scrapy-go/pkg/telemetry"
 )
 
 const (
@@ -68,6 +69,12 @@ type Engine struct {
 
 	// forceShutdown 标记是否收到第二次 SIGINT，需要强制退出
 	forceShutdown atomic.Bool
+
+	// traceInjector 是可选的追踪上下文注入器。
+	// 当非 nil 时，Engine 在 downloadAndScrape 流程中自动创建 scrape Span
+	// 并为回调产出的新请求注入 trace context，实现回调链因果关系追踪。
+	// 通过 SetTraceInjector 方法设置，默认为 nil（零开销）。
+	traceInjector telemetry.TraceContextInjector
 }
 
 // NewEngine 创建一个新的 Engine。
@@ -111,6 +118,18 @@ func NewEngine(
 // SetGracefulShutdownTimeout 设置优雅关闭超时时间。
 func (e *Engine) SetGracefulShutdownTimeout(d time.Duration) {
 	e.gracefulShutdownTimeout = d
+}
+
+// SetTraceInjector 设置追踪上下文注入器。
+//
+// 当设置了非 nil 的 TraceContextInjector 时，Engine 会在 downloadAndScrape 流程中：
+//   - 调用 BeforeScrape 创建 scrape Span
+//   - 为回调产出的新请求调用 InjectContext 注入 trace context
+//   - 调用 AfterScrape 结束 scrape Span
+//
+// 此方法应在 Engine.Start 之前调用。
+func (e *Engine) SetTraceInjector(injector telemetry.TraceContextInjector) {
+	e.traceInjector = injector
 }
 
 // Start 启动引擎，开始爬取流程。
@@ -498,6 +517,12 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 		}
 	}()
 
+	// 追踪：创建 scrape Span（如果启用了 TraceContextInjector）
+	var scrapeID uint64
+	if e.traceInjector != nil {
+		scrapeID = e.traceInjector.BeforeScrape(request)
+	}
+
 	// 通过下载器中间件链下载
 	var resp *shttp.Response
 	var err error
@@ -511,6 +536,11 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 	}
 
 	if err != nil {
+		// 追踪：下载失败，结束 scrape Span
+		if e.traceInjector != nil && scrapeID != 0 {
+			e.traceInjector.AfterScrape(scrapeID, telemetry.ScrapeYield{}, err)
+		}
+
 		// 检查是否为 NewRequestError（重试/重定向产生的新请求）
 		var newReqErr *serrors.NewRequestError
 		if errors.As(err, &newReqErr) {
@@ -552,10 +582,25 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 	// 通过 Scraper 处理响应
 	newReqs, err := e.scraper.Scrape(ctx, resp, request)
 	if err != nil {
+		// 追踪：回调执行失败，结束 scrape Span
+		if e.traceInjector != nil && scrapeID != 0 {
+			e.traceInjector.AfterScrape(scrapeID, telemetry.ScrapeYield{}, err)
+		}
 		if errors.Is(err, serrors.ErrCloseSpider) {
 			e.slot.closing.Store(true)
 			return
 		}
+		return
+	}
+
+	// 追踪：为回调产出的新请求注入 trace context，然后结束 scrape Span
+	if e.traceInjector != nil && scrapeID != 0 {
+		for _, newReq := range newReqs {
+			e.traceInjector.InjectContext(scrapeID, newReq)
+		}
+		e.traceInjector.AfterScrape(scrapeID, telemetry.ScrapeYield{
+			Requests: len(newReqs),
+		}, nil)
 	}
 
 	// 调度新请求

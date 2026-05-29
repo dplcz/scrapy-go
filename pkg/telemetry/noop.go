@@ -24,6 +24,11 @@ func (t *NoopTracer) Start(ctx context.Context, operationName string, opts ...Sp
 	return ctx, &NoopSpan{}
 }
 
+// ContextWithRemoteSpanContext 空操作，返回原始 context。
+func (t *NoopTracer) ContextWithRemoteSpanContext(ctx context.Context, sc SpanContext) context.Context {
+	return ctx
+}
+
 // Shutdown 空操作，立即返回 nil。
 func (t *NoopTracer) Shutdown(ctx context.Context) error {
 	return nil

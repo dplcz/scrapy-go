@@ -90,9 +90,16 @@ func main() {
 
     c := crawler.NewDefault()
 
-    // 创建追踪扩展
-    traceExt := telemetry.NewTraceExtension(tracer, c.Signals, c.Logger)
+    // 创建追踪扩展（v2：以回调链因果关系为核心）
+    traceExt := telemetry.NewTraceExtension(tracer, c.Signals, c.Logger,
+        telemetry.WithCallbackRegistry(c.CallbackRegistry),  // 启用回调名称解析
+        telemetry.WithMaxActiveSpans(10000),                 // 最大活跃 Span 数
+    )
     c.AddExtension(traceExt, "TraceExtension", 100)
+
+    // 将 TraceExtension 注入 Engine 作为 TraceContextInjector
+    // 启用回调链因果关系追踪（trace context 自动传播）
+    c.Engine.SetTraceInjector(traceExt)
 
     c.Run(ctx, NewMySpider())
 }
@@ -178,12 +185,21 @@ func main() {
 | `scrapy_request_duration_seconds` | Histogram | 请求延迟分布 |
 | `scrapy_spider_elapsed_seconds` | Gauge | Spider 运行时长（秒） |
 
-### 追踪 Span
+### 追踪 Span（v2）
 
-| Span 名称 | Kind | 触发信号 | 说明 |
+| Span 名称 | Kind | 触发方式 | 说明 |
 |-----------|------|---------|------|
-| `spider.crawl` | Internal | SpiderOpened/Closed | Spider 生命周期根 Span |
-| `http.request` | Client | RequestReachedDownloader/RequestLeftDownloader | HTTP 请求子 Span（按 Request 指针关联，完整追踪请求-响应生命周期） |
+| `spider.crawl` | Internal | SpiderOpened/Closed 信号 | Spider 生命周期根 Span |
+| `scrape:{callback}` | Internal | Engine.downloadAndScrape → TraceContextInjector | 回调执行 Span（如 `scrape:ParseDetail`），parent 从 `_trace_parent` Meta 恢复 |
+
+**Event（记录在 scrape Span 上）**：
+
+| Event 名称 | 触发信号 | 说明 |
+|-----------|---------|------|
+| `http.download` | RequestReachedDownloader | 记录下载开始（URL、Method） |
+| `http.response` | RequestLeftDownloader | 记录下载完成（状态码、延迟） |
+| `spider.error` | SpiderError | 记录错误事件 |
+| `item.scraped` | ItemScraped | 记录 Item 产出 |
 
 ## HTTP 端点
 
@@ -211,7 +227,9 @@ MetricsExtension 内置 HTTP 服务器，提供以下端点：
 ## 设计决策
 
 - **适配器模式** — 将 OTel/Prometheus 的具体实现适配为 `pkg/telemetry` 定义的轻量级接口
-- **信号驱动** — 通过框架信号系统自动采集数据，无需修改业务代码
+- **信号驱动 + Engine 注入** — 通过框架信号系统自动采集数据，同时通过 `TraceContextInjector` 接口在 Engine 层实现 trace context 传播，无需修改业务代码
+- **回调链因果追踪（v2）** — 追踪粒度从 HTTP 请求提升到回调执行，`scrape:{callback}` Span 替代 `http.request` Span，HTTP 下载降级为 Event
+- **Trace Context 传播** — 通过 `Request.Meta["_trace_parent"]` 传播 W3C traceparent 格式字符串，天然兼容序列化（磁盘队列/Redis 队列）
 - **独立子模块** — 避免主模块引入重量级依赖，用户按需安装
 - **零侵入** — 未启用时使用 `NoopTracer`/`NoopMetricsRegistry`，零运行时开销
 - **线程安全** — 所有组件保证并发安全，支持多 goroutine 同时访问

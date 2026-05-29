@@ -108,6 +108,19 @@ type Tracer interface {
 	//   - 新创建的 Span（调用方负责调用 End() 结束）
 	Start(ctx context.Context, operationName string, opts ...SpanOption) (context.Context, Span)
 
+	// ContextWithRemoteSpanContext 将远程 SpanContext 注入到 context 中。
+	//
+	// 用于从 W3C traceparent 字符串恢复的 SpanContext 注入到 context，
+	// 使后续通过 Start 创建的 Span 能够正确建立父子关系。
+	//
+	// 参数：
+	//   - ctx: 基础 context
+	//   - sc: 远程 SpanContext（通常从 ParseTraceparent 获得）
+	//
+	// 返回：
+	//   - 包含远程 SpanContext 的新 context
+	ContextWithRemoteSpanContext(ctx context.Context, sc SpanContext) context.Context
+
 	// Shutdown 关闭 Tracer，刷新所有待发送的追踪数据。
 	// 应在应用退出前调用。
 	Shutdown(ctx context.Context) error

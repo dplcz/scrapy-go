@@ -6,6 +6,68 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
+## [v1.3.0] — 2026-05-29
+
+> **🔭 P5-026：Telemetry 重构 — 以 Item 产出链路为核心的分布式追踪（Phase 1 & 2）**
+>
+> 重构 `TraceExtension` 为 v2 架构，追踪粒度从 HTTP 请求提升到回调执行，
+> 实现回调链因果关系追踪。通过 `Request.Meta["_trace_parent"]` 传播 W3C traceparent
+> 格式字符串，天然兼容磁盘队列（断点续爬）和 Redis 队列（分布式）。
+
+### 新增
+
+#### P5-026a: TraceExtension v2 — scrape Span 替代 http.request Span
+
+- ✨ **`scrape:{callback}` Span** — 追踪粒度从 HTTP 请求提升到回调执行，每个回调创建独立 Span
+- ✨ **HTTP 下载降级为 Event** — `http.download` 和 `http.response` 作为 scrape Span 上的 Event 记录，减少 Span 数量，提高信噪比
+- ✨ **回调名称解析** — 通过 `WithCallbackRegistry` Option 注入 `CallbackRegistry`，自动解析回调函数名用于 Span 命名
+- ✨ **最大活跃 Span 限制** — `WithMaxActiveSpans` 防止内存泄漏，默认 10000
+- ✨ **`TraceExtensionOption` 函数式选项** — 支持 `WithCallbackRegistry`、`WithMaxActiveSpans` 配置
+
+#### P5-026b: Trace Context 传播
+
+- ✨ **`TraceContextInjector` 接口** — 定义在 `pkg/telemetry`（不依赖 contrib），由 Engine 调用实现 trace context 注入
+- ✨ **`Engine.SetTraceInjector` 开关** — Engine 层可选启用追踪注入，nil 时零开销
+- ✨ **W3C traceparent 传播** — `FormatTraceparent` / `ParseTraceparent` 工具函数，实现 `SpanContext` ↔ 字符串互转
+- ✨ **`Tracer.ContextWithRemoteSpanContext`** — Tracer 接口新增方法，支持从远程 SpanContext 恢复 context 建立父子关系
+- ✨ **`MetaKeyTraceparent` / `MetaKeyTraceSession` 常量** — 定义在 `pkg/telemetry`，标准化 Meta key 命名
+- ✨ **OTel 适配器实现** — `contrib/telemetry/otel.Tracer` 实现 `ContextWithRemoteSpanContext`，通过 `trace.ContextWithRemoteSpanContext` 注入
+
+### 变更
+
+- ♻️ **`TraceExtension` 重构为 v2** — 不再为每个 HTTP 请求创建独立 `http.request` Span
+- ♻️ **`TraceExtension` 不再监听 `ResponseReceived` 信号** — HTTP 响应信息通过 `RequestLeftDownloader` 信号的 Event 记录
+- ♻️ **`TraceExtension` 实现 `TraceContextInjector` 接口** — 可直接注入 Engine 作为追踪注入器
+- ♻️ **`Tracer` 接口扩展** — 新增 `ContextWithRemoteSpanContext` 方法（需更新自定义 Tracer 实现）
+- ♻️ **`NoopTracer` 更新** — 实现新增的 `ContextWithRemoteSpanContext` 方法（空操作）
+
+### 迁移指南
+
+**`Tracer` 接口变更**：如果您有自定义的 `Tracer` 实现，需要新增 `ContextWithRemoteSpanContext` 方法：
+
+```go
+func (t *MyTracer) ContextWithRemoteSpanContext(ctx context.Context, sc telemetry.SpanContext) context.Context {
+    // 将 sc 注入到 ctx 中，使后续 Start 创建的 Span 能建立父子关系
+    return ctx // 最简实现：不传播
+}
+```
+
+**`TraceExtension` 构造函数变更**：新增可选参数：
+
+```go
+// 旧版
+ext := telemetry.NewTraceExtension(tracer, signals, logger)
+
+// 新版（向后兼容，无 opts 时行为与旧版类似）
+ext := telemetry.NewTraceExtension(tracer, signals, logger,
+    telemetry.WithCallbackRegistry(registry),  // 可选：启用回调名称解析
+    telemetry.WithMaxActiveSpans(10000),       // 可选：设置最大活跃 Span 数
+)
+
+// 启用 trace context 传播（新增步骤）
+engine.SetTraceInjector(ext)
+```
+
 ## [v1.2.6] — 2026-05-28
 
 > **🚀 P5-014：代理池管理器 + P5-015：高级去重策略（独立模块）— v1.3.0 预发布版**
