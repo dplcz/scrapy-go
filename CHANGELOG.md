@@ -6,13 +6,16 @@
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
 
-## [v1.3.0] — 2026-05-29
+## [v1.3.0] — 2026-06-05
 
-> **🔭 P5-026：Telemetry 重构 — 以 Item 产出链路为核心的分布式追踪（Phase 1 & 2）**
+> **🔭 P5-026：Telemetry 重构 — 以 Item 产出链路为核心的分布式追踪（Phase 1 ~ 5 全部完成）**
 >
 > 重构 `TraceExtension` 为 v2 架构，追踪粒度从 HTTP 请求提升到回调执行，
 > 实现回调链因果关系追踪。通过 `Request.Meta["_trace_parent"]` 传播 W3C traceparent
 > 格式字符串，天然兼容磁盘队列（断点续爬）和 Redis 队列（分布式）。
+> Phase 3 新增 Item Pipeline 独立 Span，精确追踪每个 Item 的 Pipeline 处理耗时和结果。
+> Phase 4 引入 Session 策略，断点续爬重启后自动开启新 Trace，避免僵尸链路。
+> Phase 5 提供 `WithTraceHTTPDownload` 兼容开关，按需恢复 v1 旧行为。
 
 ### 新增
 
@@ -33,13 +36,45 @@
 - ✨ **`MetaKeyTraceparent` / `MetaKeyTraceSession` 常量** — 定义在 `pkg/telemetry`，标准化 Meta key 命名
 - ✨ **OTel 适配器实现** — `contrib/telemetry/otel.Tracer` 实现 `ContextWithRemoteSpanContext`，通过 `trace.ContextWithRemoteSpanContext` 注入
 
+#### P5-026c: Item Pipeline Span
+
+- ✨ **`item.pipeline` 独立子 Span** — 每个 Item 的 Pipeline 处理创建独立 Span（parent 为对应的 scrape Span），精确记录 Pipeline 处理耗时
+- ✨ **`TraceContextInjector.BeforeItemPipeline`** — 接口新增方法，在 Item 进入 Pipeline 前创建 Span
+- ✨ **`TraceContextInjector.AfterItemPipeline`** — 接口新增方法，在 Pipeline 处理完成后结束 Span，根据结果设置状态（成功/丢弃/错误）
+- ✨ **`WithTraceItemPipeline` Option** — 控制是否为 Item Pipeline 创建独立 Span（默认 true），设为 false 时仅在根 Span 上记录 Event
+- ✨ **`Scraper.SetTraceInjector`** — Scraper 新增方法，由 Engine 自动同步设置
+- ✨ **`Scraper.SetCurrentScrapeID`** — Scraper 新增方法，由 Engine 在 Scrape 调用前设置，用于 Item Span 确定 parent
+- ✨ **`ItemDropped` / `ItemError` 信号监听** — TraceExtension 新增对 `ItemDropped` 和 `ItemError` 信号的监听，在根 Span 上记录对应 Event
+- ✨ **Pipeline 结果 Event** — `AfterItemPipeline` 根据 err 类型记录 `pipeline.success`/`pipeline.dropped`/`pipeline.error` Event
+
+#### P5-026d: Session 策略（断点续爬兼容）
+
+- ✨ **`TracePropagationPolicy` 类型** — 在 `pkg/telemetry/propagation.go` 中定义传播策略枚举（`PropagateWithinSession` / `PropagateAlways` / `PropagateNever`）
+- ✨ **`WithPropagationPolicy` Option** — 配置 Trace Context 在请求链中的传播行为，默认为 `PropagateWithinSession`（断点续爬安全）
+- ✨ **Session ID 自动生成** — `SpiderOpened` 信号触发时通过 `crypto/rand` 生成 16 字节随机十六进制（共 32 字符）的 sessionID，无外部依赖
+- ✨ **`_trace_session` Meta 注入** — `PropagateWithinSession` 模式下 `InjectContext` 同时注入 `_trace_parent` 和 `_trace_session`
+- ✨ **`shouldPropagate` 决策函数** — 根据策略和 `_trace_session` 是否匹配当前 sessionID 决定是否延续旧 Trace
+- ✨ **僵尸 Trace 防护** — 断点续爬重启后从磁盘队列恢复的旧请求 sessionID 不匹配，自动忽略其 traceparent，使用新的 rootCtx 作为 parent
+- ✨ **根 Span 属性增强** — `spider.crawl` Span 新增 `trace.session_id` 和 `trace.propagation_policy` 属性，便于在追踪 UI 中筛选
+
+#### P5-026e: 配置接口完善 + HTTP 下载追踪开关
+
+- ✨ **`WithTraceHTTPDownload` Option** — 控制是否为每个 HTTP 请求创建独立 `http.request` 子 Span（默认 false，恢复 v1 旧行为时设为 true）
+- ✨ **`http.request` Span 完整生命周期管理** — 启用时由 `RequestReachedDownloader` 创建（parent 为 scrape Span），`RequestLeftDownloader` 时根据下载结果设置状态并 End
+- ✨ **`httpRequestSpans` sync.Map** — 按 `*Request` 指针关联活跃的 `http.request` Span，保证并发安全；`Close` 时自动清理未结束的 Span 防止泄漏
+- ✨ **配置日志增强** — `Open` 日志记录 `trace_http_download` 和 `propagation_policy` 当前配置，便于运维诊断
+- ✨ **完整单元测试** — Phase 4/5 新增 14 个单元测试用例 + 内置 `spyTracer` mock，覆盖率从 87.4% 提升至 89.5%（≥85% 门槛）
+
 ### 变更
 
-- ♻️ **`TraceExtension` 重构为 v2** — 不再为每个 HTTP 请求创建独立 `http.request` Span
+- ♻️ **`TraceExtension` 重构为 v2** — 不再为每个 HTTP 请求创建独立 `http.request` Span（可通过 `WithTraceHTTPDownload(true)` 恢复）
 - ♻️ **`TraceExtension` 不再监听 `ResponseReceived` 信号** — HTTP 响应信息通过 `RequestLeftDownloader` 信号的 Event 记录
 - ♻️ **`TraceExtension` 实现 `TraceContextInjector` 接口** — 可直接注入 Engine 作为追踪注入器
+- ♻️ **`TraceContextInjector` 接口扩展** — 新增 `BeforeItemPipeline`/`AfterItemPipeline` 方法（需更新自定义实现）
 - ♻️ **`Tracer` 接口扩展** — 新增 `ContextWithRemoteSpanContext` 方法（需更新自定义 Tracer 实现）
 - ♻️ **`NoopTracer` 更新** — 实现新增的 `ContextWithRemoteSpanContext` 方法（空操作）
+- ♻️ **`Engine.SetTraceInjector` 增强** — 自动同步 injector 到 Scraper，无需用户手动设置
+- ♻️ **默认传播策略变更** — 由 v1 的"始终传播"改为 `PropagateWithinSession`（更安全，避免断点续爬僵尸 Trace）；如需 v1 行为可显式 `WithPropagationPolicy(telemetry.PropagateAlways)`
 
 ### 迁移指南
 
@@ -58,14 +93,33 @@ func (t *MyTracer) ContextWithRemoteSpanContext(ctx context.Context, sc telemetr
 // 旧版
 ext := telemetry.NewTraceExtension(tracer, signals, logger)
 
-// 新版（向后兼容，无 opts 时行为与旧版类似）
+// 新版（向后兼容，无 opts 时使用安全默认值）
 ext := telemetry.NewTraceExtension(tracer, signals, logger,
-    telemetry.WithCallbackRegistry(registry),  // 可选：启用回调名称解析
-    telemetry.WithMaxActiveSpans(10000),       // 可选：设置最大活跃 Span 数
+    telemetry.WithCallbackRegistry(registry),                                    // 可选：启用回调名称解析
+    telemetry.WithMaxActiveSpans(10000),                                         // 可选：设置最大活跃 Span 数
+    telemetry.WithPropagationPolicy(telemetry.PropagateWithinSession),           // 可选：传播策略（默认 within_session）
+    telemetry.WithTraceItemPipeline(true),                                       // 可选：Item Pipeline Span（默认 true）
+    telemetry.WithTraceHTTPDownload(false),                                      // 可选：HTTP 下载独立 Span（默认 false）
 )
 
 // 启用 trace context 传播（新增步骤）
 engine.SetTraceInjector(ext)
+```
+
+**分布式部署迁移**：如果您依赖 Trace 在多个 Worker（共享 Redis 队列）之间延续，需要显式开启 `PropagateAlways`：
+
+```go
+ext := telemetry.NewTraceExtension(tracer, signals, logger,
+    telemetry.WithPropagationPolicy(telemetry.PropagateAlways),
+)
+```
+
+**v1 兼容模式**：如果您依赖 v1 中每个 HTTP 请求一个 `http.request` 子 Span 的视图：
+
+```go
+ext := telemetry.NewTraceExtension(tracer, signals, logger,
+    telemetry.WithTraceHTTPDownload(true),
+)
 ```
 
 ## [v1.2.6] — 2026-05-28

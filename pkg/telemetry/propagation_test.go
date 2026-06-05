@@ -160,3 +160,31 @@ func TestFormatParseRoundTrip(t *testing.T) {
 		t.Error("从字符串恢复的 SpanContext 应标记为 IsRemote=true")
 	}
 }
+
+func TestTracePropagationPolicy_String(t *testing.T) {
+	tests := []struct {
+		policy TracePropagationPolicy
+		want   string
+	}{
+		{PropagateWithinSession, "within_session"},
+		{PropagateAlways, "always"},
+		{PropagateNever, "never"},
+		{TracePropagationPolicy(99), "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.policy.String(); got != tt.want {
+				t.Errorf("policy.String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTracePropagationPolicy_DefaultIsWithinSession(t *testing.T) {
+	// 显式验证 PropagateWithinSession 是零值（保证 NewTraceExtension
+	// 默认采用 within_session 策略，这是断点续爬的安全默认）
+	var p TracePropagationPolicy
+	if p != PropagateWithinSession {
+		t.Errorf("零值 TracePropagationPolicy 应为 PropagateWithinSession，实际为 %v", p)
+	}
+}

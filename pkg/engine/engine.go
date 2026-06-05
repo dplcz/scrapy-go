@@ -127,9 +127,15 @@ func (e *Engine) SetGracefulShutdownTimeout(d time.Duration) {
 //   - 为回调产出的新请求调用 InjectContext 注入 trace context
 //   - 调用 AfterScrape 结束 scrape Span
 //
+// 同时会将 injector 传递给 Scraper，用于 Item Pipeline Span 的创建和结束。
+//
 // 此方法应在 Engine.Start 之前调用。
 func (e *Engine) SetTraceInjector(injector telemetry.TraceContextInjector) {
 	e.traceInjector = injector
+	// 同步设置到 Scraper，用于 Item Pipeline Span
+	if e.scraper != nil {
+		e.scraper.SetTraceInjector(injector)
+	}
 }
 
 // Start 启动引擎，开始爬取流程。
@@ -580,6 +586,10 @@ func (e *Engine) downloadAndScrape(ctx context.Context, request *shttp.Request) 
 	)
 
 	// 通过 Scraper 处理响应
+	// 设置当前 scrapeID，供 Scraper 在 processOutputs 中为 Item Span 确定 parent
+	if e.traceInjector != nil && scrapeID != 0 {
+		e.scraper.SetCurrentScrapeID(scrapeID)
+	}
 	newReqs, err := e.scraper.Scrape(ctx, resp, request)
 	if err != nil {
 		// 追踪：回调执行失败，结束 scrape Span

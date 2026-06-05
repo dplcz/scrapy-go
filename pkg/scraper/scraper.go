@@ -16,6 +16,7 @@ import (
 	"github.com/dplcz/scrapy-go/pkg/spider"
 	smiddle "github.com/dplcz/scrapy-go/pkg/spider/middleware"
 	"github.com/dplcz/scrapy-go/pkg/stats"
+	"github.com/dplcz/scrapy-go/pkg/telemetry"
 )
 
 // Scraper 处理下载的响应，调用 Spider 回调，分发结果。
@@ -42,6 +43,37 @@ type Scraper struct {
 
 	// itemWg 用于等待所有 in-flight Item 处理完毕（优雅关闭）。
 	itemWg sync.WaitGroup
+
+	// traceInjector 是可选的追踪上下文注入器。
+	// 当非 nil 时，Scraper 在 Item 进入 Pipeline 前后调用
+	// BeforeItemPipeline/AfterItemPipeline 创建和结束 item.pipeline Span。
+	traceInjector telemetry.TraceContextInjector
+
+	// currentScrapeID 存储当前正在处理的 scrapeID，
+	// 用于在 processOutputs 中为 Item Span 确定 parent。
+	// 注意：此字段仅在 Scrape 方法的同步路径中设置，
+	// goroutine 中通过闭包捕获值使用，无竞态。
+	currentScrapeID uint64
+}
+
+// SetTraceInjector 设置追踪上下文注入器。
+//
+// 当设置了非 nil 的 TraceContextInjector 时，Scraper 会在 Item 进入 Pipeline 前后
+// 调用 BeforeItemPipeline/AfterItemPipeline 创建和结束 item.pipeline Span，
+// 实现 Item 产出链路的精确追踪。
+//
+// 此方法应在 Scraper.Open 之前调用。
+func (s *Scraper) SetTraceInjector(injector telemetry.TraceContextInjector) {
+	s.traceInjector = injector
+}
+
+// SetCurrentScrapeID 设置当前正在处理的 scrapeID。
+//
+// 由 Engine 在调用 Scraper.Scrape 之前设置，用于在 processOutputs 中
+// 为 Item Pipeline Span 确定 parent（scrape Span）。
+// scrapeID 为 0 表示不追踪。
+func (s *Scraper) SetCurrentScrapeID(scrapeID uint64) {
+	s.currentScrapeID = scrapeID
 }
 
 // NewScraper 创建一个新的 Scraper。
@@ -231,7 +263,9 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 				break
 			}
 			s.itemWg.Add(1) // 增加 WaitGroup 计数
-			go func(it any) {
+			// 捕获当前 scrapeID 用于 Item Span 的 parent 关联
+			scrapeID := s.currentScrapeID
+			go func(it any, sid uint64) {
 				defer s.itemWg.Done()
 				defer s.itemSem.Release(1) // 释放信号量
 				// panic recovery: 防止 Pipeline 中的 panic 导致进程崩溃
@@ -243,14 +277,27 @@ func (s *Scraper) processOutputs(ctx context.Context, outputs []spider.Output, r
 						s.stats.IncValue("spider_exceptions/panic", 1, 0)
 					}
 				}()
+
+				// 追踪：创建 item.pipeline Span（如果启用了 TraceContextInjector）
+				var itemSpanID uint64
+				if s.traceInjector != nil {
+					itemSpanID = s.traceInjector.BeforeItemPipeline(sid)
+				}
+
 				_, err := s.itemProc.ProcessItem(ctx, it, response)
+
+				// 追踪：结束 item.pipeline Span
+				if s.traceInjector != nil && itemSpanID != 0 {
+					s.traceInjector.AfterItemPipeline(itemSpanID, err)
+				}
+
 				if err != nil && !errors.Is(err, serrors.ErrDropItem) {
 					// Pipeline 处理错误（非 DropItem），记录但不中断
 					s.logger.Error("pipeline failed to process item",
 						"error", err,
 					)
 				}
-			}(item)
+			}(item, scrapeID)
 		}
 	}
 

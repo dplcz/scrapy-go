@@ -17,7 +17,7 @@
 - 🧬 **高级去重** — URL 规范化去重 + SimHash 内容近似去重 + 组合策略（`contrib/dedup`）
 - 📤 **数据导出** — Feed Export（JSON/CSV/XML）+ MongoDB/PostgreSQL/ES 批量写入
 - 🌐 **分布式支持** — Redis 队列 + 布隆过滤器 + 滑动窗口限速 + Web 管理平台（Dashboard + SSE 实时推送）
-- 📊 **可观测性** — OpenTelemetry 追踪 + Prometheus 指标
+- 📊 **可观测性** — OpenTelemetry 追踪（回调链因果关系 + Item Pipeline Span + 断点续爬安全的 Session 策略）+ Prometheus 指标
 - 🛡️ **类型安全配置** — 泛型 `Key[T]` + `Get[T]` API，编译期类型检查，消除魔法字符串
 
 ## 📊 性能数据

@@ -2,12 +2,16 @@ package telemetry
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	serrors "github.com/dplcz/scrapy-go/pkg/errors"
 	"github.com/dplcz/scrapy-go/pkg/extension"
 	scrapyhttp "github.com/dplcz/scrapy-go/pkg/http"
 	"github.com/dplcz/scrapy-go/pkg/signal"
@@ -22,28 +26,44 @@ import (
 // TraceExtension 是以回调链因果关系为核心的分布式追踪扩展（v2）。
 //
 // 追踪模型：
-//   - SpiderOpened → 创建根 Span "spider.crawl"
+//   - SpiderOpened → 创建根 Span "spider.crawl"，生成 sessionID
 //   - SpiderClosed → 结束根 Span
 //   - Engine.downloadAndScrape 中通过 TraceContextInjector 接口：
 //   - BeforeScrape → 创建 "scrape:{callback}" Span（parent 从 _trace_parent Meta 恢复）
-//   - InjectContext → 为新请求注入当前 Span 的 trace context
+//   - InjectContext → 为新请求注入当前 Span 的 trace context + session ID
 //   - AfterScrape → 结束 scrape Span
 //   - RequestReachedDownloader → 在 scrape Span 上记录 http.download Event
+//     （或当 traceHTTPDownload 为 true 时，创建独立 "http.request" 子 Span）
 //   - RequestLeftDownloader → 在 scrape Span 上记录 http.response Event
+//     （或当 traceHTTPDownload 为 true 时，结束 "http.request" Span）
 //   - SpiderError → 在根 Span 上记录错误事件
 //   - ItemScraped → 在根 Span 上记录 Item 事件
 //
+// Session 策略：
+//   - PropagateWithinSession（默认）：仅在同一 session 内延续 Trace，
+//     断点续爬重启后开启新 Trace，避免僵尸链路
+//   - PropagateAlways：始终延续 Trace（适合分布式实时爬取）
+//   - PropagateNever：不传播 Trace（每个回调独立 Trace，调试用）
+//
 // 同时实现 telemetry.TraceContextInjector 接口，由 Engine 调用。
 //
-// 线程安全：scrapeSpans 通过 sync.Map 管理，保证并发安全。
+// 线程安全：scrapeSpans/itemSpans/httpRequestSpans 通过 sync.Map 管理，保证并发安全。
 type TraceExtension struct {
 	tracer  telemetry.Tracer
 	signals *signal.Manager
 	logger  *slog.Logger
 
 	// 配置选项
-	callbackRegistry *scrapyhttp.CallbackRegistry
-	maxActiveSpans   int
+	callbackRegistry  *scrapyhttp.CallbackRegistry
+	maxActiveSpans    int
+	traceItemPipeline bool                             // 是否为 Item Pipeline 处理创建独立子 Span（默认 true）
+	traceHTTPDownload bool                             // 是否为 HTTP 下载创建独立 "http.request" 子 Span（默认 false）
+	policy            telemetry.TracePropagationPolicy // Trace Context 传播策略
+
+	// sessionID 是当前 Spider 运行的唯一标识。
+	// 在 onSpiderOpened 中生成，用于 PropagateWithinSession 策略下
+	// 区分本次运行与历史运行（断点续爬恢复的旧请求）。
+	sessionID string
 
 	// rootCtx 和 rootSpan 存储 Spider 级别的根 Span
 	rootCtx  context.Context
@@ -54,6 +74,16 @@ type TraceExtension struct {
 	// value: *scrapeSpanEntry
 	scrapeSpans sync.Map
 
+	// itemSpans 按 itemSpanID 关联活跃的 item.pipeline Span。
+	// key: uint64 (itemSpanID)
+	// value: *itemSpanEntry
+	itemSpans sync.Map
+
+	// httpRequestSpans 按 *Request 指针关联活跃的 http.request Span（仅在 traceHTTPDownload 为 true 时使用）。
+	// key: *scrapyhttp.Request
+	// value: telemetry.Span
+	httpRequestSpans sync.Map
+
 	// requestScrapeID 按 Request 指针关联 scrapeID，
 	// 用于信号处理器中查找对应的 scrape Span。
 	// key: *scrapyhttp.Request
@@ -62,6 +92,9 @@ type TraceExtension struct {
 
 	// nextScrapeID 是 scrapeID 的原子递增计数器
 	nextScrapeID atomic.Uint64
+
+	// nextItemSpanID 是 itemSpanID 的原子递增计数器
+	nextItemSpanID atomic.Uint64
 
 	// activeSpanCount 追踪当前活跃 Span 数量，防止内存泄漏
 	activeSpanCount atomic.Int64
@@ -74,6 +107,12 @@ type TraceExtension struct {
 type scrapeSpanEntry struct {
 	ctx  context.Context // 包含当前 Span 的 context
 	span telemetry.Span  // scrape:{callback} Span
+}
+
+// itemSpanEntry 存储一个 item.pipeline 操作的追踪上下文。
+type itemSpanEntry struct {
+	ctx  context.Context // 包含当前 Span 的 context
+	span telemetry.Span  // item.pipeline Span
 }
 
 // handlerRegistration 存储信号处理器的注册信息。
@@ -96,6 +135,19 @@ func WithCallbackRegistry(registry *scrapyhttp.CallbackRegistry) TraceExtensionO
 	}
 }
 
+// WithTraceItemPipeline 设置是否为 Item Pipeline 处理创建独立子 Span。
+//
+// 默认为 true。当启用时，每个 Item 的 Pipeline 处理会创建一个
+// "item.pipeline" 子 Span（parent 为对应的 scrape Span），精确记录
+// Pipeline 处理耗时和结果（成功/丢弃/错误）。
+//
+// 设为 false 时，Item Pipeline 不创建独立 Span，仅在根 Span 上记录 Event。
+func WithTraceItemPipeline(enable bool) TraceExtensionOption {
+	return func(e *TraceExtension) {
+		e.traceItemPipeline = enable
+	}
+}
+
 // WithMaxActiveSpans 设置最大活跃 Span 数量，防止内存泄漏。
 //
 // 当活跃 Span 数量超过此限制时，新的 BeforeScrape 调用将返回 0（不追踪）。
@@ -105,6 +157,37 @@ func WithMaxActiveSpans(n int) TraceExtensionOption {
 		if n > 0 {
 			e.maxActiveSpans = n
 		}
+	}
+}
+
+// WithPropagationPolicy 设置 Trace Context 传播策略。
+//
+// 默认为 PropagateWithinSession（推荐），断点续爬重启后开启新 Trace，
+// 避免产生跨越数小时的僵尸 Trace。
+//
+// 可选值：
+//   - PropagateWithinSession：仅在同一 session 内延续 Trace（默认）
+//   - PropagateAlways：始终延续 Trace（适合分布式实时爬取）
+//   - PropagateNever：不传播 Trace（每个回调独立 Trace，调试用）
+//
+// 详见 telemetry.TracePropagationPolicy 文档。
+func WithPropagationPolicy(policy telemetry.TracePropagationPolicy) TraceExtensionOption {
+	return func(e *TraceExtension) {
+		e.policy = policy
+	}
+}
+
+// WithTraceHTTPDownload 设置是否为 HTTP 下载创建独立 "http.request" 子 Span。
+//
+// 默认为 false。在默认行为下，HTTP 下载仅在 scrape Span 上记录
+// http.download / http.response Event，以提高信噪比、减少 Span 数量。
+//
+// 设为 true 时（恢复 v1 旧行为），每个 HTTP 请求会创建一个独立的 "http.request"
+// 子 Span（parent 为对应的 scrape Span），便于在 Jaeger 中精确查看每个 HTTP
+// 请求的耗时分布。注意：此模式下 Span 数量会显著增加（约 2 倍）。
+func WithTraceHTTPDownload(enable bool) TraceExtensionOption {
+	return func(e *TraceExtension) {
+		e.traceHTTPDownload = enable
 	}
 }
 
@@ -120,10 +203,13 @@ func NewTraceExtension(tracer telemetry.Tracer, signals *signal.Manager, logger 
 		logger = slog.Default()
 	}
 	ext := &TraceExtension{
-		tracer:         tracer,
-		signals:        signals,
-		logger:         logger,
-		maxActiveSpans: 10000,
+		tracer:            tracer,
+		signals:           signals,
+		logger:            logger,
+		maxActiveSpans:    10000,
+		traceItemPipeline: true,                             // 默认启用 Item Pipeline Span
+		traceHTTPDownload: false,                            // 默认 HTTP 下载仅记录 Event
+		policy:            telemetry.PropagateWithinSession, // 默认 session 内传播
 	}
 	for _, opt := range opts {
 		opt(ext)
@@ -153,8 +239,15 @@ func (e *TraceExtension) Open(ctx context.Context) error {
 	e.connectSignal(signal.RequestLeftDownloader, e.onRequestLeftDownloader)
 	e.connectSignal(signal.SpiderError, e.onSpiderError)
 	e.connectSignal(signal.ItemScraped, e.onItemScraped)
+	e.connectSignal(signal.ItemDropped, e.onItemDropped)
+	e.connectSignal(signal.ItemError, e.onItemError)
 
-	e.logger.Info("TraceExtension v2 enabled", "max_active_spans", e.maxActiveSpans)
+	e.logger.Info("TraceExtension v2 enabled",
+		"max_active_spans", e.maxActiveSpans,
+		"trace_item_pipeline", e.traceItemPipeline,
+		"trace_http_download", e.traceHTTPDownload,
+		"propagation_policy", e.policy.String(),
+	)
 	return nil
 }
 
@@ -174,6 +267,27 @@ func (e *TraceExtension) Close(ctx context.Context) error {
 		e.scrapeSpans.Delete(key)
 		return true
 	})
+
+	// 结束所有未完成的活跃 item.pipeline Span
+	e.itemSpans.Range(func(key, value any) bool {
+		if entry, ok := value.(*itemSpanEntry); ok {
+			entry.span.SetStatus(telemetry.SpanStatusError, "spider closed before item pipeline completed")
+			entry.span.End()
+		}
+		e.itemSpans.Delete(key)
+		return true
+	})
+
+	// 结束所有未完成的活跃 http.request Span（仅在 traceHTTPDownload 为 true 时存在）
+	e.httpRequestSpans.Range(func(key, value any) bool {
+		if span, ok := value.(telemetry.Span); ok {
+			span.SetStatus(telemetry.SpanStatusError, "spider closed before http request completed")
+			span.End()
+		}
+		e.httpRequestSpans.Delete(key)
+		return true
+	})
+
 	e.activeSpanCount.Store(0)
 
 	// 清理 requestScrapeID 映射
@@ -289,8 +403,18 @@ func (e *TraceExtension) AfterScrape(scrapeID uint64, yielded telemetry.ScrapeYi
 }
 
 // InjectContext 为新产出的请求注入当前 scrape Span 的 trace context。
+//
+// 同时根据当前传播策略注入 _trace_session：
+//   - PropagateNever: 不注入任何 Trace Context
+//   - PropagateAlways: 仅注入 _trace_parent
+//   - PropagateWithinSession: 注入 _trace_parent + _trace_session（用于断点续爬区分）
 func (e *TraceExtension) InjectContext(scrapeID uint64, newRequest any) {
 	if scrapeID == 0 {
+		return
+	}
+
+	// PropagateNever: 不注入任何 Trace Context
+	if e.policy == telemetry.PropagateNever {
 		return
 	}
 
@@ -313,6 +437,109 @@ func (e *TraceExtension) InjectContext(scrapeID uint64, newRequest any) {
 	}
 
 	req.SetMeta(telemetry.MetaKeyTraceparent, traceparent)
+
+	// PropagateWithinSession: 同时注入 _trace_session 用于断点续爬区分
+	if e.policy == telemetry.PropagateWithinSession && e.sessionID != "" {
+		req.SetMeta(telemetry.MetaKeyTraceSession, e.sessionID)
+	}
+}
+
+// BeforeItemPipeline 在 Item 进入 Pipeline 处理前调用，创建 item.pipeline 子 Span。
+//
+// 创建的 Span 以对应的 scrape Span 为 parent，形成完整的因果链：
+//
+//	scrape:{callback} → item.pipeline
+//
+// 如果 traceItemPipeline 为 false，返回 0（不创建 Item Span）。
+func (e *TraceExtension) BeforeItemPipeline(scrapeID uint64) (itemSpanID uint64) {
+	if e.tracer == nil || !e.traceItemPipeline {
+		return 0
+	}
+
+	// 检查活跃 Span 数量限制
+	if e.activeSpanCount.Load() >= int64(e.maxActiveSpans) {
+		return 0
+	}
+
+	// 确定 parent context：优先使用对应的 scrape Span，否则回退到 rootCtx
+	var parentCtx context.Context
+	if scrapeID != 0 {
+		if value, ok := e.scrapeSpans.Load(scrapeID); ok {
+			entry := value.(*scrapeSpanEntry)
+			parentCtx = entry.ctx
+		}
+	}
+	if parentCtx == nil {
+		if e.rootCtx != nil {
+			parentCtx = e.rootCtx
+		} else {
+			parentCtx = context.Background()
+		}
+	}
+
+	// 创建 item.pipeline Span
+	itemCtx, itemSpan := e.tracer.Start(parentCtx, "item.pipeline", telemetry.SpanOption{
+		Kind: telemetry.SpanKindInternal,
+	})
+
+	// 生成 itemSpanID 并存储
+	itemSpanID = e.nextItemSpanID.Add(1)
+	e.itemSpans.Store(itemSpanID, &itemSpanEntry{
+		ctx:  itemCtx,
+		span: itemSpan,
+	})
+	e.activeSpanCount.Add(1)
+
+	return itemSpanID
+}
+
+// AfterItemPipeline 在 Item Pipeline 处理完成后调用，结束 item.pipeline Span。
+//
+// 根据 err 参数设置 Span 状态和 Event：
+//   - err == nil: 状态 OK，记录 "pipeline.success" Event
+//   - ErrDropItem: 状态 OK，记录 "pipeline.dropped" Event
+//   - 其他 error: 状态 Error，记录 "pipeline.error" Event
+func (e *TraceExtension) AfterItemPipeline(itemSpanID uint64, err error) {
+	if itemSpanID == 0 {
+		return
+	}
+
+	value, ok := e.itemSpans.LoadAndDelete(itemSpanID)
+	if !ok {
+		return
+	}
+	e.activeSpanCount.Add(-1)
+
+	entry := value.(*itemSpanEntry)
+
+	if err == nil {
+		// Pipeline 处理成功
+		entry.span.AddEvent("pipeline.success", nil)
+		entry.span.SetStatus(telemetry.SpanStatusOK, "")
+	} else if isDropItemError(err) {
+		// Item 被丢弃（业务正常行为，不视为错误）
+		entry.span.AddEvent("pipeline.dropped", map[string]string{
+			"drop.reason": err.Error(),
+		})
+		entry.span.SetStatus(telemetry.SpanStatusOK, "item dropped")
+	} else {
+		// Pipeline 处理错误
+		entry.span.RecordError(err)
+		entry.span.AddEvent("pipeline.error", map[string]string{
+			"error.message": err.Error(),
+		})
+		entry.span.SetStatus(telemetry.SpanStatusError, err.Error())
+	}
+
+	entry.span.End()
+}
+
+// isDropItemError 检查错误是否为 ErrDropItem。
+func isDropItemError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, serrors.ErrDropItem)
 }
 
 // ============================================================================
@@ -326,18 +553,26 @@ func (e *TraceExtension) connectSignal(sig signal.Signal, handler signal.Handler
 }
 
 // resolveParentContext 从请求的 _trace_parent Meta 恢复父上下文。
-// 如果 Meta 中没有有效的 traceparent，回退到 rootCtx。
+//
+// 根据传播策略决定是否使用 Meta 中的 traceparent：
+//   - PropagateAlways: 始终使用（如果 traceparent 有效）
+//   - PropagateWithinSession: 仅当 _trace_session 匹配当前 sessionID 时使用
+//   - PropagateNever: 始终忽略，使用 rootCtx
+//
+// 当 Meta 中没有有效的 traceparent 或 session 不匹配时，回退到 rootCtx。
 func (e *TraceExtension) resolveParentContext(req *scrapyhttp.Request) context.Context {
-	if traceparent, ok := req.GetMeta(telemetry.MetaKeyTraceparent); ok {
-		if tp, ok := traceparent.(string); ok && tp != "" {
-			sc := telemetry.ParseTraceparent(tp)
-			if sc.IsValid() {
-				// 使用 Tracer 的 ContextWithRemoteSpanContext 注入远程 SpanContext
-				baseCtx := e.rootCtx
-				if baseCtx == nil {
-					baseCtx = context.Background()
+	if e.shouldPropagate(req) {
+		if traceparent, ok := req.GetMeta(telemetry.MetaKeyTraceparent); ok {
+			if tp, ok := traceparent.(string); ok && tp != "" {
+				sc := telemetry.ParseTraceparent(tp)
+				if sc.IsValid() {
+					// 使用 Tracer 的 ContextWithRemoteSpanContext 注入远程 SpanContext
+					baseCtx := e.rootCtx
+					if baseCtx == nil {
+						baseCtx = context.Background()
+					}
+					return e.tracer.ContextWithRemoteSpanContext(baseCtx, sc)
 				}
-				return e.tracer.ContextWithRemoteSpanContext(baseCtx, sc)
 			}
 		}
 	}
@@ -346,6 +581,39 @@ func (e *TraceExtension) resolveParentContext(req *scrapyhttp.Request) context.C
 		return e.rootCtx
 	}
 	return context.Background()
+}
+
+// shouldPropagate 根据传播策略判断是否应当从 Request.Meta 恢复 Trace Context。
+//
+// 决策规则：
+//   - PropagateAlways: 始终返回 true
+//   - PropagateNever: 始终返回 false
+//   - PropagateWithinSession: 仅当 _trace_session 匹配当前 sessionID 时返回 true
+//     （用于断点续爬场景下区分本次运行与历史运行）
+func (e *TraceExtension) shouldPropagate(req *scrapyhttp.Request) bool {
+	switch e.policy {
+	case telemetry.PropagateAlways:
+		return true
+	case telemetry.PropagateNever:
+		return false
+	case telemetry.PropagateWithinSession:
+		// 当前 sessionID 为空（如 SpiderOpened 尚未触发）时，保守起见不传播
+		if e.sessionID == "" {
+			return false
+		}
+		session, ok := req.GetMeta(telemetry.MetaKeyTraceSession)
+		if !ok {
+			// 旧请求或未通过 InjectContext 注入：不延续 Trace
+			return false
+		}
+		s, ok := session.(string)
+		if !ok {
+			return false
+		}
+		return s == e.sessionID
+	default:
+		return false
+	}
 }
 
 // resolveCallbackName 解析请求的回调函数名称。
@@ -368,9 +636,16 @@ func (e *TraceExtension) resolveCallbackName(req *scrapyhttp.Request) string {
 // 信号处理器
 // ============================================================================
 
-// onSpiderOpened 创建 Spider 根 Span。
+// onSpiderOpened 创建 Spider 根 Span，并生成本次运行的 sessionID。
 func (e *TraceExtension) onSpiderOpened(params map[string]any) error {
-	attrs := map[string]string{}
+	// 生成本次 Spider 运行的 sessionID（16 字节随机十六进制，共 32 字符）。
+	// 使用 crypto/rand 保证全局唯一性，避免引入外部 UUID 依赖。
+	e.sessionID = generateSessionID()
+
+	attrs := map[string]string{
+		"trace.session_id":         e.sessionID,
+		"trace.propagation_policy": e.policy.String(),
+	}
 	if sp, ok := params["spider"].(spider.Spider); ok {
 		attrs["spider.name"] = sp.Name()
 	} else if name, ok := params["spider"].(string); ok {
@@ -382,6 +657,21 @@ func (e *TraceExtension) onSpiderOpened(params map[string]any) error {
 		Attributes: attrs,
 	})
 	return nil
+}
+
+// generateSessionID 生成一个全局唯一的 session ID（16 字节随机十六进制）。
+//
+// 使用 crypto/rand 作为熵源，输出格式为 32 字符的小写十六进制字符串，
+// 与 W3C TraceID 长度一致。在极小概率下熵源不可用时，回退到时间戳 + 计数器，
+// 但不会返回空字符串以保证 PropagateWithinSession 策略始终可工作。
+func generateSessionID() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		// 熵源不可用时的兜底：使用纳秒时间戳作为 fallback
+		// 此分支在生产环境中几乎不会触发
+		return fmt.Sprintf("%016x%016x", time.Now().UnixNano(), time.Now().Unix())
+	}
+	return hex.EncodeToString(buf[:])
 }
 
 // onSpiderClosed 结束 Spider 根 Span。
@@ -405,7 +695,10 @@ func (e *TraceExtension) onSpiderClosed(params map[string]any) error {
 }
 
 // onRequestReachedDownloader 在对应的 scrape Span 上记录 http.download Event。
-// HTTP 下载不再创建独立 Span，降级为 Event 以提高信噪比。
+// HTTP 下载默认不再创建独立 Span，降级为 Event 以提高信噪比。
+//
+// 当 traceHTTPDownload 为 true 时（v1 兼容模式），同时创建一个独立的
+// "http.request" 子 Span，便于在追踪 UI 中精确查看每个 HTTP 请求耗时。
 func (e *TraceExtension) onRequestReachedDownloader(params map[string]any) error {
 	req, _ := params["request"].(*scrapyhttp.Request)
 	if req == nil {
@@ -426,7 +719,7 @@ func (e *TraceExtension) onRequestReachedDownloader(params map[string]any) error
 	}
 	entry := value.(*scrapeSpanEntry)
 
-	// 记录 http.download Event
+	// 记录 http.download Event（始终记录，作为轻量级标记）
 	attrs := map[string]string{}
 	if req.URL != nil {
 		attrs["http.url"] = req.URL.String()
@@ -435,10 +728,39 @@ func (e *TraceExtension) onRequestReachedDownloader(params map[string]any) error
 		attrs["http.method"] = req.Method
 	}
 	entry.span.AddEvent("http.download", attrs)
+
+	// v1 兼容模式：创建独立 "http.request" 子 Span
+	if e.traceHTTPDownload {
+		// 检查活跃 Span 数量限制（避免溢出）
+		if e.activeSpanCount.Load() >= int64(e.maxActiveSpans) {
+			return nil
+		}
+
+		spanAttrs := map[string]string{
+			"span.kind": "client",
+		}
+		if req.URL != nil {
+			spanAttrs["http.url"] = req.URL.String()
+		}
+		if req.Method != "" {
+			spanAttrs["http.method"] = req.Method
+		}
+
+		_, httpSpan := e.tracer.Start(entry.ctx, "http.request", telemetry.SpanOption{
+			Kind:       telemetry.SpanKindClient,
+			Attributes: spanAttrs,
+		})
+		e.httpRequestSpans.Store(req, httpSpan)
+		e.activeSpanCount.Add(1)
+	}
+
 	return nil
 }
 
 // onRequestLeftDownloader 在对应的 scrape Span 上记录 http.response Event。
+//
+// 当 traceHTTPDownload 为 true 时（v1 兼容模式），同时结束对应的
+// "http.request" 子 Span，并将 HTTP 状态码、错误等信息记录到该 Span。
 func (e *TraceExtension) onRequestLeftDownloader(params map[string]any) error {
 	req, _ := params["request"].(*scrapyhttp.Request)
 	if req == nil {
@@ -474,6 +796,23 @@ func (e *TraceExtension) onRequestLeftDownloader(params map[string]any) error {
 	}
 	entry.span.AddEvent("http.response", attrs)
 
+	// v1 兼容模式：结束独立 "http.request" 子 Span
+	if e.traceHTTPDownload {
+		if spanValue, ok := e.httpRequestSpans.LoadAndDelete(req); ok {
+			if httpSpan, ok := spanValue.(telemetry.Span); ok {
+				httpSpan.SetAttributes(attrs)
+				if errVal, ok := params["error"].(error); ok && errVal != nil {
+					httpSpan.RecordError(errVal)
+					httpSpan.SetStatus(telemetry.SpanStatusError, errVal.Error())
+				} else {
+					httpSpan.SetStatus(telemetry.SpanStatusOK, "")
+				}
+				httpSpan.End()
+				e.activeSpanCount.Add(-1)
+			}
+		}
+	}
+
 	// 下载完成后清理 requestScrapeID 映射
 	// 注意：AfterScrape 会在回调执行完毕后由 Engine 调用
 	e.requestScrapeID.Delete(req)
@@ -497,7 +836,9 @@ func (e *TraceExtension) onSpiderError(params map[string]any) error {
 	return nil
 }
 
-// onItemScraped 在根 Span 上记录 Item 事件。
+// onItemScraped 在根 Span 上记录 Item 成功事件。
+// 当启用了 Item Pipeline Span 时，详细的 Pipeline 处理信息已由
+// AfterItemPipeline 记录在独立的 item.pipeline Span 中。
 func (e *TraceExtension) onItemScraped(params map[string]any) error {
 	if e.rootSpan == nil {
 		return nil
@@ -506,6 +847,39 @@ func (e *TraceExtension) onItemScraped(params map[string]any) error {
 	e.rootSpan.AddEvent("item.scraped", map[string]string{
 		"item.type": fmt.Sprintf("%T", params["item"]),
 	})
+	return nil
+}
+
+// onItemDropped 在根 Span 上记录 Item 丢弃事件。
+func (e *TraceExtension) onItemDropped(params map[string]any) error {
+	if e.rootSpan == nil {
+		return nil
+	}
+
+	attrs := map[string]string{
+		"item.type": fmt.Sprintf("%T", params["item"]),
+	}
+	if err, ok := params["error"].(error); ok {
+		attrs["drop.reason"] = err.Error()
+	}
+	e.rootSpan.AddEvent("item.dropped", attrs)
+	return nil
+}
+
+// onItemError 在根 Span 上记录 Item 错误事件。
+func (e *TraceExtension) onItemError(params map[string]any) error {
+	if e.rootSpan == nil {
+		return nil
+	}
+
+	attrs := map[string]string{
+		"item.type": fmt.Sprintf("%T", params["item"]),
+	}
+	if err, ok := params["error"].(error); ok {
+		attrs["error.message"] = err.Error()
+		e.rootSpan.RecordError(err)
+	}
+	e.rootSpan.AddEvent("item.error", attrs)
 	return nil
 }
 
