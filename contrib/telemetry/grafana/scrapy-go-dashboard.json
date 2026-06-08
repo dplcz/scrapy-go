@@ -3,10 +3,18 @@
     {
       "name": "DS_PROMETHEUS",
       "label": "Prometheus",
-      "description": "Prometheus 数据源",
+      "description": "Prometheus 数据源（指标）",
       "type": "datasource",
       "pluginId": "prometheus",
       "pluginName": "Prometheus"
+    },
+    {
+      "name": "DS_TRACING",
+      "label": "Tracing",
+      "description": "Trace 数据源（Tempo / Jaeger，可选；用于跳转到 TraceExtension v2 产生的 Span）",
+      "type": "datasource",
+      "pluginId": "tempo",
+      "pluginName": "Tempo"
     }
   ],
   "__requires": [
@@ -45,6 +53,12 @@
       "id": "table",
       "name": "Table",
       "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "text",
+      "name": "Text",
+      "version": ""
     }
   ],
   "annotations": {
@@ -60,12 +74,29 @@
       }
     ]
   },
-  "description": "Scrapy-Go 爬虫框架监控面板 — Spider 概览 / 请求延迟 / 错误率 / 队列深度",
+  "description": "Scrapy-Go 爬虫框架监控面板 — Spider 概览 / 请求延迟 / 错误率 / 队列深度 / Item 产出链路 / 分布式追踪（适配 TraceExtension v2，v1.3.0+）",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "title": "📖 TraceExtension v2 设计文档",
+      "url": "https://git.woa.com/scrapy-go/scrapy-go/-/blob/master/contrib/telemetry/README.md",
+      "type": "link",
+      "icon": "doc",
+      "targetBlank": true,
+      "tooltip": "查看 TraceExtension v2 重构设计与使用指南"
+    },
+    {
+      "title": "🔍 跳转到 Trace 后端",
+      "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TRACING}%22%2C%22queries%22%3A%5B%7B%22query%22%3A%22%7B.spider.name%3D%5C%22${spider:raw}%5C%22%7D%22%7D%5D%7D",
+      "type": "link",
+      "icon": "external link",
+      "targetBlank": true,
+      "tooltip": "在 Tempo / Jaeger 中查询当前 Spider 的 Trace（spider.crawl 根 Span）"
+    }
+  ],
   "liveNow": false,
   "panels": [
     {
@@ -565,6 +596,215 @@
       ],
       "title": "按域名请求延迟 P90",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "id": 50,
+      "title": "📦 Item 产出链路（TraceExtension v2 核心模型）",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "description": "Item 在 Pipeline 中的产出/丢弃/错误速率。对应 TraceExtension v2 的 item.pipeline Span 的 pipeline.success / pipeline.dropped / pipeline.error Event。",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20,
+            "pointSize": 5,
+            "showPoints": "never",
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
+      "id": 51,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "sum", "lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "rate(scrapy_items_scraped_total{spider=~\"$spider\"}[$__rate_interval])",
+          "legendFormat": "已抓取 {{spider}}"
+        },
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "rate(scrapy_items_dropped_total{spider=~\"$spider\"}[$__rate_interval])",
+          "legendFormat": "已丢弃 {{spider}}"
+        }
+      ],
+      "title": "Item 产出 / 丢弃速率",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "description": "Item Pipeline 成功率 = scraped / (scraped + dropped)。低于 95% 时建议在 Trace 中查看 item.pipeline Span 的 pipeline.dropped Event 定位原因。",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          },
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
+      "id": 52,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "sum by (spider) (rate(scrapy_items_scraped_total{spider=~\"$spider\"}[$__rate_interval])) / clamp_min(sum by (spider) (rate(scrapy_items_scraped_total{spider=~\"$spider\"}[$__rate_interval]) + rate(scrapy_items_dropped_total{spider=~\"$spider\"}[$__rate_interval])), 1e-9)",
+          "legendFormat": "{{spider}}"
+        }
+      ],
+      "title": "Item Pipeline 成功率",
+      "type": "gauge"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "description": "已抓取 Item 累计数量。对应 TraceExtension v2 中带 pipeline.success Event 的 item.pipeline Span 数量。",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 50 },
+      "id": 53,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "scrapy_items_scraped_total{spider=~\"$spider\"}",
+          "legendFormat": "{{spider}}"
+        }
+      ],
+      "title": "已抓取 Item 总数",
+      "type": "stat"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "description": "已丢弃 Item 累计数量。对应 TraceExtension v2 中带 pipeline.dropped Event 的 item.pipeline Span 数量。",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 50 },
+      "id": 54,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "scrapy_items_dropped_total{spider=~\"$spider\"}",
+          "legendFormat": "{{spider}}"
+        }
+      ],
+      "title": "已丢弃 Item 总数",
+      "type": "stat"
+    },
+    {
+      "datasource": "${DS_PROMETHEUS}",
+      "description": "Item 平均产出耗时（基于 HTTP 请求延迟近似）。如需精确的 Item Pipeline 耗时分布，请打开 Trace 后端查看 item.pipeline Span。",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 50 },
+      "id": 55,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "datasource": "${DS_PROMETHEUS}",
+          "expr": "histogram_quantile(0.95, sum by (spider, le) (rate(scrapy_request_duration_seconds_bucket{spider=~\"$spider\"}[$__rate_interval])))",
+          "legendFormat": "p95 {{spider}}"
+        }
+      ],
+      "title": "请求 P95 延迟（Item 产出近似下限）",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 },
+      "id": 60,
+      "title": "🔍 分布式追踪（TraceExtension v2）",
+      "type": "row"
+    },
+    {
+      "datasource": "${DS_TRACING}",
+      "description": "在 Trace 后端中查询当前 Spider 的根 Span（spider.crawl）。选择上方的 $spider 变量后点击 Run Query。",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
+      "id": 61,
+      "options": {
+        "content": "## 🔭 Trace 模型速览（v1.3.0+）\n\n**追踪层级**：\n\n```\nspider.crawl                  ← 根 Span（每个 SpiderOpened 一个）\n └─ scrape:{Callback}         ← 每次回调执行一个 Span\n     ├─ event: http.download   ← HTTP 下载阶段（默认仅 Event，不是 Span）\n     ├─ event: http.response   ← HTTP 响应阶段\n     └─ item.pipeline          ← 每个 Item 一个 Span\n         ├─ event: pipeline.success  / pipeline.dropped / pipeline.error\n```\n\n**Span 关键属性**：\n\n| 属性 | 说明 |\n|------|------|\n| `spider.name` | Spider 名称（与 Dashboard 的 `$spider` 变量对应） |\n| `scrape.callback` | 回调函数名（如 `ParseList`、`ParseDetail`） |\n| `scrape.url` | 当前请求的 URL |\n| `scrape.yielded_requests` | 该回调产出的新请求数 |\n| `scrape.yielded_items` | 该回调产出的 Item 数 |\n| `trace.session_id` | 当前爬取 session 标识（断点续爬区分） |\n| `trace.propagation_policy` | Trace 传播策略 |\n\n**通过本面板跳转**：右上角 Dashboard Links → \"🔍 跳转到 Trace 后端\"。\n\n**指标 vs Trace 职责**：\n\n- **指标（本 Dashboard）**：长期趋势、SLO、告警（请求 QPS / Item 产出率 / 错误率 / 队列深度）。\n- **Trace（Tempo / Jaeger）**：单次请求的因果链路、回调耗时分解、特定 Item 在 Pipeline 中的处理细节。\n\n> 💡 当 \"Item Pipeline 成功率\" 面板下降时，跳转到 Trace 后端，按 `pipeline.dropped` Event 过滤即可定位被丢弃的 Item。",
+        "mode": "markdown"
+      },
+      "title": "📖 Trace 模型与排查指南",
+      "type": "text"
+    },
+    {
+      "datasource": "${DS_TRACING}",
+      "description": "快速查询当前 $spider 在选定时间范围内的 spider.crawl 根 Span。需配置 Tempo / Jaeger 数据源。",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 55 },
+      "id": 62,
+      "options": {
+        "content": "## 🚀 在 Trace 后端中快速排查\n\n### 1. 查询某个 Spider 的所有 Trace\n\n**Tempo / Jaeger TraceQL**：\n\n```\n{ .spider.name = \"$spider\" }\n```\n\n### 2. 查询慢回调（耗时 > 1s）\n\n```\n{ .spider.name = \"$spider\" && name =~ \"scrape:.*\" && duration > 1s }\n```\n\n### 3. 查询有 Item 被丢弃的 Trace\n\n```\n{ .spider.name = \"$spider\" && name = \"item.pipeline\" && event.name = \"pipeline.dropped\" }\n```\n\n### 4. 查询特定回调的执行链\n\n```\n{ .spider.name = \"$spider\" && .scrape.callback = \"ParseDetail\" }\n```\n\n### 5. 按 Session 过滤（区分多次重启）\n\n```\n{ .spider.name = \"$spider\" && .trace.session_id = \"<session_id>\" }\n```\n\n> ⚠️ 默认传播策略为 `PropagateWithinSession`，断点续爬重启后会开启新 Session（新 trace.session_id），避免僵尸 Trace。",
+        "mode": "markdown"
+      },
+      "title": "🔎 常用 TraceQL 示例",
+      "type": "text"
     }
   ],
   "refresh": "10s",
@@ -604,6 +844,21 @@
         "regex": "",
         "sort": 1,
         "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "Tempo", "value": "tempo" },
+        "description": "Trace 数据源（Tempo / Jaeger），用于跳转查看 TraceExtension v2 产生的 Span",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Tracing 数据源",
+        "multi": false,
+        "name": "tracing_ds",
+        "options": [],
+        "query": "tempo,jaeger",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
       }
     ]
   },
@@ -612,6 +867,6 @@
   "timezone": "",
   "title": "Scrapy-Go Spider Dashboard",
   "uid": "scrapy-go-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
