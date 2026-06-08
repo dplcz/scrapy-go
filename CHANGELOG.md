@@ -8,7 +8,7 @@
 
 ## [v1.3.0] — 2026-06-05
 
-> **🔭 P5-026：Telemetry 重构 — 以 Item 产出链路为核心的分布式追踪（Phase 1 ~ 5 全部完成）**
+> **🔭 P5-026：Telemetry 重构 — 以 Item 产出链路为核心的分布式追踪（Phase 1 ~ 6 全部完成）**
 >
 > 重构 `TraceExtension` 为 v2 架构，追踪粒度从 HTTP 请求提升到回调执行，
 > 实现回调链因果关系追踪。通过 `Request.Meta["_trace_parent"]` 传播 W3C traceparent
@@ -16,6 +16,8 @@
 > Phase 3 新增 Item Pipeline 独立 Span，精确追踪每个 Item 的 Pipeline 处理耗时和结果。
 > Phase 4 引入 Session 策略，断点续爬重启后自动开启新 Trace，避免僵尸链路。
 > Phase 5 提供 `WithTraceHTTPDownload` 兼容开关，按需恢复 v1 旧行为。
+> Phase 6 同步更新 Grafana Dashboard 模板：新增 `📦 Item 产出链路` 与 `🔍 分布式追踪` 面板行，
+> 提供 `tracing_ds` 数据源变量与 Trace 后端跳转链接，实现指标 ↔ Trace 双向关联。
 
 ### 新增
 
@@ -64,6 +66,15 @@
 - ✨ **`httpRequestSpans` sync.Map** — 按 `*Request` 指针关联活跃的 `http.request` Span，保证并发安全；`Close` 时自动清理未结束的 Span 防止泄漏
 - ✨ **配置日志增强** — `Open` 日志记录 `trace_http_download` 和 `propagation_policy` 当前配置，便于运维诊断
 - ✨ **完整单元测试** — Phase 4/5 新增 14 个单元测试用例 + 内置 `spyTracer` mock，覆盖率从 87.4% 提升至 89.5%（≥85% 门槛）
+
+#### P5-026f: Grafana Dashboard 适配 TraceExtension v2（Phase 6）
+
+- ✨ **`📦 Item 产出链路` 面板行** — 新增 5 个面板对齐 v2 追踪模型的核心（`item.pipeline` Span）：Item 产出/丢弃速率（堆叠时序）、Pipeline 成功率仪表盘（`scraped / (scraped + dropped)`，<95% 黄、<90% 红）、累计 scraped/dropped stat、请求 P95 延迟（Item 产出近似下限）
+- ✨ **`🔍 分布式追踪` 面板行** — 新增 2 个 Text 面板：Trace 模型与排查指南（说明 `spider.crawl` → `scrape:{Callback}` → `item.pipeline` 三层结构 + 关键 Span 属性）、常用 TraceQL 示例（按 callback / session / dropped Event 过滤的查询语句）
+- ✨ **Dashboard 顶部 Links 跳转** — 新增 `📖 设计文档` 与 `🔍 跳转到 Trace 后端`（自动注入 `${spider}` 变量预填 `{ .spider.name = "$spider" }`）两个外部链接
+- ✨ **`tracing_ds` 数据源变量** — 新增 datasource 类型变量（Tempo / Jaeger 二选一），实现指标 ↔ Trace 的双向跳转
+- ✨ **`__inputs` 增加 `DS_TRACING`** — 导入时可选配置 Trace 后端数据源；未配置时其他面板不受影响
+- 📖 **`grafana/README.md` 重构** — 新增"指标 vs Trace 职责划分"准则、Trace 后端集成步骤、模板变更历史；面板表格按行分组重新整理
 
 ### 变更
 
